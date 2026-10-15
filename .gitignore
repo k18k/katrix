@@ -1,0 +1,11 @@
+node_modules
+*.db
+*.sqlite
+.media
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+complement-results.json

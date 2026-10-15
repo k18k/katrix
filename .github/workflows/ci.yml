@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # The published package must load from node_modules (runtime .js produced by Node's type stripper).
+      - run: npm pack --dry-run
+
+  complement:
+    name: Complement
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+
+      # Same script as locally: Complement runs in a Go container (pinned in the script).
+      # Failures are judged by the regression check below, not by the exit code.
+      - name: Run Complement
+        env:
+          TIMEOUT: 75m
+        run: scripts/complement.sh || echo "Complement exited with $?"
+
+      - name: Summarise results
+        if: always()
+        run: node complement/summarize.ts complement-results.json complement-passing.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check for regressions
+        run: |
+          missing=$(comm -23 <(sort complement/passing.txt | grep -v '^#' | grep .) <(sort complement-passing.txt))
+          if [ -n "$missing" ]; then
+            echo "::error::Tests that previously passed now fail:"
+            echo "$missing"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: complement-results
+          path: |
+            complement-results.json
+            complement-passing.txt

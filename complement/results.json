@@ -1,0 +1,3522 @@
+{
+ "tests": {
+  "TestChangePasswordPushers/Pushers_created_with_a_different_access_token_are_deleted_on_password_change": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestChangePasswordPushers/Pushers_created_with_the_same_access_token_are_not_deleted_on_password_change": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestChangePasswordPushers": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestWriteMDirectAccountData": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC3389RedactionPreservesRelation": {
+   "status": "pass",
+   "pkg": "msc3389"
+  },
+  "TestChangePassword/After_changing_password,_can't_log_in_with_old_password": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestChangePassword/After_changing_password,_can_log_in_with_new_password": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestChangePassword/After_changing_password,_existing_session_still_works": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestChangePassword/After_changing_password,_a_different_session_no_longer_works_by_default": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestChangePassword/After_changing_password,_different_sessions_can_optionally_be_kept": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestChangePassword": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestIsDirectFlagLocal": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC3389RedactionStripsRelationInOlderVersions": {
+   "status": "pass",
+   "pkg": "msc3389"
+  },
+  "TestAddAccountData/Can_add_global_account_data": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestAddAccountData/Can_add_room_account_data": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestAddAccountData": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestIsDirectFlagFederation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC3389RedactionPreservesPlainRelation": {
+   "status": "pass",
+   "pkg": "msc3389"
+  },
+  "TestDeactivateAccount/Password_flow_is_available": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeactivateAccount/Can't_deactivate_account_with_wrong_password": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeactivateAccount/Can_deactivate_account": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeactivateAccount/After_deactivating_account,_can't_log_in_with_password": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeactivateAccount": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestEventRelationships": {
+   "status": "pass",
+   "pkg": "msc2836"
+  },
+  "TestCanRegisterAdmin": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestServerNotices//send_server_notice_is_not_allowed_as_normal_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestServerNotices//send_server_notice_as_an_admin_is_allowed": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestServerNotices/Alice_is_invited_to_the_server_alert_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestServerNotices/Alice_cannot_reject_the_invite": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestServerNotices/Alice_can_join_the_alert_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestServerNotices/Alice_can_leave_the_alert_room,_after_joining_it": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRemovingAccountData/Deleting_a_user's_account_data_via_DELETE_works": {
+   "status": "pass",
+   "pkg": "msc3391"
+  },
+  "TestRemovingAccountData/Deleting_a_user's_account_data_via_PUT_works": {
+   "status": "pass",
+   "pkg": "msc3391"
+  },
+  "TestRemovingAccountData/Deleting_a_user's_room_data_via_DELETE_works": {
+   "status": "pass",
+   "pkg": "msc3391"
+  },
+  "TestRemovingAccountData/Deleting_a_user's_room_account_data_via_PUT_works": {
+   "status": "pass",
+   "pkg": "msc3391"
+  },
+  "TestRemovingAccountData": {
+   "status": "pass",
+   "pkg": "msc3391"
+  },
+  "TestServerNotices/After_leaving_the_alert_room_and_on_re-invitation,_no_new_room_is_created": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestServerNotices/Sending_a_notice_with_a_transactionID_is_idempotent": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestServerNotices": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFederatedEventRelationships": {
+   "status": "pass",
+   "pkg": "msc2836"
+  },
+  "TestContent": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestContentCSAPIMediaV1": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceManagement/GET_/device/{deviceId}": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceManagement/GET_/device/{deviceId}_gives_a_404_for_unknown_devices": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceManagement/GET_/devices": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceManagement/PUT_/device/{deviceId}_updates_device_fields": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceManagement/PUT_/device/{deviceId}_gives_a_404_for_unknown_devices": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceManagement/DELETE_/device/{deviceId}": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceManagement/DELETE_/device/{deviceId}_requires_UI_auth_user_to_match_device_owner": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceManagement": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestWithoutOwnedState/parallel/user_can_set_state_with_their_own_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestWithoutOwnedState/parallel/room_creator_cannot_set_state_with_malformed_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestWithoutOwnedState/parallel/room_creator_cannot_set_state_with_their_own_suffixed_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestWithoutOwnedState/parallel/room_creator_cannot_set_state_with_another_suffixed_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestWithoutOwnedState/parallel/room_creator_cannot_set_state_with_another_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestWithoutOwnedState/parallel/room_creator_cannot_set_state_with_a_non-member_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestWithoutOwnedState/parallel": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestWithoutOwnedState": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestLogin/parallel/GET_/login_yields_a_set_of_flows": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogin/parallel/POST_/login_as_non-existing_user_is_rejected": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogin/parallel/POST_/login_can_login_as_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogin/parallel/POST_/login_returns_the_same_device_id_as_that_in_the_request": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogin/parallel/POST_/login_can_log_in_as_a_user_with_just_the_local_part_of_the_id": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogin/parallel/POST_/login_wrong_password_is_rejected": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogin/parallel/Login_with_uppercase_username_works_and_GET_/whoami_afterwards_also": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogin/parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogin": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFilterMessagesByRelType": {
+   "status": "pass",
+   "pkg": "msc3874"
+  },
+  "TestDeletingDeviceRemovesDeviceLocalNotificationSettings/Deleting_a_user's_device_should_delete_any_local_notification_settings_entries_from_their_account_data": {
+   "status": "pass",
+   "pkg": "msc3890"
+  },
+  "TestDeletingDeviceRemovesDeviceLocalNotificationSettings": {
+   "status": "pass",
+   "pkg": "msc3890"
+  },
+  "TestACLs": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC3757OwnedState": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestLogout/Can_logout_current_device": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogout/Can_logout_all_devices": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogout/Request_to_logout_with_invalid_an_access_token_is_rejected": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogout/Request_to_logout_without_an_access_token_is_rejected": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLogout": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestACLsForEDUs": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestPresence/GET_/presence/:user_id/status_fetches_initial_status": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPresence/PUT_/presence/:user_id/status_updates_my_presence": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPresence/Presence_can_be_set_from_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPresence/Presence_changes_are_reported_to_local_room_members": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPresence/Presence_changes_to_UNAVAILABLE_are_reported_to_local_room_members": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPresence": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestProfileAvatarURL/PUT_/profile/:user_id/avatar_url_sets_my_avatar": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestProfileAvatarURL/GET_/profile/:user_id/avatar_url_publicly_accessible": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestProfileAvatarURL": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestProfileDisplayName/PUT_/profile/:user_id/displayname_sets_my_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestProfileDisplayName/GET_/profile/:user_id/displayname_publicly_accessible": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestProfileDisplayName": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/EagerInitialSyncDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/EagerIncrementalSyncDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/EagerLongPollingSyncWokenWhenResyncCompletes": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPollsLocalPushRules/Polls_push_rules_are_correctly_presented_to_the_client": {
+   "status": "pass",
+   "pkg": "msc3930"
+  },
+  "TestRegistration/parallel/POST_/register_allows_registration_of_usernames_with_/q": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_allows_registration_of_usernames_with_/3": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_allows_registration_of_usernames_with_/.": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_allows_registration_of_usernames_with_/_": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_allows_registration_of_usernames_with_/=": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_allows_registration_of_usernames_with_/-": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/CanLazyLoadingSyncDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRegistration/parallel/POST_/register_allows_registration_of_usernames_with_//": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_allows_registration_of_usernames_with_": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/_synapse/admin/v1/register_admin_with_shared_secret": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/_synapse/admin/v1/register_with_shared_secret": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/_synapse/admin/v1/register_with_shared_secret_disallows_symbols": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/_synapse/admin/v1/register_with_shared_secret_downcases_capitals": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/Registration_accepts_non-ascii_passwords": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_{}_returns_a_set_of_flows": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/GET_/register/available_returns_M_INVALID_USERNAME_for_invalid_user_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/GET_/register/available_returns_available_for_unregistered_user_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_rejects_usernames_with_special_characters": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_downcases_capitals_in_usernames": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_returns_the_same_device_id_as_that_in_the_request": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/Registration_without_a_session_fails": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_rejects_if_user_already_exists": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/POST_/register_can_create_a_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel/GET_/register/available_returns_M_USER_IN_USE_for_registered_user_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRegistration/parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPollsLocalPushRules": {
+   "status": "pass",
+   "pkg": "msc3930"
+  },
+  "TestRegistration": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/CanSendEventsDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRequestEncodingFails/POST_rejects_invalid_utf-8_in_JSON": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRequestEncodingFails": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/CanReceiveTypingDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/CanReceivePresenceDuringPartialStateJoin": {
+   "status": "skip",
+   "pkg": "msc3902"
+  },
+  "TestRoomAlias/Parallel/PUT_/directory/room/:room_alias_creates_alias": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomAlias/Parallel/Only_room_members_can_list_aliases_of_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomAlias/Parallel/Room_aliases_can_contain_Unicode": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomAlias/Parallel/GET_/rooms/:room_id/aliases_lists_aliases": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomAlias/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomAlias": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/CanReceiveToDeviceDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRoomDeleteAlias/Parallel/Deleting_a_non-existent_alias_should_return_a_404": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias/Parallel/Alias_creators_can_delete_alias_with_no_ops": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias/Parallel/Users_with_sufficient_power-level_can_delete_other's_aliases": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias/Parallel/Regular_users_can_add_and_delete_aliases_in_the_default_room_configuration": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias/Parallel/Can_delete_canonical_alias": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias/Parallel/Users_can't_delete_other's_aliases": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias/Parallel/Regular_users_can_add_and_delete_aliases_when_m.room.aliases_is_restricted": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias/Parallel/Alias_creators_can_delete_canonical_alias_with_no_ops": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomDeleteAlias": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMSC3967": {
+   "status": "pass",
+   "pkg": "msc3967"
+  },
+  "TestDelayedEvents/delayed_events_are_empty_on_startup": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_event_lookups_are_authenticated": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_message_events_are_sent_on_timeout/rerequesting_delayed_event_path_with_the_same_txnID_should_have_the_same_response": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_message_events_are_sent_on_timeout/rerequesting_delayed_event_path_with_the_same_txnID_should_have_the_same_response#01": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_message_events_are_sent_on_timeout/rerequesting_delayed_event_path_with_the_same_txnID_should_have_the_same_response#02": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_message_events_are_sent_on_timeout/cannot_get_delayed_events_of_another_user": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_message_events_are_sent_on_timeout": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_state_events_are_sent_on_timeout": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/cannot_update_a_delayed_event_without_an_action": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/cannot_update_a_delayed_event_with_an_invalid_action": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/parallel/cannot_cancel_a_delayed_event_without_a_matching_delay_ID": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/parallel/cannot_restart_a_delayed_event_without_a_matching_delay_ID": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/parallel/cannot_send_a_delayed_event_without_a_matching_delay_ID": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/parallel": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_state_events_can_be_cancelled": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_state_events_can_be_sent_on_request": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_state_events_can_be_restarted": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents/delayed_state_events_are_kept_on_server_restart": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestDelayedEvents": {
+   "status": "pass",
+   "pkg": "msc4140"
+  },
+  "TestPartialStateJoin/CanReceiveReceiptDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_accepts_present_alt_aliases": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_rejects_invalid_aliases#01": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_rejects_alt_alias_pointing_to_different_local_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_rejects_alias_pointing_to_different_local_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_rejects_invalid_aliases": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_rejects_missing_aliases": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_accepts_present_aliases": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_setting_rejects_deleted_aliases": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel/m.room.canonical_alias_rejects_missing_aliases#01": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCanonicalAlias/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListsUpdateOverFederation/good_connectivity": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRoomCanonicalAlias": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/Rooms_can_be_created_with_an_initial_invite_list_(SYN-205)": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/Can_/sync_newly_created_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_ignores_attempts_to_set_the_room_version_via_creation_content": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_makes_a_public_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_makes_a_room_with_a_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_rejects_attempts_to_create_rooms_with_unknown_versions": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_rejects_attempts_to_create_rooms_with_numeric_versions": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_makes_a_private_room_with_invites": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_creates_a_room_with_the_given_version": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_makes_a_room_with_a_topic_and_writes_rich_topic_representation": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_makes_a_room_with_a_topic_via_initial_state_overwritten_by_topic": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_makes_a_room_with_a_topic_via_initial_state": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_makes_a_private_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel/POST_/createRoom_makes_a_room_with_a_topic": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreate": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/CanReceiveDeviceListUpdateDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRoomForget/Parallel/Can't_forget_room_you're_still_in": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomForget/Parallel/Can_forget_room_you've_been_kicked_from": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomForget/Parallel/Can_forget_room_we_weren't_an_actual_member": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomForget/Parallel/Forgotten_room_messages_cannot_be_paginated": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomForget/Parallel/Can_re-join_room_if_re-invited": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomForget/Parallel/Leave_for_forgotten_room_shows_up_in_v2_incremental_/sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomForget/Parallel/Forgetting_room_does_not_show_up_in_v2_initial_/sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomForget/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomForget": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/CanReceiveSigningKeyUpdateDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/CanReceiveEventsDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/CanReceiveEventsWithMissingParentsDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/CanReceiveEventsWithHalfMissingParentsDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/CanReceiveEventsWithHalfMissingGrandparentsDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Lazy-loading_initial_sync_includes_remote_memberships_during_partial_state_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Lazy-loading_gappy_sync_includes_remote_memberships_during_partial_state_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestFetchEvent": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/Lazy-loading_incremental_sync_includes_remote_memberships_during_partial_state_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/MembersRequestBlocksDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/PartialStateJoinContinuesAfterRestart": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestFetchHistoricalJoinedEventDenied": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFetchHistoricalSharedEvent": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFetchHistoricalInvitedEventFromBetweenInvite": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestInviteFiltering/Can_invite_users_normally_without_any_rules": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Can_block_a_single_user": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Can_ignore_a_single_user": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Can_block_a_whole_server": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Can_ignore_a_whole_server": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Can_glob_serveral_servers": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Can_glob_serveral_users": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Can_allow_a_user_from_a_blocked_server": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Can_block_a_user_from_an_allowed_server": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestDeviceListsUpdateOverFederation/interrupted_connectivity": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInviteFiltering/Will_ignore_null_fields": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestInviteFiltering/Will_allow_users_when_a_user_appears_in_multiple_fields": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestFetchHistoricalInvitedEventFromBeforeInvite": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestInviteFiltering": {
+   "status": "pass",
+   "pkg": "msc4155"
+  },
+  "TestSync/parallel/Initial_sync_with_lazy-loading_room_members_->_public_room_`state_after`_includes_all_members_from_timeline": {
+   "status": "pass",
+   "pkg": "msc4222"
+  },
+  "TestSync/parallel/Initial_sync_with_lazy-loading_room_members_->_private_room_`state_after`_includes_all_members_from_timeline": {
+   "status": "pass",
+   "pkg": "msc4222"
+  },
+  "TestSync/parallel": {
+   "status": "pass",
+   "pkg": "msc4222"
+  },
+  "TestSync": {
+   "status": "pass",
+   "pkg": "msc4222"
+  },
+  "TestFetchEventNonWorldReadable": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFetchEventWorldReadable": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers/Parallel/POST_/rooms/:room_id/join_can_join_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers/Parallel/POST_/join/:room_id_can_join_a_room_with_custom_content": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/PartialStateJoinSyncsUsingOtherHomeservers": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRoomMembers/Parallel/POST_/rooms/:room_id/leave_can_leave_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers/Parallel/POST_/join/:room_alias_can_join_a_room_with_custom_content": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers/Parallel/POST_/join/:room_id_can_join_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers/Parallel/POST_/join/:room_alias_can_join_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers/Parallel/POST_/rooms/:room_id/invite_can_send_an_invite": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers/Parallel/POST_/rooms/:room_id/ban_can_ban_a_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/GappySyncAfterPartialStateSynced": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRoomMembers/Parallel/Test_that_we_can_be_reinvited_to_a_room_we_created": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMembers": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/Resync_completes_even_when_events_arrive_before_their_prev_events": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Rejected_events_remain_rejected_after_resync": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/State_accepted_incorrectly": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/State_rejected_incorrectly": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Rejects_make_join_during_partial_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Rejects_send_join_during_partial_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/joined_members_blocks_during_partial_state_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRoomReceipts/Receipts_DO_NOT_include_a_`room_id`_field": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/Rejects_make_knock_during_partial_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRoomReceipts": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMSC4308ThreadSubscriptionsSlidingSync/Receives_thread_subscriptions_over_initial_sliding_sync": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestMSC4308ThreadSubscriptionsSlidingSync/Receives_thread_subscriptions_over_incremental_sliding_sync": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestPartialStateJoin/Rejects_send_knock_during_partial_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Outgoing_device_list_updates/Device_list_updates_reach_all_servers_in_partial_state_rooms": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestMSC4308ThreadSubscriptionsSlidingSync": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestPartialStateJoin/Outgoing_device_list_updates/Device_list_updates_reach_newly_joined_servers_in_partial_state_rooms": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Outgoing_device_list_updates/Device_list_updates_no_longer_reach_departed_servers_after_partial_state_join_completes": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Outgoing_device_list_updates/Device_list_updates_reach_incorrectly_kicked_servers_once_partial_state_join_completes": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestRoomReadMarkers": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/Outgoing_device_list_updates/Device_list_updates_reach_incorrectly_kicked_servers_once_partial_state_join_completes_even_though_remote_server_left_room": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestThreadSubscriptions/Can_subscribe_to_and_unsubscribe_from_a_thread": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestThreadSubscriptions/Cannot_use_thread_root_as_automatic_subscription_cause_event": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestThreadSubscriptions/Can_create_automatic_subscription_to_a_thread": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestThreadSubscriptions/Manual_subscriptions_overwrite_automatic_subscriptions": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestThreadSubscriptions/Error_when_using_invalid_automatic_event_ID": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestThreadSubscriptions/Unsubscribe_succeeds_even_with_no_subscription": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestThreadSubscriptions/Nonexistent_threads_return_404": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestThreadSubscriptions/Server-side_automatic_subscription_ordering_conflict": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestPartialStateJoin/Outgoing_device_list_updates/Device_list_updates_reach_incorrectly_absent_servers_once_partial_state_join_completes": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestThreadSubscriptions": {
+   "status": "pass",
+   "pkg": "msc4306"
+  },
+  "TestPartialStateJoin/Outgoing_device_list_updates/Device_list_updates_reach_incorrectly_absent_servers_once_partial_state_join_completes_even_though_remote_server_left_room": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Outgoing_device_list_updates": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_tracking_for_pre-existing_members_in_partial_state_room": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_tracking_when_pre-existing_members_in_partial_state_room_join_another_shared_room": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_tracked_for_new_members_in_partial_state_room": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_no_longer_tracked_when_new_member_leaves_partial_state_room": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_no_longer_tracked_when_leaving_partial_state_room": {
+   "status": "skip",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_no_longer_tracked_when_failing_to_complete_partial_state_join": {
+   "status": "skip",
+   "pkg": "msc3902"
+  },
+  "TestRoomState/Parallel/GET_/rooms/:room_id/state/m.room.member/:user_id_fetches_my_membership": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/rooms/:room_id/state/m.room.name_gets_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/rooms/:room_id/state/m.room.topic_gets_topic": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/rooms/:room_id/joined_members_is_forbidden_after_leaving_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/publicRooms_lists_newly-created_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/POST_/rooms/:room_id/state/m.room.name_sets_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/PUT_/createRoom_with_creation_content": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/rooms/:room_id/state_fetches_entire_room_state": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/directory/room/:room_alias_yields_room_ID": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/rooms/:room_id/state/m.room.member/:user_id?format=event_fetches_my_membership_event": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/rooms/:room_id/joined_members_fetches_my_membership": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/PUT_/rooms/:room_id/state/m.room.topic_sets_topic": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/rooms/:room_id/state/m.room.power_levels_fetches_powerlevels": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel/GET_/joined_rooms_lists_newly-created_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomState": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_no_longer_tracked_for_user_incorrectly_believed_to_be_in_room": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_tracking_for_user_incorrectly_believed_to_be_in_room_when_they_rejoin_before_partial_state_join_completes": {
+   "status": "skip",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_tracking_for_user_incorrectly_believed_to_be_in_room_when_they_rejoin_after_partial_state_join_completes": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking/Device_list_tracking_for_user_incorrectly_believed_to_be_in_room_when_they_join_another_shared_room_before_partial_state_join_completes": {
+   "status": "skip",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Device_list_tracking": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Room_aliases_can_be_added_and_queried_during_a_resync": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Room_aliases_can_be_added_and_deleted_during_a_resync": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/CanFastJoinDuringPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Can_change_display_name_during_partial_state_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Leave_during_resync/is_seen_after_the_resync": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Leave_during_resync/does_not_wait_for_resync": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestSearch/parallel/Can_search_for_an_event_by_body": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSearch/parallel/Search_works_across_an_upgraded_room_and_its_predecessor": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/Leave_during_resync/works_after_a_second_partial_join": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestSearch/parallel/Search_results_with_rank_ordering_do_not_include_redacted_events": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSearch/parallel/Search_results_with_recent_ordering_do_not_include_redacted_events": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSearch/parallel/Can_get_context_around_search_results": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSearch/parallel/Can_back-paginate_search_results": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSearch/parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSearch": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPartialStateJoin/Leave_during_resync/succeeds,_then_rejoin_succeeds_without_resync_completing": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Leave_during_resync/succeeds,_then_another_user_can_join_without_resync_completing": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Leave_during_resync/can_be_triggered_by_remote_kick": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Leave_during_resync/can_be_triggered_by_remote_ban": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Leave_during_resync": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Room_stats_are_correctly_updated_once_state_re-sync_completes": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/User_directory_is_correctly_updated_once_state_re-sync_completes": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin/Purge_during_resync": {
+   "status": "skip",
+   "pkg": "msc3902"
+  },
+  "TestPartialStateJoin": {
+   "status": "pass",
+   "pkg": "msc3902"
+  },
+  "TestServerCapabilities": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestVersionStructure/Version_responds_200_OK_with_valid_structure": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestVersionStructure": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMSC4429ProfileUpdates/Initial_sync_includes_requested_profile_fields_and_filters_others": {
+   "status": "pass",
+   "pkg": "msc4429"
+  },
+  "TestMSC4429ProfileUpdates/No_updates_without_profile_fields_filter": {
+   "status": "pass",
+   "pkg": "msc4429"
+  },
+  "TestMSC4429ProfileUpdates/Widening_profile_fields_filter_does_not_return_old_filtered_updates": {
+   "status": "pass",
+   "pkg": "msc4429"
+  },
+  "TestMSC4429ProfileUpdates/Incremental_sync_returns_the_latest_update": {
+   "status": "pass",
+   "pkg": "msc4429"
+  },
+  "TestMSC4429ProfileUpdates/Cleared_profile_field_is_returned_as_null": {
+   "status": "pass",
+   "pkg": "msc4429"
+  },
+  "TestMSC4429ProfileUpdates/A_user_leaving_the_last_shared_room_returns_a_profile_update_of_null": {
+   "status": "pass",
+   "pkg": "msc4429"
+  },
+  "TestMSC4429ProfileUpdates": {
+   "status": "pass",
+   "pkg": "msc4429"
+  },
+  "TestDeviceListsUpdateOverFederation/stopped_server": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestDeviceListsUpdateOverFederation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestDeviceListsUpdateOverFederationOnRoomJoin": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUserAppearsInChangedDeviceListOnJoinOverFederation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestDeviceListUpdates/when_local_user_joins_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates/when_remote_user_joins_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates/when_joining_a_room_with_a_local_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates/when_joining_a_room_with_a_remote_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates/when_local_user_leaves_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates/when_remote_user_leaves_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestEventAuth/returns_auth_events_for_the_requested_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestEventAuth/returns_the_auth_chain_for_the_requested_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestEventAuth": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestDeviceListUpdates/when_leaving_a_room_with_a_local_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates/when_leaving_a_room_with_a_remote_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates/when_local_user_rejoins_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates/when_remote_user_rejoins_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDeviceListUpdates": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestInboundFederationKeys": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestE2EKeyBackupReplaceRoomKeyRules/parallel/{isVerified:false_firstMessageIndex:10_forwardedCount:5}": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestE2EKeyBackupReplaceRoomKeyRules/parallel/{isVerified:true_firstMessageIndex:10_forwardedCount:5}": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestE2EKeyBackupReplaceRoomKeyRules/parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestE2EKeyBackupReplaceRoomKeyRules": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestContentMediaV1": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInviteFromIgnoredUsersDoesNotAppearInSync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRemotePresence/Presence_changes_are_also_reported_to_remote_room_members": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRemotePresence/Presence_changes_to_UNAVAILABLE_are_reported_to_remote_room_members": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRemotePresence": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJson/Parallel/Invalid_numerical_values": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJson/Parallel/Invalid_JSON_special_values": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJson/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJson": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestOutboundFederationProfile/Outbound_federation_can_query_profile_data": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestOutboundFederationProfile": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFilter": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestInboundFederationProfile/Non-numeric_ports_in_server_names_are_rejected": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundFederationProfile/Inbound_federation_can_query_profile_data": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundFederationProfile": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestEvent/Parallel/Large_Event": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestEvent/Parallel/Large_State_Event": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestEvent/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestEvent": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFederationRedactSendsWithoutEvent": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKeyChangesLocal/New_login_should_create_a_device_lists.changed_entry": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestKeyChangesLocal": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRemoteAliasRequestsUnderstandUnicode": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUnbanViaInvite": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundFederationRejectsEventsWithRejectedAuthEvents/Outlier_should_be_rejected": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundFederationRejectsEventsWithRejectedAuthEvents/sent_event_1_should_be_rejected": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundFederationRejectsEventsWithRejectedAuthEvents/sent_event_2_should_be_rejected": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundFederationRejectsEventsWithRejectedAuthEvents": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestGetMissingEventsGapFilling": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestOutboundFederationIgnoresMissingEventWithBadJSONForRoomVersion6": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestAsyncUpload": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomImageRoundtrip": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestInboundCanReturnMissingEvents/Inbound_federation_can_return_missing_events_for_world_readable_visibility": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundCanReturnMissingEvents/Inbound_federation_can_return_missing_events_for_shared_visibility": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundCanReturnMissingEvents/Inbound_federation_can_return_missing_events_for_invited_visibility": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundCanReturnMissingEvents/Inbound_federation_can_return_missing_events_for_joined_visibility": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestInboundCanReturnMissingEvents": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaConfig": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestOutboundFederationEventSizeGetMissingEvents": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMembershipOnEvents": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDemotingUsersViaUsersDefault": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestCorruptedAuthChain": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestPowerLevels/GET_/rooms/:room_id/state/m.room.power_levels_can_fetch_levels": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPowerLevels/PUT_/rooms/:room_id/state/m.room.power_levels_can_set_levels": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPowerLevels/PUT_power_levels_should_not_explode_if_the_old_power_levels_were_empty": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPowerLevels": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFederationRejectInvite": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestPublicRooms/Can_search_public_room_list": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms/Name/topic_keys_are_correct/Creating_room_with_alias_publicroomalias_no_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms/Name/topic_keys_are_correct/Creating_room_with_alias_publicroomalias_with_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms/Name/topic_keys_are_correct/Creating_room_with_alias_publicroomalias_with_topic": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms/Name/topic_keys_are_correct/Creating_room_with_alias_publicroomalias_with_name_topic": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms/Name/topic_keys_are_correct/Creating_room_with_alias_publicroom_with_unicode_chars_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms/Name/topic_keys_are_correct/Creating_room_with_alias_publicroom_with_unicode_chars_topic": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms/Name/topic_keys_are_correct/Creating_room_with_alias_publicroom_with_unicode_chars_name_topic": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms/Name/topic_keys_are_correct": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPublicRooms": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJoinViaRoomIDAndServerName": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestPushRuleCacheHealth": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJoinFederatedRoomFailOver": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestPushSync/Push_rules_come_down_in_an_initial_/sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushSync/Adding_a_push_rule_wakes_up_an_incremental_/sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushSync/Disabling_a_push_rule_wakes_up_an_incremental_/sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushSync/Enabling_a_push_rule_wakes_up_an_incremental_/sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushSync/Setting_actions_for_a_push_rule_wakes_up_an_incremental_/sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushSync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJoinFederatedRoomWithUnverifiableEvents//send_join_response_missing_signatures_shouldn't_block_room_join": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJoinFederatedRoomWithUnverifiableEvents//send_join_response_with_bad_signatures_shouldn't_block_room_join": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRedact/Event_content_is_redacted": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJoinFederatedRoomWithUnverifiableEvents//send_join_response_with_unobtainable_keys_shouldn't_block_room_join": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJoinFederatedRoomWithUnverifiableEvents//send_join_response_with_state_with_unverifiable_auth_events_shouldn't_block_room_join": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRedact": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJoinFederatedRoomWithUnverifiableEvents": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestNotPresentUserCannotBanOthers": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestBannedUserCannotSendJoin": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotKickNonPresentUser": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestCannotSendNonJoinViaSendJoinV1/regular_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV1/non-state_membership_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV1/leave_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV1/knock_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV1/invite_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV1/event_with_mismatched_state_key": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV1": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotKickLeftUser": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestCannotSendNonJoinViaSendJoinV2/regular_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV2/non-state_membership_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV2/leave_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV2/knock_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV2/invite_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV2/event_with_mismatched_state_key": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonJoinViaSendJoinV2": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestLeftRoomFixture/Can_get_rooms/{roomId}/state_for_a_departed_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLeftRoomFixture/Can_get_rooms/{roomId}/members_for_a_departed_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLeftRoomFixture/Can_get_rooms/{roomId}/messages_for_a_departed_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLeftRoomFixture/Can_get_'m.room.name'_state_for_a_departed_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLeftRoomFixture/Getting_messages_going_forward_is_limited_for_a_departed_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLeftRoomFixture": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV1/regular_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV1/non-state_membership_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV1/join_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV1/knock_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV1/invite_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV1/event_with_mismatched_state_key": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV1": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestGetRoomMembers": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV2/regular_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV2/non-state_membership_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV2/join_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV2/knock_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV2/invite_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV2/event_with_mismatched_state_key": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonLeaveViaSendLeaveV2": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestGetRoomMembersAtPoint": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSendJoinPartialStateResponse": {
+   "status": "skip",
+   "pkg": "federation"
+  },
+  "TestGetFilteredRoomMembers/not_membership": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestGetFilteredRoomMembers/membership/leave": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestGetFilteredRoomMembers/membership/join": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestGetFilteredRoomMembers": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSendAndFetchMessage": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFetchMessagesFromNonExistentRoom": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSendMessageWithTxn": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMessagesLazyLoading": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomMessagesLazyLoadingLocalUser": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMessagesOverFederation/Visible_shared_history_after_joining_new_room_(backfill)/`messagesRequestLimit`_is_lower_than_the_number_of_messages_backfilled_(assumed)": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJoinFederatedRoomFromApplicationServiceBridgeUser/join_remote_federated_room_as_application_service_user": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJoinFederatedRoomFromApplicationServiceBridgeUser": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMessagesOverFederation/Visible_shared_history_after_joining_new_room_(backfill)/`messagesRequestLimit`_is_greater_than_the_number_of_messages_backfilled_(in_Synapse,_100)": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMessagesOverFederation/Visible_shared_history_after_joining_new_room_(backfill)": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMessagesOverFederation/Visible_shared_history_after_re-joining_room_(backfill)/`messagesRequestLimit`_is_lower_than_the_number_of_messages_backfilled_(assumed)": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMessagesOverFederation/Visible_shared_history_after_re-joining_room_(backfill)": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMessagesOverFederation": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestOutboundFederationSend": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestAvatarUrlUpdate": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestDisplayNameUpdate": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestNetworkPartitionOrdering": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRelations": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRemoteTyping": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Invited_user_has_'is_direct'_flag_in_prev_content_after_joining": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Invited_user_can_reject_invite_over_federation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Inviter_user_can_rescind_invite_over_federation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Remote_invited_user_can_join_the_room_when_homeserver_is_already_participating_in_the_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Remote_invited_user_can_see_room_metadata": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Invited_user_can_reject_invite_over_federation_for_empty_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Remote_invited_user_can_reject_invite_when_homeserver_is_already_participating_in_the_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Non-invitee_user_cannot_rescind_invite_over_federation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel/Invited_user_can_reject_invite_over_federation_several_times": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite/Parallel": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationRoomsInvite": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestSyncOmitsStateChangeOnFilteredEvents": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestToDeviceMessagesOverFederation/good_connectivity": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRelationsPagination": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRelationsPaginationSync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestThreadsEndpoint": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestTyping/Typing_notification_sent_to_local_room_members": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestTyping/Typing_can_be_explicitly_stopped": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestTyping/Typing_events_DO_NOT_include_a_`room_id`_field": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestTyping": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestToDeviceMessagesOverFederation/interrupted_connectivity": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestLeakyTyping": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushRuleRoomUpgrade/parallel/manually_upgrading_a_room_carries_over_existing_push_rules_for_local_users": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushRuleRoomUpgrade/parallel/upgrading_a_room_carries_over_existing_push_rules_for_local_users": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushRuleRoomUpgrade/parallel/joining_a_remote_manually_upgraded_room_carries_over_existing_push_rules": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushRuleRoomUpgrade/parallel/joining_a_remote_upgraded_room_carries_over_existing_push_rules": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushRuleRoomUpgrade/parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestPushRuleRoomUpgrade": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel/Can_invite_users_to_invite-only_rooms": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel/Uninvited_users_cannot_join_the_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel/Invited_user_can_reject_invite": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel/Users_cannot_invite_a_user_that_is_already_in_the_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel/Invited_user_can_see_room_metadata": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel/Users_cannot_invite_themselves_to_a_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel/Test_that_we_can_be_reinvited_to_a_room_we_created": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel/Invited_user_can_reject_invite_for_empty_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomsInvite": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMembersLocal/Parallel/New_room_members_see_their_own_join_event": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMembersLocal/Parallel/Existing_members_see_new_members'_join_events": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMembersLocal/Parallel/Existing_members_see_new_members'_presence_(in_initial_sync)": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMembersLocal/Parallel/Existing_members_see_new_members'_presence_(in_incremental_sync)": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMembersLocal/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMembersLocal": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreationReportsEventsToMyself/parallel/Room_creation_reports_m.room.create_to_myself": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreationReportsEventsToMyself/parallel/Room_creation_reports_m.room.member_to_myself": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreationReportsEventsToMyself/parallel/Setting_room_topic_reports_m.room.topic_to_myself": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreationReportsEventsToMyself/parallel/Setting_state_twice_is_idempotent": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreationReportsEventsToMyself/parallel/Joining_room_twice_is_idempotent": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreationReportsEventsToMyself/parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomCreationReportsEventsToMyself": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSyncLeaveSection/Left_rooms_appear_in_the_leave_section_of_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSyncLeaveSection/Left_rooms_appear_in_the_leave_section_of_full_state_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSyncLeaveSection/Newly_left_rooms_appear_in_the_leave_section_of_incremental_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSyncLeaveSection": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestToDeviceMessagesOverFederation/stopped_server": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestToDeviceMessagesOverFederation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestGappedSyncLeaveSection": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestArchivedRoomsHistory/timeline_has_events/initial_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestArchivedRoomsHistory/timeline_has_events/incremental_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestArchivedRoomsHistory/timeline_has_events": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestArchivedRoomsHistory/timeline_is_empty/initial_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestArchivedRoomsHistory/timeline_is_empty/incremental_sync": {
+   "status": "skip",
+   "pkg": "csapi"
+  },
+  "TestArchivedRoomsHistory/timeline_is_empty": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestArchivedRoomsHistory": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUnrejectRejectedEvents": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestOlderLeftRoomsNotInLeaveSection": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFederationKeyUploadQuery/Can_claim_remote_one_time_key_using_POST": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationKeyUploadQuery/Can_query_remote_device_keys_using_POST": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestFederationKeyUploadQuery": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestLeaveEventVisibility": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestKnockingInMSC3787Room/Knocking_on_a_room_with_a_join_rule_other_than_'knock'_should_fail": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Change_the_join_rule_of_a_room_from_'invite'_to_'knock'": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Attempting_to_join_a_room_with_join_rule_'knock'_without_an_invite_should_fail": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Knocking_on_a_room_with_join_rule_'knock'_should_succeed": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_that_has_already_knocked_is_allowed_to_knock_again_on_the_same_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Users_in_the_room_see_a_user's_membership_update_when_they_knock": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_that_has_knocked_on_a_local_room_can_rescind_their_knock_and_then_knock_again": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_in_the_room_can_reject_a_knock": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_can_knock_on_a_room_without_a_reason": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_in_the_room_can_accept_a_knock": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_cannot_knock_on_a_room_they_are_already_invited_to": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_cannot_knock_on_a_room_they_are_already_in": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_that_is_banned_from_a_room_cannot_knock_on_it": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Knocking_on_a_room_with_a_join_rule_other_than_'knock'_should_fail#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Change_the_join_rule_of_a_room_from_'invite'_to_'knock'#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Attempting_to_join_a_room_with_join_rule_'knock'_without_an_invite_should_fail#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Knocking_on_a_room_with_join_rule_'knock'_should_succeed#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_that_has_already_knocked_is_allowed_to_knock_again_on_the_same_room#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/Users_in_the_room_see_a_user's_membership_update_when_they_knock#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_in_the_room_can_reject_a_knock#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_can_knock_on_a_room_without_a_reason#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_in_the_room_can_accept_a_knock#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_cannot_knock_on_a_room_they_are_already_invited_to#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_cannot_knock_on_a_room_they_are_already_in#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room/A_user_that_is_banned_from_a_room_cannot_knock_on_it#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockingInMSC3787Room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestLeaveEventInviteRejection": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestKnockRoomsInPublicRoomsDirectoryInMSC3787Room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestSyncFilter/Can_create_filter": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSyncFilter/Can_download_filter": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSyncFilter": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestCannotSendKnockViaSendKnockInMSC3787Room/regular_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendKnockViaSendKnockInMSC3787Room/non-state_membership_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendKnockViaSendKnockInMSC3787Room/join_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendKnockViaSendKnockInMSC3787Room/leave_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendKnockViaSendKnockInMSC3787Room/invite_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendKnockViaSendKnockInMSC3787Room/event_with_mismatched_state_key": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendKnockViaSendKnockInMSC3787Room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCumulativeJoinLeaveJoinSync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsLocalJoinInMSC3787Room/Join_should_fail_initially": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoinInMSC3787Room/Join_should_succeed_when_joined_to_allowed_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoinInMSC3787Room/Join_should_fail_when_left_allowed_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoinInMSC3787Room/Join_should_succeed_when_invited": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoinInMSC3787Room/Join_should_fail_with_mangled_join_rules": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoinInMSC3787Room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestTentativeEventualJoiningAfterRejecting": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsRemoteJoinInMSC3787Room/Join_should_fail_initially": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoinInMSC3787Room/Join_should_succeed_when_joined_to_allowed_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoinInMSC3787Room/Join_should_fail_when_left_allowed_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoinInMSC3787Room/Join_should_succeed_when_invited": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoinInMSC3787Room/Join_should_fail_with_mangled_join_rules": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoinInMSC3787Room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestSync/parallel/Newly_joined_room_includes_presence_in_incremental_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSync/parallel/Get_presence_for_newly_joined_members_in_incremental_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSync/parallel/Device_list_tracking/User_is_correctly_listed_when_they_leave,_even_when_lazy_loading_is_enabled": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSync/parallel/Device_list_tracking": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSync/parallel/Can_sync_a_joined_room": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSync/parallel/Full_state_sync_includes_joined_rooms": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSync/parallel/Newly_joined_room_is_included_in_an_incremental_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSync/parallel/Newly_joined_room_has_correct_timeline_in_incremental_sync": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSync/parallel/sync_should_succeed_even_if_the_sync_token_points_to_a_redaction_of_an_unknown_event": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsRemoteJoinLocalUserInMSC3787Room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestSyncTimelineGap/incremental": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSyncTimelineGap/full": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestSyncTimelineGap": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsRemoteJoinFailOverInMSC3787Room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockRestrictedRoomsLocalJoinNoCreatorsUsesPowerLevelsV12": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockRestrictedRoomsLocalJoinNoCreatorsUsesPowerLevelsV11": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Knocking_on_a_room_with_a_join_rule_other_than_'knock'_should_fail": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Change_the_join_rule_of_a_room_from_'invite'_to_'knock'": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Attempting_to_join_a_room_with_join_rule_'knock'_without_an_invite_should_fail": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Knocking_on_a_room_with_join_rule_'knock'_should_succeed": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_that_has_already_knocked_is_allowed_to_knock_again_on_the_same_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Users_in_the_room_see_a_user's_membership_update_when_they_knock": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_that_has_knocked_on_a_local_room_can_rescind_their_knock_and_then_knock_again": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_in_the_room_can_reject_a_knock": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_can_knock_on_a_room_without_a_reason": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_in_the_room_can_accept_a_knock": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_cannot_knock_on_a_room_they_are_already_invited_to": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_cannot_knock_on_a_room_they_are_already_in": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_that_is_banned_from_a_room_cannot_knock_on_it": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Knocking_on_a_room_with_a_join_rule_other_than_'knock'_should_fail#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Change_the_join_rule_of_a_room_from_'invite'_to_'knock'#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Attempting_to_join_a_room_with_join_rule_'knock'_without_an_invite_should_fail#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Knocking_on_a_room_with_join_rule_'knock'_should_succeed#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_that_has_already_knocked_is_allowed_to_knock_again_on_the_same_room#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/Users_in_the_room_see_a_user's_membership_update_when_they_knock#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_in_the_room_can_reject_a_knock#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_can_knock_on_a_room_without_a_reason#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_in_the_room_can_accept_a_knock#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_cannot_knock_on_a_room_they_are_already_invited_to#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_cannot_knock_on_a_room_they_are_already_in#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking/A_user_that_is_banned_from_a_room_cannot_knock_on_it#01": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnocking": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKnockRoomsInPublicRoomsDirectory": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestPresenceSyncDifferentRooms": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestCannotSendNonKnockViaSendKnock/regular_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonKnockViaSendKnock/non-state_membership_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonKnockViaSendKnock/join_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonKnockViaSendKnock/leave_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonKnockViaSendKnock/invite_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonKnockViaSendKnock/event_with_mismatched_state_key": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestCannotSendNonKnockViaSendKnock": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRoomSummary": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Will_serve_safe_media_types_as_inline": {
+   "status": "skip",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Will_serve_safe_media_types_as_inline_via__matrix/client/v1/media/download": {
+   "status": "skip",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Will_serve_safe_media_types_with_parameters_as_inline": {
+   "status": "skip",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Will_serve_safe_media_types_with_parameters_as_inline_via__matrix/client/v1/media/download": {
+   "status": "skip",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Will_serve_unsafe_media_types_as_attachments": {
+   "status": "skip",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Will_serve_unsafe_media_types_as_attachments_via__matrix/client/v1/media/download": {
+   "status": "skip",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_upload_with_ASCII_file_name": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_download_file_'ascii'_over_/_matrix/client/v1/media/download": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_download_file_'ascii'": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_download_specifying_a_different_ASCII_file_name": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_download_file_'name_with_spaces'": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_download_file_'name;with;semicolons'": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_download_file_'name;with;semicolons'_over_/_matrix/client/v1/media/download": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Can_upload_with_Unicode_file_name": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_download_specifying_a_different_ASCII_file_name_over__matrix/client/v1/media/download": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII/Can_download_file_'name_with_spaces'_over_/_matrix/client/v1/media/download": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/ASCII": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Can_download_with_Unicode_file_name_locally": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Can_download_with_Unicode_file_name_locally_over__matrix/client/v1/media/download": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Can_download_specifying_a_different_Unicode_file_name_over__matrix/client/v1/media/download": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Can_download_specifying_a_different_Unicode_file_name": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Can_download_with_Unicode_file_name_over_federation_via__matrix/client/v1/media/download": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode/Can_download_with_Unicode_file_name_over_federation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel/Unicode": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames/Parallel": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaFilenames": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestThreadedReceipts": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMediaWithoutFileName/parallel/Can_upload_without_a_file_name": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaWithoutFileName/parallel/Can_download_without_a_file_name_locally": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaWithoutFileName/parallel/Can_download_without_a_file_name_over_federation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaWithoutFileName/parallel": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaWithoutFileName": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestThreadReceiptsInSyncMSC4102": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMediaWithoutFileNameCSMediaV1/parallel/Can_upload_without_a_file_name": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaWithoutFileNameCSMediaV1/parallel/Can_download_without_a_file_name_locally": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaWithoutFileNameCSMediaV1/parallel/Can_download_without_a_file_name_over_federation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaWithoutFileNameCSMediaV1/parallel": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMediaWithoutFileNameCSMediaV1": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestToDeviceMessages": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestLocalPngThumbnail/test_/_matrix/media/v3_endpoint": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestLocalPngThumbnail/test_/_matrix/client/v1/media_endpoint": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestLocalPngThumbnail": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestTxnInEvent": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRemotePngThumbnail/test_/_matrix/media/v3_endpoint": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRemotePngThumbnail/test_/_matrix/client/v1/media_endpoint": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRemotePngThumbnail": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestTxnScopeOnLocalEcho": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFederationThumbnail": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestTxnIdempotencyScopedToDevice": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsSpacesSummaryLocal": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestTxnIdempotency": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsSpacesSummaryFederation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestTxnIdWithRefreshToken": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsLocalJoin/Join_should_fail_initially": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoin/Join_should_succeed_when_joined_to_allowed_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoin/Join_should_fail_when_left_allowed_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoin/Join_should_succeed_when_invited": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoin/Join_should_fail_with_mangled_join_rules": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsLocalJoin": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUploadKey/Parallel/Can_upload_device_keys": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUploadKey/Parallel/Can_query_device_keys_using_POST": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUploadKey/Parallel/Can_query_specific_device_keys_using_POST": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUploadKey/Parallel/query_for_user_with_no_keys_returns_empty_key_dict": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUploadKey/Parallel/Can_claim_one_time_key_using_POST": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUploadKey/Parallel/Rejects_invalid_device_keys": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUploadKey/Parallel/Should_reject_keys_claiming_to_belong_to_a_different_user": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUploadKey/Parallel": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestUploadKey": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsRemoteJoin/Join_should_fail_initially": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoin/Join_should_succeed_when_joined_to_allowed_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoin/Join_should_fail_when_left_allowed_room": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoin/Join_should_succeed_when_invited": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoin/Join_should_fail_with_mangled_join_rules": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRestrictedRoomsRemoteJoin": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKeyClaimOrdering": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsRemoteJoinLocalUser": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUploadKeyIdempotency": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsRemoteJoinFailOver": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUploadKeyIdempotencyOverlap": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsLocalJoinNoCreatorsUsesPowerLevelsV12": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUrlPreview": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRestrictedRoomsLocalJoinNoCreatorsUsesPowerLevelsV11": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestClientSpacesSummary/query_whole_graph": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestClientSpacesSummary/max_depth": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestClientSpacesSummary/suggested_only": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestClientSpacesSummary/pagination": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestClientSpacesSummary/redact_link": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestClientSpacesSummary": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestClientSpacesSummaryJoinRules": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRoomSpecificUsernameChange/Eve_can_find_Alice_by_profile_display_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameChange/Eve_can_find_Alice_by_mxid": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameChange/Eve_cannot_find_Alice_by_room-specific_name_that_Eve_is_not_privy_to": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameChange/Bob_can_find_Alice_by_profile_display_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameChange/Bob_can_find_Alice_by_mxid": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameChange": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestFederatedClientSpaces": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRoomSpecificUsernameAtJoin/Eve_can_find_Alice_by_profile_display_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameAtJoin/Eve_can_find_Alice_by_mxid": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameAtJoin/Eve_cannot_find_Alice_by_room-specific_name_that_Eve_is_not_privy_to": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameAtJoin/Bob_can_find_Alice_by_profile_display_name": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameAtJoin/Bob_can_find_Alice_by_mxid": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSpecificUsernameAtJoin": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestRoomSummaryAllowedRoomIDs/restricted_room_includes_allowed_room_ids": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRoomSummaryAllowedRoomIDs/non-restricted_room_omits_allowed_room_ids": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestRoomSummaryAllowedRoomIDs": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestKeysQueryWithDeviceIDAsObjectFails": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestJumpToDateEndpoint/parallel/federation/looking_backwards,_should_be_able_to_find_event_that_was_sent_before_we_joined": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/federation/looking_forwards,_should_be_able_to_find_event_that_was_sent_before_we_joined": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/federation/when_looking_backwards_before_the_room_was_created,_should_be_able_to_find_event_that_was_imported": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/federation/can_paginate_backwards_after_getting_remote_event_from_timestamp_to_event_endpoint_(start)": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/federation/can_paginate_backwards_after_getting_remote_event_from_timestamp_to_event_endpoint_(end)": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/federation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/should_find_event_after_given_timestamp": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/should_find_event_before_given_timestamp": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/should_not_be_able_to_query_a_public_room_you_are_not_a_member_of": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/should_not_be_able_to_query_a_private_room_you_are_not_a_member_of": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/should_find_nothing_before_the_earliest_timestamp": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/should_find_nothing_after_the_latest_timestamp": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/should_find_next_event_topologically_before_given_timestamp_when_all_message_timestamps_are_the_same": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel/should_find_next_event_topologically_after_given_timestamp_when_all_message_timestamps_are_the_same": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint/parallel": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestJumpToDateEndpoint": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUnknownEndpoints/Unknown_prefix": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUnknownEndpoints/Client-server_endpoints": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUnknownEndpoints/Server-server_endpoints": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUnknownEndpoints/Key_endpoints": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUnknownEndpoints/Media_endpoints": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestUnknownEndpoints": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/PL_event_is_missing_creator_in_users_map": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/m.room.tombstone_needs_PL150_in_the_PL_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/creator_cannot_set_self_in_PL_event": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/creator_can_kick_admin": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/creator_can_kick_admin_above_PL100": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/creator_can_kick_admin_at_JSON_max_value": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/power_level_cannot_be_set_beyond_max_canonical_JSON_int": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/admin_with_>PL100_cannot_kick_creator": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/admin_with_>PL100_sorts_after_the_room_creator_for_state_resolution": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/power_level_content_override_can_be_set": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators/power_level_content_override_cannot_set_the_room_creator": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_Additional": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_InvitedAreCreators": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_AdditionalCreatorsAndInvited": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_AdditionalValidation/additional_creators_isn't_an_array": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_AdditionalValidation/additional_creators_elements_aren't_strings": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_AdditionalValidation/additional_creators_elements_aren't_user_ID_strings": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_AdditionalValidation/additional_creators_elements_aren't_valid_user_ID_strings_(domain)": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_AdditionalValidation/additional_creators_are_valid": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_AdditionalValidation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4289PrivilegedRoomCreators_Upgrades": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4291RoomIDAsHashOfCreateEvent": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestComplementCanCreateValidV12Rooms": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4291RoomIDAsHashOfCreateEvent_AuthEventsOmitsCreateEvent": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4291RoomIDAsHashOfCreateEvent_UpgradedRooms": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4291RoomIDAsHashOfCreateEvent_CannotSendCreateEvent": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4291RoomIDAsHashOfCreateEvent_RoomIDIsOnCreateEvent": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4297StateResolutionV2_1_starts_from_empty_set": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4297StateResolutionV2_1_includes_conflicted_subgraph": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311StrippedStateClientAPI/parallel/`invite_state`_on_`/sync`_(local_invite)": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311StrippedStateClientAPI/parallel/`knock_state`_on_`/sync`_(local_knock)": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311StrippedStateClientAPI/parallel/`knock_state`_on_`/sync`_(remote_knock)": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311StrippedStateClientAPI/parallel/`invite_state`_on_`/sync`_(remote_invite)": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311StrippedStateClientAPI/parallel": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311StrippedStateClientAPI": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311FullEventsOnStrippedStateFederation/parallel/`knock_room_state`": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311FullEventsOnStrippedStateFederation/parallel/`invite_room_state`": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311FullEventsOnStrippedStateFederation/parallel": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311FullEventsOnStrippedStateFederation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311RejectInvalidStrippedStateFederation/parallel/`m.room.create`_event_missing_from_`invite_room_state`": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311RejectInvalidStrippedStateFederation/parallel": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestMSC4311RejectInvalidStrippedStateFederation": {
+   "status": "pass",
+   "pkg": "federation"
+  },
+  "TestAsyncUpload/Create_media": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestAsyncUpload/Not_yet_uploaded": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestAsyncUpload/Upload_media": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestAsyncUpload/Cannot_upload_to_a_media_ID_that_has_already_been_uploaded_to": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestAsyncUpload/Download_media": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestAsyncUpload/Download_media_over__matrix/client/v1/media/download": {
+   "status": "pass",
+   "pkg": "csapi"
+  },
+  "TestMSC3757OwnedState/parallel/user_can_set_state_with_their_own_suffixed_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/user_cannot_set_state_with_unseparated_suffix_in_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/user_cannot_set_state_with_another_suffixed_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/room_creator_can_set_state_with_another_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/room_creator_cannot_set_state_with_malformed_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/room_creator_cannot_set_state_with_improperly_suffixed_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/user_cannot_set_state_with_misplaced_user_ID_in_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/user_cannot_set_state_with_another_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/room_creator_can_set_state_with_another_suffixed_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel/room_creator_can_set_state_with_a_non-member_user_ID_as_state_key": {
+   "status": "pass",
+   "pkg": "msc3757"
+  },
+  "TestMSC3757OwnedState/parallel": {
+   "status": "pass",
+   "pkg": "msc3757"
+  }
+ },
+ "history": [
+  {
+   "note": "Full run #7",
+   "top": 180,
+   "topTotal": 214,
+   "sub": 692,
+   "subTotal": 834
+  },
+  {
+   "note": "Restricted rooms, knocking, spaces, MSC batch",
+   "top": 198,
+   "topTotal": 214,
+   "sub": 761,
+   "subTotal": 851
+  },
+  {
+   "note": "MSC4306 thread subscriptions, MSC4102 receipts",
+   "top": 202,
+   "topTotal": 214,
+   "sub": 774,
+   "subTotal": 851
+  },
+  {
+   "note": "Extended profiles + MSC4429, MSC3967, MSC2836, MSC3389 recheck",
+   "top": 207,
+   "topTotal": 214,
+   "sub": 785,
+   "subTotal": 851
+  },
+  {
+   "note": "Full run #8 + partial-state joins (MSC3902) first pass",
+   "top": 188,
+   "topTotal": 214,
+   "sub": 785,
+   "subTotal": 851
+  },
+  {
+   "note": "Partial-state joins (MSC3902): all subtests pass",
+   "top": 189,
+   "topTotal": 214,
+   "sub": 803,
+   "subTotal": 851
+  },
+  {
+   "note": "All Complement tests pass (previous full run: 211/214). Fallback keys stored apart from one-time keys; user directory public-room rules; MSC4311 create event required from v12",
+   "top": 214,
+   "topTotal": 214,
+   "sub": 851,
+   "subTotal": 851
+  },
+  {
+   "note": "Complement runs in a Go container (no submodule, no local Go); account locking/suspension, policy servers, 3PIDs, legacy sync endpoints",
+   "top": 214,
+   "topTotal": 214,
+   "sub": 851,
+   "subTotal": 851
+  }
+ ]
+}

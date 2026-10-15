@@ -1,0 +1,397 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { MatrixError, errors } from "../core/errors.ts";
+import { randomString } from "../core/crypto.ts";
+import { LOCALPART_RE } from "../core/ids.ts";
+import { isObject } from "../core/json.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { requireUia } from "./uia.ts";
+import { canonicalAddress, isMedium } from "../core/threepid.ts";
+import { toMsisdn } from "../core/phone.ts";
+
+function loginFlows(hs: Homeserver): Record<string, unknown>[] {
+  // With delegated OAuth, clients must use the authorization server instead.
+  if (hs.oauth) return [];
+  const flows: Record<string, unknown>[] = [];
+  if (hs.userAuth.passwordLoginEnabled) flows.push({ type: "m.login.password" });
+  if (hs.sso) {
+    flows.push({
+      type: "m.login.sso",
+      identity_providers: hs.sso.providers.map((p) => ({ id: p.id, name: p.name, icon: p.icon, brand: p.brand })),
+    });
+  }
+  flows.push({ type: "m.login.token", ...(hs.config.loginViaExistingSession ? { get_login_token: true } : {}) });
+  return flows;
+}
+
+/** Endpoints that manage passwords are unavailable when an OAuth provider owns the accounts. */
+function rejectIfDelegated(hs: Homeserver): void {
+  if (hs.oauth) throw new MatrixError(403, "M_FORBIDDEN", "Accounts are managed by the OAuth provider", {
+    ...(hs.oauth.options.accountManagementUrl ? { account_management_uri: hs.oauth.options.accountManagementUrl } : {}),
+  });
+}
+
+async function validateNewUsername(hs: Homeserver, raw: unknown): Promise<string> {
+  if (typeof raw !== "string" || raw.length === 0) throw errors.invalidUsername("Username must be a non-empty string");
+  const localpart = raw.startsWith("@") ? raw.slice(1).split(":")[0] : raw;
+  if (!LOCALPART_RE.test(localpart)) throw errors.invalidUsername("Username contains invalid characters");
+  if (`@${localpart}:${hs.serverName}`.length > 255) throw errors.invalidUsername("Username too long");
+  if (!(await hs.userAuth.validateUsername(localpart))) throw errors.invalidUsername();
+  if (await hs.db.findOne("users", [{ field: "user_id", value: `@${localpart}:${hs.serverName}` }])) throw errors.userInUse();
+  return localpart;
+}
+
+async function generateLocalpart(hs: Homeserver): Promise<string> {
+  for (;;) {
+    const candidate = String(Math.floor(Math.random() * 1e9));
+    if (!(await hs.db.findOne("users", [{ field: "localpart", value: candidate }]))) return candidate;
+  }
+}
+
+export async function createUser(
+  hs: Homeserver,
+  localpart: string,
+  opts: { password?: string; guest?: boolean; admin?: boolean; displayname?: string },
+): Promise<string> {
+  const userId = `@${localpart}:${hs.serverName}`;
+  await hs.db.create("users", {
+    user_id: userId,
+    localpart,
+    password_hash: opts.password ? await hs.userAuth.hashPassword(opts.password) : null,
+    displayname: opts.displayname ?? localpart,
+    avatar_url: null,
+    is_guest: !!opts.guest,
+    is_admin: !!opts.admin,
+    deactivated: false,
+    created_ts: Date.now(),
+  });
+  await hs.userAuth.onUserRegistered(userId);
+  await hs.adminRoom?.onUserCreated(userId).catch((err) => hs.logger.error("Admin room setup failed", err));
+  return userId;
+}
+
+async function resolveLoginUser(hs: Homeserver, body: Record<string, any>): Promise<string> {
+  let user: unknown;
+  // Third-party identifiers (and the legacy top-level medium/address) log in the account they belong to.
+  const id = isObject(body.identifier) ? body.identifier : null;
+  let threepid: { medium: string; address: string | null } | null = null;
+  if (id?.type === "m.id.thirdparty" && typeof id.medium === "string" && typeof id.address === "string") {
+    threepid = { medium: id.medium, address: isMedium(id.medium) ? canonicalAddress(id.medium, id.address) : null };
+  } else if (id?.type === "m.id.phone" && typeof id.country === "string" && typeof id.phone === "string") {
+    threepid = { medium: "msisdn", address: toMsisdn(id.country, id.phone) };
+  } else if (!id && typeof body.medium === "string" && typeof body.address === "string") {
+    threepid = { medium: body.medium, address: isMedium(body.medium) ? canonicalAddress(body.medium, body.address) : null };
+  }
+  if (threepid) {
+    const owner = threepid.address && isMedium(threepid.medium) ? await hs.threepids.userFor(threepid.medium, threepid.address) : null;
+    if (!owner) throw errors.forbidden("Invalid username or password");
+    return owner;
+  }
+  if (id) {
+    if (id.type !== "m.id.user") throw errors.unknown("Unsupported identifier type");
+    user = id.user;
+  } else {
+    user = body.user;
+  }
+  if (typeof user !== "string" || !user) throw errors.missingParam("Missing user identifier");
+  if (user.startsWith("@")) {
+    const [lp, ...server] = user.slice(1).split(":");
+    if (server.join(":") !== hs.serverName) throw errors.forbidden("Invalid username or password");
+    return `@${lp.toLowerCase()}:${hs.serverName}`;
+  }
+  return `@${user.toLowerCase()}:${hs.serverName}`;
+}
+
+export function registerAccountRoutes(r: Router): void {
+  r.client("GET", "/login", (ctx) => ({ flows: loginFlows(ctx.hs) }));
+
+  r.client("GET", "/auth_metadata", async (ctx) => {
+    if (!ctx.hs.oauth) throw errors.unrecognized("OAuth is not enabled");
+    return ctx.hs.oauth.serverMetadata();
+  }, ["v1"]);
+  r.client("GET", "/auth_issuer", (ctx) => {
+    if (!ctx.hs.oauth) throw errors.unrecognized("OAuth is not enabled");
+    return { issuer: ctx.hs.oauth.options.issuer };
+  }, ["v1"]);
+
+  const ssoRedirect = async (ctx: RequestContext) => {
+    if (!ctx.hs.sso) throw errors.unrecognized("SSO is not enabled");
+    const redirectUrl = ctx.query.get("redirectUrl");
+    if (!redirectUrl || !/^https?:\/\/|^[a-z][a-z0-9+.-]*:/i.test(redirectUrl)) throw errors.missingParam("Missing or invalid redirectUrl");
+    return Response.redirect(await ctx.hs.sso.startLogin(ctx.params.idpId ?? null, redirectUrl), 302);
+  };
+  // A logged-in client hands a one-time token to a new device (spec "Login via an existing session").
+  r.client("POST", "/login/get_token", async (ctx) => {
+    const s = await ctx.auth();
+    if (!ctx.hs.config.loginViaExistingSession || ctx.hs.oauth || s.isGuest) throw errors.unrecognized();
+    await ctx.rateLimit("login");
+    await requireUia(ctx.hs, await ctx.json(), [["m.login.password"]], s.userId);
+    const ttl = 2 * 60_000;
+    return { login_token: await ctx.hs.auth.createLoginToken(s.userId, ttl), expires_in_ms: ttl };
+  }, ["v1"]);
+
+  r.client("GET", "/login/sso/redirect", ssoRedirect);
+  r.client("GET", "/login/sso/redirect/:idpId", ssoRedirect);
+  r.client("GET", "/login/sso/callback/:idpId", async (ctx) => {
+    if (!ctx.hs.sso) throw errors.unrecognized("SSO is not enabled");
+    return Response.redirect(await ctx.hs.sso.finishLogin(ctx.params.idpId, ctx.query), 302);
+  });
+
+  r.client("POST", "/login", async (ctx) => {
+    await ctx.rateLimit("login");
+    const body = await ctx.json();
+    const hs = ctx.hs;
+    if (hs.oauth) throw errors.unrecognized("Log in through the OAuth provider");
+    if (body.type === "m.login.application_service") {
+      const reg = ctx.accessToken() ? hs.appservices.byToken(ctx.accessToken()!) : null;
+      if (!reg) throw errors.unknownToken("An application service token is required");
+      const userId = await resolveLoginUser(hs, body);
+      if (!hs.appservices.isInterestedUser(reg, userId)) throw errors.forbidden("User is not in the application service's namespace");
+      if (!(await hs.db.findOne("users", [{ field: "user_id", value: userId }]))) throw errors.forbidden("Unknown user");
+      const session = await hs.auth.createSession(userId, { deviceId: typeof body.device_id === "string" ? body.device_id : undefined, displayName: body.initial_device_display_name });
+      return { ...session, home_server: hs.serverName };
+    }
+    if (body.type === "m.login.token") {
+      if (typeof body.token !== "string") throw errors.missingParam("Missing token");
+      const userId = await hs.auth.consumeLoginToken(body.token).catch(async (err) => {
+        await hs.audit.record({ action: "login_failed", actor: null, ip: ctx.ip, outcome: "failure", details: { type: "m.login.token" } });
+        throw err;
+      });
+      const user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
+      if (!user || user.deactivated) throw errors.userDeactivated();
+      const session = await hs.auth.createSession(userId, {
+        deviceId: typeof body.device_id === "string" ? body.device_id : undefined,
+        displayName: body.initial_device_display_name,
+        refreshToken: body.refresh_token === true,
+      });
+      await hs.audit.record({ action: "login", actor: userId, target: session.device_id, ip: ctx.ip, userAgent: ctx.request.headers.get("user-agent"), details: { type: "m.login.token" } });
+      return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
+    }
+    if (body.type !== "m.login.password" || !hs.userAuth.passwordLoginEnabled) throw errors.unknown("Unsupported login type");
+    const userId = await resolveLoginUser(hs, body);
+    if (typeof body.password !== "string") throw errors.missingParam("Missing password");
+    let user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
+    const ok = await hs.userAuth.checkPassword({
+      userId, localpart: userId.slice(1).split(":")[0], password: body.password, storedHash: user?.password_hash ?? null,
+    });
+    const ua = ctx.request.headers.get("user-agent");
+    if (!ok) {
+      await hs.audit.record({ action: "login_failed", actor: userId, ip: ctx.ip, userAgent: ua, outcome: "failure", details: { type: "m.login.password" } });
+      throw errors.forbidden("Invalid username or password");
+    }
+    if (!user) {
+      if (!(await hs.userAuth.autoProvision(userId))) throw errors.forbidden("Invalid username or password");
+      await createUser(hs, userId.slice(1).split(":")[0], {});
+      user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
+    }
+    if (user!.deactivated) throw errors.userDeactivated();
+    const session = await hs.auth.createSession(userId, {
+      deviceId: typeof body.device_id === "string" ? body.device_id : undefined,
+      displayName: body.initial_device_display_name,
+      refreshToken: body.refresh_token === true,
+    });
+    await hs.audit.record({ action: "login", actor: userId, target: session.device_id, ip: ctx.ip, userAgent: ua, details: { type: "m.login.password" } });
+    return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
+  });
+
+  r.client("POST", "/refresh", async (ctx) => {
+    const body = await ctx.json();
+    if (typeof body.refresh_token !== "string") throw errors.missingParam("Missing refresh_token");
+    const { access_token, refresh_token, expires_in_ms } = await ctx.hs.auth.refresh(body.refresh_token);
+    return { access_token, refresh_token, expires_in_ms };
+  });
+
+  r.client("POST", "/logout", async (ctx) => {
+    const s = await ctx.auth();
+    await ctx.hs.auth.deleteDevice(s.userId, s.deviceId);
+    await ctx.hs.audit.record({ action: "logout", actor: s.userId, target: s.deviceId, ip: ctx.ip });
+    return {};
+  });
+
+  r.client("POST", "/logout/all", async (ctx) => {
+    const s = await ctx.auth();
+    await ctx.hs.auth.deleteAllDevices(s.userId);
+    await ctx.hs.audit.record({ action: "logout", actor: s.userId, ip: ctx.ip, details: { all: true } });
+    return {};
+  });
+
+  r.client("GET", "/account/whoami", async (ctx) => {
+    const s = await ctx.auth();
+    return { user_id: s.userId, ...(s.deviceId ? { device_id: s.deviceId } : {}), is_guest: s.isGuest };
+  });
+
+  r.client("GET", "/register/available", async (ctx) => {
+    const username = ctx.query.get("username");
+    if (!username) throw errors.missingParam("Missing username");
+    await validateNewUsername(ctx.hs, username);
+    return { available: true };
+  });
+
+  r.client("GET", "/register", async (ctx) => ({ flows: (await registrationFlows(ctx.hs)).map((stages) => ({ stages })), params: {} }));
+
+  r.client("GET", "/register/m.login.registration_token/validity", async (ctx) => {
+    await ctx.rateLimit("register");
+    const token = ctx.query.get("token");
+    if (!token) throw errors.missingParam("Missing token");
+    return { valid: await registrationTokenValid(ctx.hs, token) };
+  }, ["v1"]);
+
+  r.client("POST", "/register", async (ctx) => {
+    const hs = ctx.hs;
+    const body = await ctx.json();
+    const kind = ctx.query.get("kind") ?? "user";
+    if (kind === "guest") {
+      if (!hs.userAuth.guestAccessEnabled) throw errors.forbidden("Guest access is disabled");
+      const userId = await createUser(hs, await generateLocalpart(hs), { guest: true });
+      const session = await hs.auth.createSession(userId, { displayName: body.initial_device_display_name });
+      return { ...session, home_server: hs.serverName };
+    }
+    if (kind !== "user") throw errors.invalidParam("Unknown kind");
+    // Application services register users in their namespace without UIA.
+    if (body.type === "m.login.application_service" || body.auth?.type === "m.login.application_service") {
+      const s = await ctx.auth();
+      if (!s.appservice) throw errors.forbidden("An application service token is required");
+      if (typeof body.username !== "string") throw errors.missingParam("Missing username");
+      const localpart = body.username.toLowerCase();
+      const userId = `@${localpart}:${hs.serverName}`;
+      if (!hs.appservices.isInterestedUser(s.appservice, userId)) throw errors.exclusive("User is not in the application service's namespace");
+      if (!LOCALPART_RE.test(localpart)) throw errors.invalidUsername();
+      if (await hs.db.findOne("users", [{ field: "user_id", value: userId }])) throw errors.userInUse();
+      await createUser(hs, localpart, {});
+      if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
+      return { ...(await hs.auth.createSession(userId, { deviceId: typeof body.device_id === "string" ? body.device_id : undefined, displayName: body.initial_device_display_name })), home_server: hs.serverName };
+    }
+    if (ctx.accessToken() && hs.appservices.byToken(ctx.accessToken()!)) throw errors.missingParam("Application services must use type m.login.application_service");
+    rejectIfDelegated(hs);
+    if (!(await hs.registrationAllowed())) throw errors.forbidden("Registration is disabled");
+    await ctx.rateLimit("register");
+    if (body.password !== undefined && typeof body.password !== "string") throw errors.invalidParam("password must be a string");
+    if (body.username !== undefined && typeof body.username !== "string") throw errors.invalidParam("username must be a string");
+    const localpart = body.username !== undefined ? await validateNewUsername(hs, body.username.toLowerCase()) : await generateLocalpart(hs);
+    if (hs.appservices.exclusiveUserOwner(`@${localpart}:${hs.serverName}`)) throw errors.exclusive("This user ID is reserved by an application service");
+    if (typeof body.password === "string") {
+      const problem = await hs.userAuth.validatePassword(body.password);
+      if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
+    }
+    const flows = await registrationFlows(hs);
+    const { threepids } = await requireUia(hs, body, flows, null);
+    await consumeRegistrationToken(hs, body);
+    // Re-check after UIA in case of a race between two registrations.
+    if (await hs.db.findOne("users", [{ field: "localpart", value: localpart }])) throw errors.userInUse();
+    const userId = await createUser(hs, localpart, { password: body.password });
+    for (const t of threepids) await hs.threepids.add(userId, t).catch((err) => hs.logger.warn("Could not attach", t.medium, "to", userId, err));
+    await hs.audit.record({ action: "register", actor: userId, ip: ctx.ip, userAgent: ctx.request.headers.get("user-agent"), details: { token: body.auth?.type === "m.login.registration_token" } });
+    if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
+    const session = await hs.auth.createSession(userId, {
+      deviceId: typeof body.device_id === "string" ? body.device_id : undefined,
+      displayName: body.initial_device_display_name,
+      refreshToken: body.refresh_token === true,
+    });
+    return { ...session, home_server: hs.serverName };
+  });
+
+  r.client("POST", "/account/password", async (ctx) => {
+    const hs = ctx.hs;
+    rejectIfDelegated(hs);
+    const body = await ctx.json();
+    // Without an access token, the password is reset by proving ownership of an address of the account.
+    let s: { userId: string; deviceId: string | null };
+    if (ctx.accessToken()) {
+      const session = await ctx.auth();
+      await requireUia(hs, body, [["m.login.password"]], session.userId);
+      s = { userId: session.userId, deviceId: session.deviceId };
+    } else {
+      const { threepids } = await requireUia(hs, body, [["m.login.email.identity"], ["m.login.msisdn"]], null);
+      const owner = threepids.length ? await hs.threepids.userFor(threepids[0].medium, threepids[0].address) : null;
+      if (!owner) throw new MatrixError(400, "M_THREEPID_NOT_FOUND", "No account uses this address");
+      s = { userId: owner, deviceId: null };
+    }
+    if (typeof body.new_password !== "string" || !body.new_password) throw errors.missingParam("Missing new_password");
+    const problem = await hs.userAuth.validatePassword(body.new_password);
+    if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
+    await hs.db.update("users", [{ field: "user_id", value: s.userId }], { password_hash: await hs.userAuth.hashPassword(body.new_password) });
+    await hs.audit.record({ action: "password_change", actor: s.userId, ip: ctx.ip, details: { logout_devices: body.logout_devices !== false } });
+    if (body.logout_devices !== false) await hs.auth.deleteAllDevices(s.userId, s.deviceId ?? undefined);
+    return {};
+  });
+
+  r.client("POST", "/account/deactivate", async (ctx) => {
+    const hs = ctx.hs;
+    rejectIfDelegated(hs);
+    const body = await ctx.json();
+    const s = await ctx.auth();
+    await requireUia(hs, body, [["m.login.password"]], s.userId);
+    for (const membership of ["join", "invite", "knock"]) {
+      for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
+        try { await hs.rooms.setMembership(roomId, s.userId, s.userId, "leave"); } catch { /* best effort */ }
+      }
+    }
+    await hs.auth.deleteAllDevices(s.userId);
+    await hs.db.update("users", [{ field: "user_id", value: s.userId }], { deactivated: true, password_hash: null, displayname: null, avatar_url: null });
+    await hs.db.delete("profile_fields", [{ field: "user_id", value: s.userId }]);
+    const unbind = await hs.threepids.removeAll(s.userId);
+    await hs.audit.record({ action: "deactivate", actor: s.userId, target: s.userId, ip: ctx.ip });
+    return { id_server_unbind_result: unbind };
+  });
+
+  // Synapse-compatible shared-secret registration, used by Complement for admin users.
+  r.get("/_synapse/admin/v1/register", async (ctx) => {
+    if (!ctx.hs.config.registrationSharedSecret) throw errors.unrecognized();
+    const nonce = randomString(32);
+    await ctx.hs.cluster.set(`regnonce:${nonce}`, true, 60_000);
+    return { nonce };
+  });
+  r.post("/_synapse/admin/v1/register", async (ctx) => {
+    const hs = ctx.hs;
+    const secret = hs.config.registrationSharedSecret;
+    if (!secret) throw errors.unrecognized();
+    const body = await ctx.json();
+    if (typeof body.nonce !== "string" || !(await hs.cluster.get(`regnonce:${body.nonce}`))) throw errors.unknown("Unrecognised nonce");
+    await hs.cluster.delete(`regnonce:${body.nonce}`);
+    if (typeof body.username !== "string" || typeof body.password !== "string") throw errors.invalidParam("Invalid username/password");
+    const admin = body.admin === true;
+    const expected = createHmac("sha1", secret)
+      .update(`${body.nonce}\u0000${body.username}\u0000${body.password}\u0000${admin ? "admin" : "notadmin"}`)
+      .digest("hex");
+    const given = Buffer.from(String(body.mac ?? ""), "utf8");
+    if (given.length !== expected.length || !timingSafeEqual(given, Buffer.from(expected, "utf8"))) throw errors.forbidden("HMAC incorrect");
+    const localpart = await validateNewUsername(hs, body.username.toLowerCase());
+    const userId = await createUser(hs, localpart, {
+      password: body.password, admin, displayname: typeof body.displayname === "string" ? body.displayname : undefined,
+    });
+    const session = await hs.auth.createSession(userId);
+    await hs.audit.record({ action: "register", actor: "server", target: userId, ip: ctx.ip, details: { shared_secret: true, admin } });
+    return { ...session, home_server: hs.serverName };
+  });
+}
+
+export async function registrationFlows(hs: Homeserver): Promise<string[][]> {
+  // The very first account (admin bootstrap) never needs a token.
+  if (hs.adminRoom?.options.firstUserCanRegister && (await hs.adminRoom.noUsersYet())) return [["m.login.dummy"]];
+  const base = (await hs.registrationMode()) === "token" ? ["m.login.registration_token"] : ["m.login.dummy"];
+  // With email validation available, an address can be given at registration (or must be).
+  if (!hs.threepids.canValidate("email")) return [base];
+  const withEmail = [...base.filter((s) => s !== "m.login.dummy"), "m.login.email.identity"];
+  return hs.config.threepid.requireEmailForRegistration ? [withEmail] : [base, withEmail];
+}
+
+export async function registrationTokenValid(hs: Homeserver, token: string): Promise<boolean> {
+  const row = await hs.db.findOne("registration_tokens", [{ field: "token", value: token }]);
+  if (!row) return false;
+  if (row.expiry_time !== null && row.expiry_time < Date.now()) return false;
+  return row.uses_allowed === null || row.completed < row.uses_allowed;
+}
+
+async function consumeRegistrationToken(hs: Homeserver, body: Record<string, any>): Promise<void> {
+  if (body.auth?.type !== "m.login.registration_token") return;
+  const token = body.auth?.token;
+  const row = await hs.db.findOne("registration_tokens", [{ field: "token", value: token }]);
+  if (row) await hs.db.update("registration_tokens", [{ field: "token", value: token }], { completed: row.completed + 1 });
+}
+
+export function wellKnown(hs: Homeserver): Record<string, any> | null {
+  if (!hs.config.publicBaseUrl) return null;
+  const wk: Record<string, any> = { "m.homeserver": { base_url: hs.config.publicBaseUrl } };
+  if (hs.config.rtc.transports?.length) wk["org.matrix.msc4143.rtc_foci"] = hs.config.rtc.transports;
+  return wk;
+}
