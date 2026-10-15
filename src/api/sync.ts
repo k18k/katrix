@@ -43,8 +43,15 @@ export function toStripped(ev: Record<string, any>): Record<string, any> {
 
 export interface SyncParams {
   session: Session;
-  /** MSC4222: return the state at the end of the timeline (`state_after`) instead of `state`. */
+  /**
+   * MSC4222: return the state at the end of the timeline instead of `state`, under the
+   * key matching the parameter the client used: `state_after` for the stable
+   * `use_state_after`, `org.matrix.msc4222.state_after` for the unstable
+   * `org.matrix.msc4222.use_state_after` (which matrix-js-sdk and Element send, and read
+   * back only under the unstable key).
+   */
   useStateAfter?: boolean;
+  stateAfterKey?: "state_after" | "org.matrix.msc4222.state_after";
   ignored: Set<string>;
   since: SyncToken | null;
   to: number;
@@ -263,7 +270,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       const roomAccountData = await accountData(hs, p, roomId);
       if (!initial && timelineEvents.length === 0 && state.length === 0 && stateAfter.length === 0 && ephemeral.length === 0 && roomAccountData.length === 0) continue;
       const stateSection = p.useStateAfter
-        ? { state_after: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } }
+        ? { [p.stateAfterKey ?? "state_after"]: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } }
         : { state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) } };
       join[roomId] = {
         timeline,
@@ -406,8 +413,11 @@ async function sync(ctx: RequestContext) {
     const to = await hs.streams.position();
     const ignoredRow = await hs.db.findOne("account_data", [{ field: "user_id", value: session.userId }, { field: "room_id", value: "" }, { field: "type", value: "m.ignored_user_list" }]);
     const ignored = new Set(Object.keys(ignoredRow?.content?.ignored_users ?? {}));
-    const useStateAfter = ctx.query.get("use_state_after") === "true" || ctx.query.get("org.matrix.msc4222.use_state_after") === "true";
-    const { body, empty } = await buildSync(hs, { session, ignored, since, to, filter, fullState, useStateAfter });
+    const stable = ctx.query.get("use_state_after") === "true";
+    const unstable = ctx.query.get("org.matrix.msc4222.use_state_after") === "true";
+    const useStateAfter = stable || unstable;
+    const stateAfterKey = stable ? "state_after" : "org.matrix.msc4222.state_after";
+    const { body, empty } = await buildSync(hs, { session, ignored, since, to, filter, fullState, useStateAfter, stateAfterKey });
     const remaining = deadline - Date.now();
     if (!since || !empty || remaining <= 0 || fullState) return body;
     // Something happened while we were building the response: rebuild immediately.
