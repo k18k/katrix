@@ -4,6 +4,10 @@
   "description": "A framework- and database-agnostic Matrix homeserver library for Node.js",
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com/"
+  },
   "engines": {
     "node": ">=26"
   },
