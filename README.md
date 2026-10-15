@@ -12,6 +12,12 @@ it as a horizontally scaled chat backend that replaces Slack or Teams.
 - Can run as several instances behind a load balancer
 - Tested against [Complement](https://github.com/matrix-org/complement) in CI
 
+## Installation
+
+```sh
+npm install github:k18k/matrix-nodejs-homeserver#main
+```
+
 ```ts
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";

@@ -1,6 +1,6 @@
 {
   "name": "@k18k/matrix-nodejs-homeserver",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A framework- and database-agnostic Matrix homeserver library for Node.js",
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
@@ -27,6 +27,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "start:example": "node examples/node-http.ts",
     "start:multi-node-example": "node examples/multi-node.ts",
+    "prepare": "npm run prepack",
     "prepack": "npm run typecheck && node scripts/strip-types.ts",
     "postpack": "node scripts/strip-types.ts --clean"
   },
