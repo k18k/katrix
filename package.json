@@ -1,0 +1,42 @@
+{
+  "name": "@k18k/matrix-nodejs-homeserver",
+  "version": "0.1.0",
+  "description": "A framework- and database-agnostic Matrix homeserver library for Node.js",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=26"
+  },
+  "main": "./src/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "start:example": "node examples/node-http.ts",
+    "start:multi-node-example": "node examples/multi-node.ts",
+    "prepack": "npm run typecheck && node scripts/strip-types.ts",
+    "postpack": "node scripts/strip-types.ts --clean"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/k18k/matrix-nodejs-homeserver.git"
+  },
+  "keywords": [
+    "matrix",
+    "homeserver",
+    "chat"
+  ],
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "^7.0.2"
+  }
+}
