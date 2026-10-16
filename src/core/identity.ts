@@ -38,7 +38,9 @@ export class IdentityServers {
     if (opts.signed) headers.authorization = this.hs.federation.client.authHeader(idServer, method, path, opts.body);
     let res: Response;
     try {
-      res = await this.hs.fetch(`${this.base(idServer)}${path}`, {
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/22: the identity server is named by
+      // the client, so requests to it go through the address policy.
+      res = await this.hs.publicFetch(`${this.base(idServer)}${path}`, {
         method,
         headers,
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),

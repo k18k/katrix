@@ -15,8 +15,9 @@ const appservices = await loadAppServiceRegistrations("/complement/appservice");
 const homeserver = createHomeserver({
   appservices,
   homeserver: serverName,
-  // Complement's servers, and the media they point to, are on the private Docker network.
-  federation: { enabled: true, allowPrivateAddresses: true },
+  federation: { enabled: true },
+  // Complement's servers, push gateways and identity servers are on the private Docker network.
+  allowPrivateAddresses: true,
   databaseAdapter: sqliteAdapter(new DatabaseSync(`${dataDir}/homeserver.db`)),
   mediaAdapter: filesystemMedia(`${dataDir}/media`),
   userAuthAdapter: { registrationEnabled: true },

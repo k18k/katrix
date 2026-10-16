@@ -31,6 +31,7 @@ import type { DatabaseAdapter } from "#storage/types.ts";
 import { Router } from "#http/router.ts";
 import { registerRoutes } from "#api/index.ts";
 import { M } from "#core/m.ts";
+import { addressPolicy, policyFetch, type AddressPolicy } from "#core/outbound.ts";
 
 export interface Logger {
   debug(...args: unknown[]): void;
@@ -88,6 +89,13 @@ export interface HomeserverOptions {
   logger?: Logger;
   /** Custom `fetch` for outgoing HTTP requests. */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Let requests to addresses that users or remote servers choose (federation, push gateways,
+   * identity servers, URL previews, remote media) reach private addresses: localhost, LAN and
+   * other non-public ranges. `true` allows all of them, a list allows those ranges only (e.g.
+   * `["127.0.0.1/32"]` for a push gateway on the same machine). Default: none.
+   */
+  allowPrivateAddresses?: boolean | string[];
   /**
    * Rate limiting. `false` disables it; otherwise per-action overrides and an optional
    * shared limiter (defaults to an in-memory token bucket). Admins are never limited.
@@ -192,8 +200,12 @@ export class Homeserver extends EventEmitter {
   readonly policyServers: PolicyServers;
   readonly threepids: ThreepidService;
   readonly identityServers: IdentityServers;
-  /** `fetch` used for outgoing requests (push gateways, URL previews, OAuth). Overridable for testing. */
+  /** `fetch` for requests to addresses the operator configured (OAuth, SSO, application services). */
   readonly fetch: typeof globalThis.fetch;
+  /** Which addresses requests to user- or remote-chosen destinations may reach (see `allowPrivateAddresses`). */
+  readonly addressPolicy: AddressPolicy;
+  /** `fetch` for user- or remote-chosen URLs: refuses private addresses unless allowed, never follows redirects. */
+  readonly publicFetch: typeof globalThis.fetch;
   /** Resolves once storage is migrated and the server is ready to serve requests. */
   readonly ready: Promise<void>;
   private _signingKey: SigningKey | null = null;
@@ -258,6 +270,9 @@ export class Homeserver extends EventEmitter {
     this.push = new PushService(this);
     this.admin = new AdminService(this);
     this.oauth = options.oauth ? new OAuthDelegation(this, options.oauth) : null;
+    this.fetch = options.fetch ?? globalThis.fetch;
+    this.addressPolicy = addressPolicy(options.allowPrivateAddresses);
+    this.publicFetch = policyFetch(this.addressPolicy, options.fetch);
     this.federation = new FederationService(this, options.federation);
     this.delayedEvents = new DelayedEventService(this, options.delayedEvents);
     this.audit = new AuditService(this, options.audit);
@@ -280,7 +295,6 @@ export class Homeserver extends EventEmitter {
       this.cleanupTimer = setInterval(() => void this.cleanup().catch((err) => this.logger.warn("Cleanup failed", err)), cleanupEvery);
       this.cleanupTimer.unref?.();
     }
-    this.fetch = options.fetch ?? globalThis.fetch;
     registerRoutes(this.router);
     this.ready = this.init(options);
     this.ready.catch((err) => this.logger.error("Homeserver failed to start", err));

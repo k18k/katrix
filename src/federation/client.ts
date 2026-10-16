@@ -7,6 +7,7 @@ import { unpaddedBase64 } from "#core/crypto.ts";
 import { sign } from "node:crypto";
 import type { Homeserver } from "#homeserver.ts";
 import { M } from "#core/m.ts";
+import { checkLiteral } from "#core/outbound.ts";
 
 interface Resolved {
   /** Host to connect to (IP or hostname). */
@@ -153,6 +154,15 @@ export class FederationClient {
     timeoutMs: number,
     poolKey = target.hostHeader,
   ): Promise<RawResponse> {
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/22: server names come from user IDs,
+    // room IDs and aliases, i.e. from users and remote servers, so destinations obey the address
+    // policy (core/outbound.ts): a literal is checked here, a name when it is resolved for the
+    // connection. This also covers .well-known lookups, which go through here.
+    try {
+      checkLiteral(this.hs.addressPolicy, target.host);
+    } catch (err) {
+      return Promise.reject(err);
+    }
     return new Promise((resolve, reject) => {
       let connectTimer: ReturnType<typeof setTimeout> | null = null;
       const req = httpsRequest(
@@ -163,6 +173,7 @@ export class FederationClient {
           path: pathWithQuery,
           servername: isIP(target.tlsName) ? undefined : target.tlsName,
           agent: this.agentFor(poolKey),
+          lookup: this.hs.addressPolicy.lookup,
           headers: { host: target.hostHeader, ...headers, ...(body ? { "content-length": String(body.length) } : {}) },
           timeout: timeoutMs,
         },

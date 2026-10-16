@@ -38,11 +38,6 @@ export interface FederationOptions {
   allowedServers?: string[];
   /** Never federate with these servers. */
   blockedServers?: string[];
-  /**
-   * Let addresses that remote servers name (such as a media file's location) be private ones:
-   * localhost, LAN and other non-public ranges. Default: false. For test networks.
-   */
-  allowPrivateAddresses?: boolean;
 }
 
 export const domainOf = (id: string) => id.slice(id.indexOf(":") + 1);
@@ -1188,8 +1183,7 @@ export class FederationService {
     if (res.status === 200) {
       const ct = String(res.headers["content-type"] ?? "");
       const m = /boundary=("?)([^";]+)\1/.exec(ct);
-      if (ct.startsWith("multipart/") && m)
-        return parseMultipartMedia(res.body, m[2], { maxBytes, allowPrivateAddresses: this.options.allowPrivateAddresses === true });
+      if (ct.startsWith("multipart/") && m) return parseMultipartMedia(res.body, m[2], { maxBytes, fetch: this.hs.publicFetch });
     }
     const legacy = await this.client.requestRaw(
       server,
@@ -1258,7 +1252,7 @@ function filenameFromDisposition(header: string | undefined): string | null {
 async function parseMultipartMedia(
   body: Buffer,
   boundary: string,
-  limits: { maxBytes: number; allowPrivateAddresses: boolean },
+  limits: { maxBytes: number; fetch: typeof globalThis.fetch },
 ): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
   const delimiter = Buffer.from(`--${boundary}`);
   const parts: Buffer[] = [];
@@ -1285,16 +1279,12 @@ async function parseMultipartMedia(
     // check, so a remote server could have this server read internal addresses and hand the
     // responses to a local user. It is fetched over http(s) only, from public addresses checked
     // on each connection and redirect, and with the media size limit.
-    const res = await publicGet(headers.location, {
-      maxBytes: limits.maxBytes,
-      allowPrivateAddresses: limits.allowPrivateAddresses,
-      timeoutMs: 60_000,
-    });
+    const res = await publicGet(limits.fetch, headers.location, { maxBytes: limits.maxBytes, timeoutMs: 60_000 });
     if (res.status !== 200) throw errors.notFound("Remote media redirect failed");
     return {
       data: new Uint8Array(res.body),
-      contentType: (res.headers["content-type"] as string | undefined) ?? null,
-      filename: filenameFromDisposition(res.headers["content-disposition"] as string | undefined),
+      contentType: res.headers.get("content-type"),
+      filename: filenameFromDisposition(res.headers.get("content-disposition") ?? undefined),
     };
   }
   return {

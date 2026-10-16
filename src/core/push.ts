@@ -255,7 +255,10 @@ export class PushService {
           notification.user_is_target = event.state_key === userId;
         }
       }
-      const res = await this.hs.fetch(url, {
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/22: the gateway URL is chosen by the
+      // user who set the pusher, so it goes through the address policy (no private addresses unless
+      // allowPrivateAddresses lets them through; a gateway on this machine has to be allowed there).
+      const res = await this.hs.publicFetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ notification }),

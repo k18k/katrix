@@ -1,21 +1,11 @@
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
-import { errors } from "#core/errors.ts";
+import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
-import { isPrivateAddress } from "#core/outbound.ts";
+import { publicGet } from "#core/outbound.ts";
 
 const MAX_BYTES = 1024 * 1024;
-
-async function assertPublicHost(hostname: string): Promise<void> {
-  const host = hostname.replace(/^\[|\]$/g, "");
-  const addresses = isIP(host) ? [{ address: host, family: isIP(host) }] : await lookup(host, { all: true });
-  for (const { address } of addresses) {
-    if (isPrivateAddress(address)) throw errors.forbidden("URL resolves to a private address");
-  }
-}
 
 function decodeEntities(s: string): string {
   return s.replace(
@@ -52,43 +42,35 @@ async function preview(hs: Homeserver, rawUrl: string): Promise<Record<string, a
     throw errors.invalidParam("Invalid URL");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") throw errors.invalidParam("Only http(s) URLs can be previewed");
-  for (let redirects = 0; redirects < 5; redirects++) {
-    if (!opts.allowPrivateAddresses) await assertPublicHost(url.hostname);
-    const res = await fetch(url, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(10_000),
-      headers: { "user-agent": "matrix-nodejs-homeserver" },
-    });
-    if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
-      url = new URL(res.headers.get("location")!, url);
-      continue;
-    }
-    if (!res.ok || !res.body) throw errors.notFound("Could not fetch URL");
-    const type = res.headers.get("content-type") ?? "";
-    if (type.startsWith("image/")) return { ...(await storeImage(hs, res, type)), "og:url": url.href };
-    if (!type.includes("html")) return {};
-    let size = 0;
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of res.body as AsyncIterable<Uint8Array>) {
-      size += chunk.length;
-      if (size > MAX_BYTES) break;
-      chunks.push(chunk);
-    }
-    const og: Record<string, any> = parseOpenGraph(Buffer.concat(chunks).toString("utf8"));
-    if (og["og:image"]) {
-      try {
-        const imageUrl = new URL(og["og:image"], url);
-        if (!opts.allowPrivateAddresses) await assertPublicHost(imageUrl.hostname);
-        const img = await fetch(imageUrl, { signal: AbortSignal.timeout(10_000) });
-        const imgType = img.headers.get("content-type") ?? "";
-        if (img.ok && imgType.startsWith("image/")) Object.assign(og, await storeImage(hs, img, imgType));
-      } catch {
-        /* keep the preview without an image */
-      }
-    }
-    return og;
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/22: the address was checked with a DNS
+  // lookup and then resolved again by fetch, so a name could pass the check and still lead to a
+  // private address (DNS rebinding), and the og:image fetch followed redirects unchecked. Both now
+  // go through the address policy, which checks the address connected to and every redirect.
+  // `urlPreviews.allowPrivateAddresses` still lets previews alone reach private addresses.
+  const get = opts.allowPrivateAddresses ? hs.fetch : hs.publicFetch;
+  const headers = { "user-agent": "matrix-nodejs-homeserver" };
+  // Up to 10 MB for an image; an HTML page is read up to 1 MB, enough for its head.
+  const res = await publicGet(get, url, { maxBytes: MAX_BYTES * 10, truncate: true, timeoutMs: 10_000, headers }).catch((err) => {
+    throw err instanceof MatrixError ? err : errors.notFound("Could not fetch URL");
+  });
+  if (res.status !== 200) throw errors.notFound("Could not fetch URL");
+  const type = res.headers.get("content-type") ?? "";
+  if (type.startsWith("image/")) {
+    if (res.body.length >= MAX_BYTES * 10) return {};
+    return { ...(await storeImage(hs, res.body, type)), "og:url": res.url.href };
   }
-  throw errors.notFound("Too many redirects");
+  if (!type.includes("html")) return {};
+  const og: Record<string, any> = parseOpenGraph(res.body.subarray(0, MAX_BYTES).toString("utf8"));
+  if (og["og:image"]) {
+    try {
+      const img = await publicGet(get, new URL(og["og:image"], res.url), { maxBytes: MAX_BYTES * 10, timeoutMs: 10_000, headers });
+      const imgType = img.headers.get("content-type") ?? "";
+      if (img.status === 200 && imgType.startsWith("image/")) Object.assign(og, await storeImage(hs, img.body, imgType));
+    } catch {
+      /* keep the preview without an image */
+    }
+  }
+  return og;
 }
 
 /** Read width/height from PNG, GIF, JPEG or WebP headers. */
@@ -125,9 +107,8 @@ export function imageSize(data: Uint8Array): { width: number; height: number } |
 }
 
 /** Store a fetched image in the media repository and describe it for a preview. */
-async function storeImage(hs: Homeserver, res: Response, type: string): Promise<Record<string, any>> {
-  const data = new Uint8Array(await res.arrayBuffer());
-  if (data.length > MAX_BYTES * 10) return {};
+async function storeImage(hs: Homeserver, body: Buffer, type: string): Promise<Record<string, any>> {
+  const data = new Uint8Array(body);
   const mediaId = randomString(24);
   await hs.media.put(mediaId, data, { contentType: type, filename: null, size: data.length });
   await hs.db.create("media", {

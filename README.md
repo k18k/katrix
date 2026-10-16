@@ -330,7 +330,8 @@ paths (server admins only), so existing tools keep working.
 | `audit` | `{ enabled, database, sink, actions, retentionDays }`. Disabled by default. |
 | `publicBaseUrl` | Advertised via `/.well-known/matrix/client`. Required for SSO. |
 | `oauth`, `sso` | Delegated OAuth or upstream OIDC SSO. |
-| `federation` | `{ enabled, verifyTls, allowedServers, blockedServers, fasterJoins, allowPrivateAddresses }`. Off unless `enabled: true`. |
+| `federation` | `{ enabled, verifyTls, allowedServers, blockedServers, fasterJoins }`. Off unless `enabled: true`. |
+| `allowPrivateAddresses` | Lets requests to addresses that users or remote servers choose (federation, push gateways, identity servers, URL previews, remote media) reach private addresses: `true`, or ranges such as `["127.0.0.1/32"]`. Blocked by default. |
 | `rtc` | `{ turn, transports }` |
 | `delayedEvents` | `{ maxDelayMs, maxPerUser }` |
 | `rateLimits` | `false`, or `{ limiter, rules }`. In-memory token buckets by default. Plug in a shared limiter when running a cluster. |
