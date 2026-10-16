@@ -4,14 +4,14 @@
 // can serve any request (client or federation API, including long-polling /sync): they
 // coordinate through the shared cluster adapter, so no sticky sessions are needed.
 //
-//   npm install pg            # and `ioredis` to coordinate through Redis instead of Postgres
+//   npm install pg
 //   DATABASE_URL=postgres://matrix:secret@db.internal/matrix \
 //   SERVER_NAME=example.com PUBLIC_BASE_URL=https://matrix.example.com \
 //   node examples/multi-node.ts
 //
 // Everything an instance keeps has to be shared too:
 // - rooms, accounts, keys: the database (the signing key is created there by the first instance);
-// - wakeups, locks, stream positions, caches: the cluster adapter (Postgres LISTEN/NOTIFY, or Redis);
+// - wakeups, locks, stream positions, caches: the cluster adapter (Postgres, with LISTEN/NOTIFY);
 // - uploaded files: the media adapter. Local disks would differ per machine, so files go to an S3
 //   bucket when S3_BUCKET is set (S3_REGION, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, and
 //   S3_ENDPOINT for MinIO/R2/...), and to Postgres otherwise.
@@ -22,7 +22,6 @@ import {
   s3Media,
   postgresAdapter,
   postgresCluster,
-  redisCluster,
   type ClusterAdapter,
   type MediaAdapter,
 } from "../src/index.ts";
@@ -32,15 +31,7 @@ const pgModule: string = "pg";
 const { default: pg } = await import(pgModule);
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 20 });
 
-let cluster: ClusterAdapter;
-if (process.env.REDIS_URL) {
-  const redisModule: string = "ioredis";
-  const { default: Redis } = await import(redisModule);
-  // Pub/sub needs a connection of its own.
-  cluster = redisCluster({ client: new Redis(process.env.REDIS_URL), subscriber: new Redis(process.env.REDIS_URL) });
-} else {
-  cluster = postgresCluster(pool);
-}
+const cluster: ClusterAdapter = postgresCluster(pool);
 
 /** Media files in Postgres, so that every machine sees every upload. */
 function postgresMedia(pool: any): MediaAdapter {

@@ -106,7 +106,7 @@ export interface HomeserverOptions {
   sso?: SsoOptions;
   /**
    * Coordination between instances. The default (`localCluster()`) supports one process;
-   * use `postgresCluster()` / `redisCluster()` to scale horizontally.
+   * use `postgresCluster()` to scale horizontally.
    */
   cluster?: ClusterAdapter;
   /**

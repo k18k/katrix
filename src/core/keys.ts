@@ -350,12 +350,20 @@ export class KeyService {
   /** Users (sharing a room with `userId`) whose device lists changed after `since`. */
   async changesSince(userId: string, since: number, upTo: number): Promise<{ changed: string[]; left: string[] }> {
     const sharing = await this.hs.rooms.usersSharingRooms(userId);
-    const rows = await this.hs.db.findMany("device_list_changes", { where: [{ field: "stream", operator: "gt", value: since }] });
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/31: this read every device-list change
+    // on the server since `since`; it asks for the users sharing a room only (up to a size where an
+    // IN list stays reasonable for the database).
+    const rows = await this.hs.db.findMany("device_list_changes", {
+      where: [
+        { field: "stream", operator: "gt", value: since },
+        ...(sharing.size <= 5000 ? [{ field: "user_id", operator: "in" as const, value: [...sharing] }] : []),
+      ],
+    });
     const changed = new Set<string>();
     for (const r of rows) if (r.stream <= upTo && sharing.has(r.user_id)) changed.add(r.user_id);
     // Users we newly share a room with also count as changed.
     const left = new Set<string>();
-    const memberRows = await this.hs.db.findMany("memberships", { where: [{ field: "stream", operator: "gt", value: since }] });
+    const memberRows = await this.hs.rooms.membershipChangesSince(userId, since);
     const myRooms = new Set([
       ...(await this.hs.rooms.roomsForUser(userId)),
       ...memberRows.filter((m) => m.user_id === userId).map((m) => m.room_id),

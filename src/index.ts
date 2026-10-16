@@ -46,15 +46,7 @@ export { memoryRateLimiter, type RateLimiter, type RateLimitRule, type RateLimit
 export type { AdminService, ServerNoticesOptions } from "#core/admin.ts";
 
 // Horizontal scaling
-export {
-  localCluster,
-  postgresCluster,
-  redisCluster,
-  type ClusterAdapter,
-  type PgClusterPoolLike,
-  type RedisLike,
-  type RedisSubscriberLike,
-} from "#adapters/cluster.ts";
+export { localCluster, postgresCluster, type ClusterAdapter, type PgClusterPoolLike } from "#adapters/cluster.ts";
 
 // Federation, auth and admin
 export type { FederationOptions } from "#federation/index.ts";

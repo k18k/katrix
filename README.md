@@ -75,12 +75,12 @@ By default a homeserver assumes it is the only process using its database. To ru
 several instances behind a load balancer, give them a shared **cluster adapter**:
 
 ```ts
-import { postgresCluster, redisCluster } from "matrix-nodejs-homeserver";
+import { postgresCluster } from "matrix-nodejs-homeserver";
 
 createHomeserver({
   homeserver: "example.com",
   databaseAdapter: postgresAdapter(pool),
-  cluster: postgresCluster(pool),          // or: redisCluster({ client: new Redis(), subscriber: new Redis() })
+  cluster: postgresCluster(pool),
 });
 ```
 
@@ -95,8 +95,7 @@ The cluster adapter provides:
 - **Shared ephemeral state:** UIA sessions, SSO logins and transaction deduplication.
 
 [examples/multi-node.ts](examples/multi-node.ts) is meant to run unchanged on several
-machines behind a load balancer, all sharing one Postgres database (and optionally Redis
-for coordination). It also shows a media adapter backed by that database, since local
+machines behind a load balancer, all sharing one Postgres database, which also coordinates them. It also shows a media adapter backed by that database, since local
 disks differ between machines.
 
 The database adapter has to support concurrent access from several processes, so

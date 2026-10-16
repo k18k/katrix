@@ -395,7 +395,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     // Users we started sharing a room with since the last sync get their presence sent regardless of age.
     const newlyShared = new Set<string>();
     if (since !== null) {
-      const changes = await hs.db.findMany("memberships", { where: [{ field: "stream", operator: "gt", value: since }] });
+      const changes = await hs.rooms.membershipChangesSince(userId, since, memberships);
       const myRooms = new Set(memberships.filter((m) => m.membership === "join").map((m) => m.room_id));
       for (const c of changes) {
         if (c.membership !== "join" || !myRooms.has(c.room_id)) continue;
@@ -550,7 +550,7 @@ async function profileUpdatesFor(hs: Homeserver, p: SyncParams, memberships: Rec
   const full = new Set<string>(since === null ? sharing : []);
   if (since !== null) {
     const myRooms = new Set(memberships.filter((m) => m.membership === "join").map((m) => m.room_id));
-    const changes = await hs.db.findMany("memberships", { where: [{ field: "stream", operator: "gt", value: since }] });
+    const changes = await hs.rooms.membershipChangesSince(p.session.userId, since, memberships);
     for (const c of changes) {
       if (c.stream > p.to || c.user_id === p.session.userId) continue;
       if (c.membership === "join" && myRooms.has(c.room_id)) {

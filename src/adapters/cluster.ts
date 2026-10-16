@@ -133,8 +133,8 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
     // https://github.com/k18k/matrix-nodejs-homeserver/issues/29: this held a session advisory lock,
     // and so a pool connection, for as long as `fn` ran, while `fn` queried through the same pool.
     // With as many keys locked as the pool had connections, every connection belonged to a lock
-    // owner waiting for a free one, and the server hung. A lock is now a lease in the kv table, as
-    // in the Redis adapter: no connection is held, the lease is renewed while `fn` runs, and a
+    // owner waiting for a free one, and the server hung. A lock is now a lease in the kv table:
+    // no connection is held, the lease is renewed while `fn` runs, and a
     // crashed owner's lease expires after LOCK_TTL_MS (an advisory lock went with its connection
     // at once; that is the price of not holding one).
     lock(key, fn) {
@@ -228,132 +228,6 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
         await listener.query(`UNLISTEN ${PG_CHANNEL}`).catch(() => {});
         listener.release();
       }
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Redis
-// ---------------------------------------------------------------------------
-
-/** Minimal ioredis-compatible client. */
-export interface RedisLike {
-  incr(key: string): Promise<number>;
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string, ...args: (string | number)[]): Promise<string | null>;
-  del(...keys: string[]): Promise<number>;
-  eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown>;
-  publish(channel: string, message: string): Promise<number>;
-  scan(cursor: string | number, ...args: (string | number)[]): Promise<[string, string[]]>;
-  mget(...keys: string[]): Promise<(string | null)[]>;
-}
-
-/** A Redis connection in subscriber mode (a separate connection, as Redis requires). */
-export interface RedisSubscriberLike {
-  subscribe(...channels: string[]): Promise<unknown>;
-  on(event: "message", listener: (channel: string, message: string) => void): unknown;
-}
-
-const UNLOCK = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
-const EXTEND = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end`;
-
-/**
- * Cluster adapter backed by Redis (ioredis API). Pass two connections: one for
- * commands and one dedicated to subscriptions.
- */
-export function redisCluster(opts: { client: RedisLike; subscriber: RedisSubscriberLike; prefix?: string }): ClusterAdapter {
-  const { client, subscriber } = opts;
-  const prefix = opts.prefix ?? "matrix:";
-  const channel = `${prefix}cluster`;
-  const handlers = new Map<string, Set<(m: any) => void>>();
-  const queue = localQueue();
-  const ready = subscriber.subscribe(channel);
-  subscriber.on("message", (ch, raw) => {
-    if (ch !== channel) return;
-    try {
-      const { channel: name, message } = JSON.parse(raw);
-      for (const h of handlers.get(name) ?? []) h(message);
-    } catch {
-      /* ignore malformed */
-    }
-  });
-  const k = (key: string) => `${prefix}${key}`;
-
-  return {
-    async nextId(name) {
-      return Number(await client.incr(k(`seq:${name}`)));
-    },
-    async currentId(name) {
-      return Number((await client.get(k(`seq:${name}`))) ?? 0);
-    },
-    async advance(name, value) {
-      await client.eval(
-        `local v = tonumber(redis.call("get", KEYS[1]) or "0") if v < tonumber(ARGV[1]) then redis.call("set", KEYS[1], ARGV[1]) end return 1`,
-        1,
-        k(`seq:${name}`),
-        value,
-      );
-    },
-    lock(key, fn) {
-      return queue(key, async () => {
-        const lockKey = k(`lock:${key}`);
-        const token = randomUUID();
-        const ttl = 30_000;
-        for (let delay = 5; ; delay = Math.min(delay * 2, 200)) {
-          if ((await client.set(lockKey, token, "PX", ttl, "NX")) === "OK") break;
-          await new Promise((r) => setTimeout(r, delay));
-        }
-        // Keep the lock alive while `fn` runs.
-        const renew = setInterval(() => void client.eval(EXTEND, 1, lockKey, token, ttl).catch(() => {}), ttl / 3);
-        try {
-          return await fn();
-        } finally {
-          clearInterval(renew);
-          await client.eval(UNLOCK, 1, lockKey, token).catch(() => {});
-        }
-      });
-    },
-    async publish(name, message) {
-      await ready;
-      await client.publish(channel, JSON.stringify({ channel: name, message }));
-    },
-    subscribe(name, handler) {
-      let set = handlers.get(name);
-      if (!set) handlers.set(name, (set = new Set()));
-      set.add(handler);
-    },
-    async get(key) {
-      const v = await client.get(k(`kv:${key}`));
-      return v === null ? null : JSON.parse(v);
-    },
-    async set(key, value, ttlMs) {
-      if (ttlMs) await client.set(k(`kv:${key}`), JSON.stringify(value), "PX", ttlMs);
-      else await client.set(k(`kv:${key}`), JSON.stringify(value));
-    },
-    async setIfAbsent(key, value, ttlMs) {
-      const res = ttlMs
-        ? await client.set(k(`kv:${key}`), JSON.stringify(value), "PX", ttlMs, "NX")
-        : await client.set(k(`kv:${key}`), JSON.stringify(value), "NX");
-      return res === "OK";
-    },
-    async delete(key) {
-      await client.del(k(`kv:${key}`));
-    },
-    async entries(keyPrefix) {
-      const out: [string, any][] = [];
-      let cursor = "0";
-      const pattern = `${k(`kv:${keyPrefix}`).replace(/[*?[\]]/g, (c) => `\\${c}`)}*`;
-      do {
-        const [next, keys] = await client.scan(cursor, "MATCH", pattern, "COUNT", 200);
-        cursor = next;
-        if (keys.length) {
-          const values = await client.mget(...keys);
-          keys.forEach((key, i) => {
-            if (values[i] !== null) out.push([key.slice(k("kv:").length), JSON.parse(values[i]!)]);
-          });
-        }
-      } while (cursor !== "0");
-      return out;
     },
   };
 }

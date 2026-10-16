@@ -6,6 +6,7 @@ import { KINDS, loadRules, type Rule } from "#core/pushrules.ts";
 import { isSubscribed } from "#api/threadsubs.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
 import { M, UNSTABLE } from "#core/m.ts";
 
 /** Look up a dotted path; `\.` escapes a literal dot in a key (e.g. `content.m\.relates_to`). */
@@ -183,8 +184,16 @@ export class PushService {
     await this.hs.transaction(async (db) => {
       for (const n of notified) await db.upsert("notifications", n.row);
     });
-    for (const n of notified)
-      void this.deliver(n.userId, ev, state, n.tweaks).catch((err) => this.hs.logger.warn("Push delivery failed", err));
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/31: one query for the pushers of
+    // everyone notified, instead of one per member.
+    const pushers = await this.hs.db.findMany("pushers", {
+      where: [{ field: "user_id", operator: "in", value: notified.map((n) => n.userId) }],
+    });
+    for (const n of notified) {
+      const own = pushers.filter((p) => p.user_id === n.userId);
+      if (own.length)
+        void this.deliver(n.userId, ev, state, n.tweaks, own).catch((err) => this.hs.logger.warn("Push delivery failed", err));
+    }
   }
 
   /** Unread notification counts since the user's read receipts. */
@@ -239,9 +248,7 @@ export class PushService {
     return { room, threads };
   }
 
-  private async deliver(userId: string, ev: StoredEvent, state: StateMap, tweaks: Record<string, unknown>): Promise<void> {
-    const pushers = await this.hs.db.findMany("pushers", { where: [{ field: "user_id", value: userId }] });
-    if (pushers.length === 0) return;
+  private async deliver(userId: string, ev: StoredEvent, state: StateMap, tweaks: Record<string, unknown>, pushers: Row[]): Promise<void> {
     const event = ev.pdu;
     const unread = (await this.unreadCounts(userId, event.room_id)).room.notification_count;
     for (const row of pushers) {

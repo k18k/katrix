@@ -1,6 +1,6 @@
 import { MatrixError } from "#core/errors.ts";
 
-/** A rate limiter keyed by an arbitrary string. Implement this to share limits across instances (e.g. Redis). */
+/** A rate limiter keyed by an arbitrary string. Implement this to share limits across instances. */
 export interface RateLimiter {
   /** Consume one unit for `key` under `rule`; resolve with the delay to wait (0 when allowed). */
   consume(key: string, rule: RateLimitRule): Promise<number>;

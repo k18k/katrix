@@ -1091,6 +1091,26 @@ export class RoomService {
     return rows.map((r) => r.room_id);
   }
 
+  /**
+   * Membership changes after `since` in the rooms where `userId` has a membership (in any state),
+   * given the user's own membership rows if the caller has them.
+   *
+   * https://github.com/k18k/matrix-nodejs-homeserver/issues/31: /sync and device-list tracking
+   * read every membership change on the server since their token and kept those in the user's
+   * rooms; while many users joined, each sync parsed thousands of rows. This reads those rooms only.
+   */
+  async membershipChangesSince(userId: string, since: number, mine?: Row[]): Promise<Row[]> {
+    const own = mine ?? (await this.hs.db.findMany("memberships", { where: [{ field: "user_id", value: userId }] }));
+    const rooms = [...new Set(own.map((m) => m.room_id as string))];
+    if (rooms.length === 0) return [];
+    return this.hs.db.findMany("memberships", {
+      where: [
+        { field: "room_id", operator: "in", value: rooms },
+        { field: "stream", operator: "gt", value: since },
+      ],
+    });
+  }
+
   /** All users sharing at least one joined room with `userId` (including themselves). */
   async usersSharingRooms(userId: string): Promise<Set<string>> {
     const cached = this.sharingCache.get(userId);

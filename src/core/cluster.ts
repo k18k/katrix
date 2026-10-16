@@ -2,8 +2,8 @@ import { randomString } from "#core/crypto.ts";
 
 /**
  * Coordination between homeserver instances sharing one database. The default
- * (`localCluster()`) keeps everything in process; use `postgresCluster()` or
- * `redisCluster()` to run several instances behind a load balancer.
+ * (`localCluster()`) keeps everything in process; use `postgresCluster()` to run several
+ * instances behind a load balancer.
  */
 export interface ClusterAdapter {
   /** Allocate the next value of a cluster-wide, strictly increasing sequence. */
