@@ -423,11 +423,13 @@ Live status, updated after every Complement run (full or targeted) with
 </details>
 <!-- complement-status:end -->
 
-```sh
-docker build -t complement-matrix-nodejs -f complement/Dockerfile .
-git clone https://github.com/matrix-org/complement && cd complement
-COMPLEMENT_BASE_IMAGE=complement-matrix-nodejs go test -v ./tests/...
-```
+CI runs the whole suite with the same script. `complement/passing.txt` lists the tests
+(and subtests) that are known to pass, and CI fails if any of them regress.
 
-CI runs the whole suite. `complement/passing.txt` lists the tests that are known to
-pass, and CI fails if any of them regress.
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE). Free to use, modify and share for any noncommercial
+purpose: personal use, study, hobby projects, and use by charities, schools, research,
+public-safety and government organisations. Commercial use needs a separate agreement with
+the author (contact via [github.com/k18k](https://github.com/k18k)). This is a
+source-available license, not an OSI open-source one.
