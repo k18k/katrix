@@ -104,6 +104,7 @@ const homeserver = createHomeserver({
   userAuthAdapter: { registrationEnabled: true },
   // The load comes from a few IP addresses, which rate limits would throttle; measure the server instead.
   rateLimits: false,
+  ...(process.env.MAX_CONCURRENT_SYNCS ? { maxConcurrentSyncs: Number(process.env.MAX_CONCURRENT_SYNCS) } : {}),
   logger: { debug() {}, info: console.log, warn: console.warn, error: console.error },
 });
 

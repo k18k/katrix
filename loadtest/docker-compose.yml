@@ -37,6 +37,7 @@ services:
       DB_POOL: ${DB_POOL:-20}
       CLUSTER_POOL: ${CLUSTER_POOL:-5}
       CLUSTER: ${CLUSTER:-1}
+      MAX_CONCURRENT_SYNCS: ${MAX_CONCURRENT_SYNCS:-}
       LOCK_STATS: ${LOCK_STATS:-1}
     depends_on:
       postgres:

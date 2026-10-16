@@ -82,6 +82,11 @@ export interface HomeserverOptions {
   /** Maximum `/sync` long-poll duration in ms. Default: 30000. */
   maxSyncTimeoutMs?: number;
   /**
+   * How many `/sync` responses one process builds at once (default 4). Requests woken together
+   * wait in the process instead of queueing their database reads ahead of everything else.
+   */
+  maxConcurrentSyncs?: number;
+  /**
    * Enables `/preview_url`. Off by default because it makes the server fetch arbitrary URLs.
    * Private/internal addresses stay blocked unless `allowPrivateAddresses` is set.
    */
@@ -144,6 +149,7 @@ export interface ResolvedConfig {
   defaultRoomVersion: string;
   accessTokenLifetimeMs: number | null;
   maxSyncTimeoutMs: number;
+  maxConcurrentSyncs: number;
   urlPreviews: { allowPrivateAddresses: boolean } | null;
   serverNotices: Required<ServerNoticesOptions>;
   thumbnailer: Thumbnailer | null;
@@ -236,6 +242,10 @@ export class Homeserver extends EventEmitter {
       defaultRoomVersion,
       accessTokenLifetimeMs: options.accessTokenLifetimeMs ?? null,
       maxSyncTimeoutMs: options.maxSyncTimeoutMs ?? 30000,
+      // Measured with the load test on Postgres (1000 users, 50 messages/s): 4, 8 and 16 gave the
+      // same sync throughput, and 4 the shortest waits for everything else (send p50 48 ms, against
+      // 115 ms with 8 and 171 ms with 16). https://github.com/k18k/matrix-nodejs-homeserver/issues/35
+      maxConcurrentSyncs: Math.max(1, options.maxConcurrentSyncs ?? 4),
       urlPreviews: options.urlPreviews
         ? { allowPrivateAddresses: typeof options.urlPreviews === "object" && !!options.urlPreviews.allowPrivateAddresses }
         : null,
