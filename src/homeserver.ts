@@ -273,7 +273,7 @@ export class Homeserver extends EventEmitter {
     this.userAuth = resolveUserAuth(options.userAuthAdapter);
     this.cluster = options.cluster ?? localCluster();
     this.instanceId = newInstanceId();
-    this.streams = new StreamManager(this.cluster, this.instanceId);
+    this.streams = new StreamManager(this.cluster, this.instanceId, (...args) => this.logger.warn(...args));
     this.notifier = new Notifier(this.cluster, this.instanceId);
 
     this.auth = new AuthService(this);

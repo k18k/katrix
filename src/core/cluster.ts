@@ -113,6 +113,12 @@ export interface StreamLease {
 const WRITER_TTL_MS = 30_000;
 
 /**
+ * A stream position held longer than this holds back /sync for everyone: it is logged with where
+ * it was allocated (https://github.com/k18k/matrix-nodejs-homeserver/issues/48).
+ */
+const SLOW_LEASE_MS = 5_000;
+
+/**
  * Stream positions with multiple writers. Positions are allocated from a global
  * sequence; readers only see positions up to which every writer has finished, so
  * an event committed late with a lower position can never be skipped by /sync.
@@ -141,9 +147,12 @@ export class StreamManager {
   private publishing: Promise<void> = Promise.resolve();
   private nextPublish: Promise<void> | null = null;
 
-  constructor(cluster: ClusterAdapter, instanceId: string) {
+  private warn: (...args: unknown[]) => void;
+
+  constructor(cluster: ClusterAdapter, instanceId: string, warn: (...args: unknown[]) => void = () => {}) {
     this.cluster = cluster;
     this.instanceId = instanceId;
+    this.warn = warn;
     this.heartbeat = setInterval(() => void this.flush().catch(() => {}), WRITER_TTL_MS / 3);
     this.heartbeat.unref?.();
   }
@@ -196,6 +205,14 @@ export class StreamManager {
       this.allocating--;
     }
     let finished = false;
+    // Where the position was allocated, for the slow-lease warning (#48). The stack is only
+    // formatted if the warning is logged.
+    const site = new Error("stream position allocated here");
+    const slow = setTimeout(
+      () => this.warn(`Stream position ${id} held for over ${SLOW_LEASE_MS} ms; /sync waits for it`, site),
+      SLOW_LEASE_MS,
+    );
+    slow.unref?.();
     const timer = setTimeout(() => void lease.done(), 60_000);
     timer.unref?.();
     const lease: StreamLease = {
@@ -204,6 +221,7 @@ export class StreamManager {
         if (finished) return;
         finished = true;
         clearTimeout(timer);
+        clearTimeout(slow);
         this.inflight.delete(id);
         await this.flush();
         this.positionCache = null;
