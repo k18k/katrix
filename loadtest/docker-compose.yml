@@ -67,7 +67,7 @@ services:
 
   k6:
     image: grafana/k6:2.3.0
-    command: ["run", "--summary-export=/results/summary.json", "/scripts/matrix.js"]
+    command: ["run", "--summary-export=/results/${SUMMARY:-summary}.json", "/scripts/matrix.js"]
     environment:
       BASE_URL: http://lb:8008
       ONLINE_USERS: ${ONLINE_USERS:-1000}

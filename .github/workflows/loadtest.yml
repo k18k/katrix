@@ -1,0 +1,111 @@
+name: Load test
+
+# Runs the load test (loadtest/) on a GitHub runner and publishes its results as README badges.
+# Investigation and tuning runs happen locally; this one exists to show where main stands. The
+# numbers describe one GitHub runner (4 CPUs, 16 GB), with the load generator on the same machine.
+on:
+  push:
+    branches: [main]
+    paths: ["src/**", "loadtest/**", "package-lock.json", ".github/workflows/loadtest.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push makes a running load test pointless.
+concurrency:
+  group: loadtest-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ONLINE_USERS: 1000
+  MESSAGES_PER_SECOND: 50
+  ROOMS: 25
+  RAMP: 30s
+  DURATION: 30s
+
+jobs:
+  run:
+    name: Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - name: SQLite, one process
+        run: |
+          # k6 runs as its own user in its container: it has to be able to write the summaries.
+          mkdir -p loadtest/results "$RUNNER_TEMP/lt" && chmod 777 loadtest/results
+          DATA_DIR="$RUNNER_TEMP/lt" node loadtest/server.ts > loadtest/results/sqlite-server.log 2>&1 &
+          server=$!
+          for i in $(seq 60); do curl -sf http://localhost:8008/_matrix/client/versions >/dev/null && break; sleep 1; done
+          docker run --rm --network host -v "$PWD/loadtest/k6:/scripts:ro" -v "$PWD/loadtest/results:/results" \
+            -e BASE_URL=http://localhost:8008 -e ONLINE_USERS -e MESSAGES_PER_SECOND -e ROOMS -e RAMP -e DURATION \
+            grafana/k6:2.3.0 run --summary-export=/results/sqlite.json /scripts/matrix.js || echo "thresholds crossed"
+          kill "$server"
+
+      - name: Postgres scenarios
+        run: |
+          compose="docker compose -p matrix-loadtest -f loadtest/docker-compose.yml"
+          $compose build
+          for scenario in "pg-nocluster 0 1" "pg-cluster-1 1 1" "pg-cluster-5 1 5"; do
+            set -- $scenario
+            SUMMARY=$1 CLUSTER=$2 $compose up --scale "homeserver=$3" --abort-on-container-exit --exit-code-from k6 k6 \
+              || echo "$1: thresholds crossed"
+            $compose logs homeserver --no-log-prefix | grep "req/s" > "loadtest/results/$1-server.log" || true
+            $compose down -v
+          done
+
+      - name: Badges
+        run: |
+          node loadtest/badges.ts loadtest/results/badges \
+            "sqlite=load · SQLite=loadtest/results/sqlite.json" \
+            "pg-nocluster=load · Postgres=loadtest/results/pg-nocluster.json" \
+            "pg-cluster-1=load · Postgres cluster ×1=loadtest/results/pg-cluster-1.json" \
+            "pg-cluster-5=load · Postgres cluster ×5=loadtest/results/pg-cluster-5.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: loadtest-results
+          path: loadtest/results/
+
+  # Commits the badge data to the loadtest-results branch, which the README badges read. Only this
+  # job may write to the repository, and it runs no code from the checkout.
+  publish:
+    name: Publish badges
+    needs: run
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: loadtest-results
+          path: ${{ runner.temp }}/results
+      - name: Commit to loadtest-results
+        env:
+          RESULTS: ${{ runner.temp }}/results
+          SHA: ${{ github.sha }}
+        run: |
+          if git fetch --depth 1 origin loadtest-results; then
+            git checkout -B loadtest-results FETCH_HEAD
+          else
+            git checkout --orphan loadtest-results
+            git rm -rq .
+          fi
+          rm -rf badges results
+          mkdir -p badges results
+          cp "$RESULTS"/badges/*.json badges/
+          cp "$RESULTS"/*.json results/ 2>/dev/null || true
+          printf 'Load test results for %s.\n' "$SHA" > README.md
+          git add -A badges results README.md
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Load test results for $SHA" || exit 0
+          git push origin loadtest-results
