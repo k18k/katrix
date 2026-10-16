@@ -25,6 +25,11 @@ out=${OUT:-$root/complement-results.json}
 
 docker build -q -t "$image" -f "$root/complement/Dockerfile" "$root" >/dev/null
 
+# https://github.com/k18k/matrix-nodejs-homeserver/issues/18: a server that cannot even load its
+# modules made Complement wait for every container until the timeout. Check that first, and stop
+# with the error in seconds.
+docker run --rm --entrypoint node "$image" -e 'import("/app/src/index.ts").catch((e) => { console.error("The homeserver does not load:", e.message); process.exit(1); })'
+
 # Variables prefixed PASS_ reach the homeserver containers (without the prefix). The homeservers
 # reach Complement through their gateway (see complement/entrypoint.sh). MATRIX_DEBUG=1 prints
 # server debug logs (shown by Complement for failing tests).
