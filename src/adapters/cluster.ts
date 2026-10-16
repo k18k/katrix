@@ -35,10 +35,12 @@ export interface PgClusterPoolLike {
 }
 
 const PG_CHANNEL = "matrix_cluster";
+/** How long a lock lease lasts without renewal (it is renewed every third of that while held). */
+const LOCK_TTL_MS = 30_000;
 const MAX_NOTIFY_PAYLOAD = 7000;
 
 /**
- * Cluster adapter backed by PostgreSQL (`pg` Pool): sequences, advisory locks,
+ * Cluster adapter backed by PostgreSQL (`pg` Pool): sequences, leased locks,
  * LISTEN/NOTIFY pub/sub and an expiring key-value table. Lets several homeserver
  * instances share one database.
  */
@@ -110,19 +112,41 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
         [name, value],
       );
     },
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/29: this held a session advisory lock,
+    // and so a pool connection, for as long as `fn` ran, while `fn` queried through the same pool.
+    // With as many keys locked as the pool had connections, every connection belonged to a lock
+    // owner waiting for a free one, and the server hung. A lock is now a lease in the kv table, as
+    // in the Redis adapter: no connection is held, the lease is renewed while `fn` runs, and a
+    // crashed owner's lease expires after LOCK_TTL_MS (an advisory lock went with its connection
+    // at once; that is the price of not holding one).
     lock(key, fn) {
       return queue(key, async () => {
         await ready;
-        const client = await pool.connect();
+        const lockKey = `lock:${key}`;
+        const token = randomUUID();
+        const acquire = async () => {
+          const now = Date.now();
+          const res = await pool.query(
+            `INSERT INTO ${kv} (key, value, expires_at) VALUES ($1, $2, $3)
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at
+             WHERE ${kv}.expires_at IS NOT NULL AND ${kv}.expires_at <= $4 RETURNING key`,
+            [lockKey, token, now + LOCK_TTL_MS, now],
+          );
+          return (res.rowCount ?? 0) > 0;
+        };
+        for (let delay = 5; !(await acquire()); delay = Math.min(delay * 2, 200)) await new Promise((r) => setTimeout(r, delay));
+        const renew = setInterval(
+          () =>
+            void pool
+              .query(`UPDATE ${kv} SET expires_at = $3 WHERE key = $1 AND value = $2`, [lockKey, token, Date.now() + LOCK_TTL_MS])
+              .catch(() => {}),
+          LOCK_TTL_MS / 3,
+        );
         try {
-          await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [key]);
-          try {
-            return await fn();
-          } finally {
-            await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key]);
-          }
+          return await fn();
         } finally {
-          client.release();
+          clearInterval(renew);
+          await pool.query(`DELETE FROM ${kv} WHERE key = $1 AND value = $2`, [lockKey, token]).catch(() => {});
         }
       });
     },
