@@ -471,11 +471,18 @@ async function sync(ctx: RequestContext) {
   }
 }
 
+// https://github.com/k18k/matrix-nodejs-homeserver/issues/26: last_active_ts was written on every
+// /sync, i.e. once per request of every online user, and those writes took about half of the
+// event loop under load. It only feeds last_active_ago, which the spec calls approximate, so it is
+// refreshed at most once a minute (Synapse's granularity too).
+const LAST_ACTIVE_GRANULARITY_MS = 60_000;
+
 async function touchPresence(hs: Homeserver, userId: string, presence: string): Promise<void> {
   const state = presence === "unavailable" ? "unavailable" : "online";
   const row = await hs.db.findOne("presence", [{ field: "user_id", value: userId }]);
   if (row && row.presence === state) {
-    await hs.db.update("presence", [{ field: "user_id", value: userId }], { last_active_ts: Date.now() });
+    if (Date.now() - row.last_active_ts >= LAST_ACTIVE_GRANULARITY_MS)
+      await hs.db.update("presence", [{ field: "user_id", value: userId }], { last_active_ts: Date.now() });
     return;
   }
   await hs.streams.write((stream) =>
