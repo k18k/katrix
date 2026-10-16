@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import type { BatchQuery, DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "#storage/types.ts";
 
 export type SqlDialect = "sqlite" | "postgres" | "mysql";
@@ -104,6 +105,13 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
   };
 
   const placeholder = (i: number) => (dialect === "postgres" ? `$${i}` : "?");
+  // #40: a limit is a parameter, so the statement's text does not change with it.
+  const limitClause = (limit: number, params: unknown[]): string => {
+    const n = Math.max(0, Math.floor(limit));
+    if (dialect === "mysql") return ` LIMIT ${n}`;
+    params.push(n);
+    return ` LIMIT ${placeholder(params.length)}`;
+  };
 
   const buildWhere = (model: string, where: WhereClause[] = [], params: unknown[]): string => {
     if (where.length === 0) return "";
@@ -112,6 +120,12 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
       if (op === "in") {
         const values = w.value as unknown[];
         if (values.length === 0) return "1=0";
+        // https://github.com/k18k/matrix-nodejs-homeserver/issues/40: one array parameter, so the
+        // statement's text does not change with the list's length and it can be prepared once.
+        if (dialect === "postgres") {
+          params.push(values.map((v) => toDb(model, w.field, v)));
+          return `${q(w.field)} = ANY(${placeholder(params.length)})`;
+        }
         const ph = values.map((v) => {
           params.push(toDb(model, w.field, v));
           return placeholder(params.length);
@@ -225,7 +239,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
         const columns = opts.fields?.length ? opts.fields.map(q).join(", ") : "*";
         let sql = `SELECT ${columns} FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
         if (opts.sortBy) sql += ` ORDER BY ${q(opts.sortBy.field)} ${opts.sortBy.direction === "asc" ? "ASC" : "DESC"}`;
-        if (opts.limit !== undefined) sql += ` LIMIT ${Math.max(0, Math.floor(opts.limit))}`;
+        if (opts.limit !== undefined) sql += limitClause(opts.limit, params);
         const rows = await executor.query(sql, params);
         return rows.map((r) => fromDb(model, r));
       },
@@ -246,7 +260,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
                 let inner = `SELECT ${columns} FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
                 const order = opts.sortBy ? `${q(opts.sortBy.field)} ${opts.sortBy.direction === "asc" ? "ASC" : "DESC"}` : "";
                 if (order) inner += ` ORDER BY ${order}`;
-                if (opts.limit !== undefined) inner += ` LIMIT ${Math.max(0, Math.floor(opts.limit))}`;
+                if (opts.limit !== undefined) inner += limitClause(opts.limit, params);
                 return `SELECT ${i} AS i, row_number() OVER (${order ? `ORDER BY ${order.replace(/^"/, 'b."')}` : ""}) AS n, to_jsonb(b) AS r FROM (${inner}) b`;
               });
               const rows = await executor.query(`${parts.join(" UNION ALL ")} ORDER BY i, n`, params);
@@ -285,6 +299,9 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
   return build(rootExecutor, false);
 }
 
+/** Prepared statements an SQLite adapter keeps (#40). */
+const STATEMENT_CACHE = 500;
+
 /** Minimal structural type matching `node:sqlite` DatabaseSync and `better-sqlite3`. */
 export interface SqliteDatabaseLike {
   exec(sql: string): unknown;
@@ -301,10 +318,17 @@ export function sqliteAdapter(db: SqliteDatabaseLike, options: { tablePrefix?: s
   } catch {
     /* in-memory databases */
   }
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/40: prepared statements by text, at
+  // most STATEMENT_CACHE of them: IN lists make a text per length, and without a bound the cache
+  // grew for as long as the process ran. A Map keeps insertion order, so re-inserting on use and
+  // dropping the first entry evicts the least recently used one.
   const cache = new Map<string, ReturnType<SqliteDatabaseLike["prepare"]>>();
   const stmt = (sql: string) => {
     let s = cache.get(sql);
-    if (!s) cache.set(sql, (s = db.prepare(sql)));
+    if (s) cache.delete(sql);
+    else s = db.prepare(sql);
+    cache.set(sql, s);
+    if (cache.size > STATEMENT_CACHE) cache.delete(cache.keys().next().value!);
     return s;
   };
   // A single connection is shared, so statements from other requests must wait
@@ -355,7 +379,7 @@ export function sqliteAdapter(db: SqliteDatabaseLike, options: { tablePrefix?: s
 }
 
 interface PgQueryable {
-  query(text: string, values?: unknown[]): Promise<{ rows: Row[]; rowCount: number | null }>;
+  query(config: { text: string; values?: unknown[]; name?: string }): Promise<{ rows: Row[]; rowCount: number | null }>;
 }
 
 /** Minimal structural type matching `pg.Pool` (or a single `pg.Client`). */
@@ -364,31 +388,94 @@ export interface PgPoolLike extends PgQueryable {
   connect?(): Promise<PgQueryable & { release(): void }>;
 }
 
-const pgExecutor = (conn: PgQueryable): SqlExecutor => ({
-  async query(sql, params) {
-    return (await conn.query(sql, params)).rows;
-  },
-  async execute(sql, params) {
-    return (await conn.query(sql, params)).rowCount ?? 0;
-  },
-});
+/**
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/40: unnamed statements are parsed and
+ * planned by Postgres on every call, which took most of its CPU under load. Named ones are prepared
+ * once per connection and reused. Statement texts depend only on the code (lists and limits are
+ * parameters), so there are a few hundred of them; past `MAX_PREPARED` distinct texts, further
+ * ones run unnamed, which bounds the memory both node-postgres and Postgres keep per connection.
+ */
+const MAX_PREPARED = 2000;
+
+interface StatementNamer {
+  name(sql: string): string | undefined;
+  /** Forget the names given so far: statements are prepared again under new ones. */
+  reset(): void;
+}
+
+function statementNamer(enabled: boolean): StatementNamer {
+  let names = new Map<string, string>();
+  let generation = 0;
+  return {
+    name(sql) {
+      if (!enabled) return undefined;
+      let name = names.get(sql);
+      if (!name && names.size < MAX_PREPARED)
+        names.set(sql, (name = `m${generation}_${createHash("sha1").update(sql).digest("base64url")}`));
+      return name;
+    },
+    reset() {
+      names = new Map();
+      generation++;
+    },
+  };
+}
+
+/**
+ * A prepared `SELECT *` fails once its table has gained a column, for example when another node of
+ * a cluster migrated the schema during a rolling update. Then the statements are prepared again
+ * under new names and the query is retried once.
+ */
+const isStalePlan = (err: unknown) => (err as { code?: string })?.code === "0A000" && /cached plan/.test(String((err as Error).message));
+
+const pgExecutor = (conn: PgQueryable, namer: StatementNamer): SqlExecutor => {
+  const run = async (sql: string, params: unknown[]) => {
+    try {
+      return await conn.query({ text: sql, values: params, name: namer.name(sql) });
+    } catch (err) {
+      if (!isStalePlan(err)) throw err;
+      namer.reset();
+      return conn.query({ text: sql, values: params, name: namer.name(sql) });
+    }
+  };
+  return {
+    async query(sql, params) {
+      return (await run(sql, params)).rows;
+    },
+    async execute(sql, params) {
+      return (await run(sql, params)).rowCount ?? 0;
+    },
+  };
+};
 
 /** PostgreSQL adapter for `pg` (node-postgres). Pass a `Pool` to get transactions. */
-export function postgresAdapter(pool: PgPoolLike, options: { tablePrefix?: string } = {}): DatabaseAdapter {
+export function postgresAdapter(
+  pool: PgPoolLike,
+  options: {
+    tablePrefix?: string;
+    /**
+     * Prepare statements on each connection and reuse them (default true). Turn off behind a
+     * connection pooler that does not support prepared statements, such as PgBouncer before 1.21
+     * or in transaction mode without `max_prepared_statements`.
+     */
+    preparedStatements?: boolean;
+  } = {},
+): DatabaseAdapter {
+  const namer = statementNamer(options.preparedStatements ?? true);
   return sqlAdapter({
     dialect: "postgres",
     tablePrefix: options.tablePrefix,
-    executor: pgExecutor(pool),
+    executor: pgExecutor(pool, namer),
     transaction: pool.connect
       ? async (fn) => {
           const client = await pool.connect!();
           try {
-            await client.query("BEGIN");
-            const result = await fn(pgExecutor(client));
-            await client.query("COMMIT");
+            await client.query({ text: "BEGIN" });
+            const result = await fn(pgExecutor(client, namer));
+            await client.query({ text: "COMMIT" });
             return result;
           } catch (err) {
-            await client.query("ROLLBACK").catch(() => {});
+            await client.query({ text: "ROLLBACK" }).catch(() => {});
             throw err;
           } finally {
             client.release();

@@ -70,8 +70,13 @@ Tables are created on startup. Writes for each event are atomic: SQLite uses
 `BEGIN IMMEDIATE`, Postgres and MySQL use a dedicated pooled connection, and the
 memory adapter keeps an undo log.
 
+The Postgres adapter prepares its statements on each connection and reuses them. Behind a
+pooler that does not support prepared statements (PgBouncer before 1.21, or in transaction
+mode without `max_prepared_statements`), pass `postgresAdapter(pool, { preparedStatements: false })`.
+
 To use another store, implement `DatabaseAdapter` (`create`, `upsert`, `findOne`,
-`findMany`, `update`, `delete`, `max`, and optionally `migrate` and `transaction`).
+`findMany`, `update`, `delete`, `max`, and optionally `migrate`, `transaction`,
+`findManyBatch` and `upsertMany`).
 The exported `schema` describes every model. If your driver can run parameterised
 SQL, `sqlAdapter({ dialect, executor, transaction })` handles the SQL generation for you.
 
