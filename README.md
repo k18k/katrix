@@ -1,5 +1,6 @@
 # matrix-nodejs-homeserver
 
+[![Complement](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Fcomplement-results%2Fbadges%2Fcomplement.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/ci.yml)
 [![Load test: SQLite](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Floadtest-results%2Fbadges%2Fsqlite.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml)
 [![Load test: Postgres](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Floadtest-results%2Fbadges%2Fpg-nocluster.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml)
 [![Load test: Postgres cluster, 1 node](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Floadtest-results%2Fbadges%2Fpg-cluster-1.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml)
@@ -459,6 +460,7 @@ Live status, updated after every Complement run (full or targeted) with
 
 | Run | Top-level | Subtests | Note |
 |---|---|---|---|
+| 10 | 214 / 214 | 851 / 851 | load-test fixes #25–#35: batched /sync reads, sync concurrency limit, Postgres lock leases, group commit (248ac8d) |
 | 9 | 214 / 214 | 851 / 851 | zod, procedures, M/UNSTABLE, SSO confirmation, outbound address policy, admin guard (ec5aa79) |
 | 8 | 214 / 214 | 851 / 851 | Complement runs in a Go container (no submodule, no local Go); account locking/suspension, policy servers, 3PIDs, legacy sync endpoints |
 | 7 | 214 / 214 | 851 / 851 | All Complement tests pass (previous full run: 211/214). Fallback keys stored apart from one-time keys; user directory public-room rules; MSC4311 create event required from v12 |

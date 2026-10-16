@@ -3524,6 +3524,13 @@
    "topTotal": 214,
    "sub": 851,
    "subTotal": 851
+  },
+  {
+   "note": "load-test fixes #25–#35: batched /sync reads, sync concurrency limit, Postgres lock leases, group commit (248ac8d)",
+   "top": 214,
+   "topTotal": 214,
+   "sub": 851,
+   "subTotal": 851
   }
  ]
 }
