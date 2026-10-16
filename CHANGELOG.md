@@ -1,5 +1,25 @@
 # matrix-nodejs-homeserver
 
+## 0.3.3
+
+### Patch Changes
+
+- 7db0092: Batched reads on Postgres return each read's rows as one JSON array. Such statements take half as long for Postgres to plan and are faster to run ([#45](https://github.com/k18k/matrix-nodejs-homeserver/issues/45)).
+- 7d013f6: On Postgres, reads that concurrent requests make at the same moment are sent to the database as one statement, which cuts the per-query overhead under load. In the load test, messages reached other users' `/sync` about 30% sooner. Nothing is cached ([#43](https://github.com/k18k/matrix-nodejs-homeserver/issues/43)).
+  
+  `DatabaseAdapter.findManyBatch` takes an optional second argument, `{ prepare }`, and `SqlExecutor.query` takes a third. Custom adapters that implement them can ignore these.
+- 1b36be8: Push notifications of an event are written with a few multi-row statements instead of one per room member, which takes load off the database when messages are sent in large rooms. Database adapters can provide the new optional `upsertMany(model, rows)`; without it, rows are upserted one by one ([#39](https://github.com/k18k/matrix-nodejs-homeserver/issues/39)).
+- a949e9e: The Postgres adapter prepares statements once per connection and reuses them, instead of having Postgres parse and plan every query again. Lists are now sent as one array parameter (`= ANY($1)`) and limits as parameters. If you use a connection pooler that does not support prepared statements, pass `postgresAdapter(pool, { preparedStatements: false })`. The SQLite adapter's statement cache is now bounded to 500 statements ([#40](https://github.com/k18k/matrix-nodejs-homeserver/issues/40)).
+  
+  Breaking: `PgPoolLike.query` is now called with a config object (`{ text, values, name }`), as `pg.Pool` and `pg.Client` accept. A custom object that only takes `(text, values)` needs updating.
+- 79fb3d5: Push evaluation no longer copies every room member's push rules for each message, which cut the homeserver's CPU use when messages are sent in large rooms ([#41](https://github.com/k18k/matrix-nodejs-homeserver/issues/41)).
+- 7551de3: The SQLite adapter sets `synchronous = NORMAL`, which SQLite recommends with WAL. Commits no longer wait for an fsync on the main thread, so a commit survives a crash of the process, but a power loss can roll back the last few commits. To wait for the disk on every commit, pass `sqliteAdapter(db, { synchronous: "full" })` ([#46](https://github.com/k18k/matrix-nodejs-homeserver/issues/46)).
+- 14b3e10: On SQLite, the homeserver keeps taking new requests while it answers many `/sync` requests at once. Database calls now yield to the event loop every 10 ms, where under load the event loop could be blocked for seconds. In the load test, sends took 0.1 s instead of 0.74 s, and the server kept up with twice as many messages ([#47](https://github.com/k18k/matrix-nodejs-homeserver/issues/47)).
+- 58a442d: Incremental `/sync` finds presence and device-list changes through a new index on `presence.stream`, instead of looking up every user who shares a room. This takes load off the database ([#44](https://github.com/k18k/matrix-nodejs-homeserver/issues/44)).
+- 3c98489: `/sync` builds the changed rooms concurrently, and reads each room's timeline, state, receipts, account data and unread counts together rather than one after another. Each changed room also needs two fewer queries. Syncs on Postgres finish sooner and new messages arrive faster ([#38](https://github.com/k18k/matrix-nodejs-homeserver/issues/38)).
+- 4b3d9e7: `/sync` deletes acknowledged to-device messages only when the previous response delivered some, rather than on every sync. Sync tokens of responses with to-device messages end in `_a` ([#42](https://github.com/k18k/matrix-nodejs-homeserver/issues/42)).
+- fd12482: Unread counts in `/sync` read three columns of the unread notifications through an index on (user, room, position), instead of whole rows with their actions ([#36](https://github.com/k18k/matrix-nodejs-homeserver/issues/36)).
+
 ## 0.3.2
 
 ### Patch Changes
