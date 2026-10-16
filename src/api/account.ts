@@ -11,7 +11,7 @@ import { canonicalAddress, isMedium } from "#core/threepid.ts";
 import { toMsisdn } from "#core/phone.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 // Fields shared by login and registration requests.
 const deviceFields = {
@@ -605,6 +605,6 @@ async function consumeRegistrationToken(hs: Homeserver, body: Record<string, any
 export function wellKnown(hs: Homeserver): Record<string, any> | null {
   if (!hs.config.publicBaseUrl) return null;
   const wk: Record<string, any> = { [M.HOMESERVER]: { base_url: hs.config.publicBaseUrl } };
-  if (hs.config.rtc.transports?.length) wk["org.matrix.msc4143.rtc_foci"] = hs.config.rtc.transports;
+  if (hs.config.rtc.transports?.length) wk[UNSTABLE.ORG.MATRIX.MSC4143.RTC_FOCI] = hs.config.rtc.transports;
   return wk;
 }

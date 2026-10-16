@@ -134,3 +134,94 @@ export const M = deepFreeze({
     SIZE: "m.upload.size",
   },
 } as const);
+
+// Identifiers outside the `m.` namespace: unstable prefixes of MSCs that are not merged yet, and
+// vendor identifiers (`org.matrix.*`, `io.element.*`, ...). Same layout as M, with the whole
+// reverse-DNS name as the path: `org.matrix.cross_signing_reset` is
+// `UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET`. Unstable room versions (`org.matrix.msc3757.10`)
+// are not here; they are listed with the other room versions in src/core/events.ts.
+export const UNSTABLE = deepFreeze({
+  DE: {
+    SORUNOME: {
+      MSC2409: {
+        EPHEMERAL: "de.sorunome.msc2409.ephemeral",
+        PUSH_EPHEMERAL: "de.sorunome.msc2409.push_ephemeral",
+      },
+    },
+  },
+  IO: {
+    ELEMENT: {
+      MSC4306: {
+        RULE: {
+          SUBSCRIBED_THREAD: ".io.element.msc4306.rule.subscribed_thread",
+          UNSUBSCRIBED_THREAD: ".io.element.msc4306.rule.unsubscribed_thread",
+        },
+        THREAD_SUBSCRIPTION: "io.element.msc4306.thread_subscription",
+      },
+      MSC4308: {
+        THREAD_SUBSCRIPTIONS: "io.element.msc4308.thread_subscriptions",
+      },
+    },
+  },
+  ORG: {
+    MATRIX: {
+      CROSS_SIGNING_RESET: "org.matrix.cross_signing_reset",
+      CUSTOM: {
+        HTML: "org.matrix.custom.html",
+      },
+      MSC2732: {
+        FALLBACK_KEYS: "org.matrix.msc2732.fallback_keys",
+      },
+      MSC3202: {
+        DEVICE_ID: "org.matrix.msc3202.device_id",
+      },
+      MSC3381: {
+        POLL: {
+          END: "org.matrix.msc3381.poll.end",
+          RESPONSE: "org.matrix.msc3381.poll.response",
+          START: "org.matrix.msc3381.poll.start",
+        },
+      },
+      MSC3874: {
+        NOT_REL_TYPES: "org.matrix.msc3874.not_rel_types",
+        REL_TYPES: "org.matrix.msc3874.rel_types",
+      },
+      MSC3916: {
+        STABLE: "org.matrix.msc3916.stable",
+      },
+      MSC3930: {
+        RULE: {
+          POLL_END: ".org.matrix.msc3930.rule.poll_end",
+          POLL_END_ONE_TO_ONE: ".org.matrix.msc3930.rule.poll_end_one_to_one",
+          POLL_RESPONSE: ".org.matrix.msc3930.rule.poll_response",
+          POLL_START: ".org.matrix.msc3930.rule.poll_start",
+          POLL_START_ONE_TO_ONE: ".org.matrix.msc3930.rule.poll_start_one_to_one",
+        },
+      },
+      MSC4140: {
+        _: "org.matrix.msc4140",
+        DELAY: "org.matrix.msc4140.delay",
+        MAX_DELAY: "org.matrix.msc4140.max_delay",
+      },
+      MSC4143: {
+        _: "org.matrix.msc4143",
+        RTC_FOCI: "org.matrix.msc4143.rtc_foci",
+      },
+      MSC4155: {
+        ERRCODE: "org.matrix.msc4155.errcode",
+        INVITE_PERMISSION_CONFIG: "org.matrix.msc4155.invite_permission_config",
+      },
+      MSC4222: {
+        _: "org.matrix.msc4222",
+        STATE_AFTER: "org.matrix.msc4222.state_after",
+        USE_STATE_AFTER: "org.matrix.msc4222.use_state_after",
+      },
+      MSC4306: "org.matrix.msc4306",
+      MSC4429: {
+        PROFILE_FIELDS: "org.matrix.msc4429.profile_fields",
+        USERS: "org.matrix.msc4429.users",
+      },
+      SIMPLIFIED_MSC3575: "org.matrix.simplified_msc3575",
+    },
+  },
+} as const);

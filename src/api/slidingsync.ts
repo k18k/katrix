@@ -17,7 +17,7 @@ const slidingSyncBody = bodySchema({
   extensions: lenient(z.record(z.string(), z.unknown())),
 });
 import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "#api/sync.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 /**
  * Simplified sliding sync (MSC4186), as used by Element X.
@@ -404,12 +404,12 @@ async function buildExtensions(
     out.account_data = { global, rooms };
   }
 
-  if (ext["io.element.msc4308.thread_subscriptions"]?.enabled) {
+  if (ext[UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS]?.enabled) {
     const { threadSubscriptionsExtension } = await import("#api/threadsubs.ts");
-    out["io.element.msc4308.thread_subscriptions"] = await threadSubscriptionsExtension(
+    out[UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS] = await threadSubscriptionsExtension(
       hs,
       userId,
-      ext["io.element.msc4308.thread_subscriptions"],
+      ext[UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS],
       since,
       to,
     );

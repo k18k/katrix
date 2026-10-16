@@ -310,6 +310,8 @@ await hs.admin.sendServerNotice("@alice:example.com", { msgtype: M.TEXT, body: "
 
 `M` (exported from the package) holds the Matrix identifiers as one readonly object:
 `M.ROOM.MEMBER` is `"m.room.member"`, `M.LOGIN.PASSWORD` is `"m.login.password"`.
+`UNSTABLE` does the same for unstable and vendor identifiers:
+`UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET` is `"org.matrix.cross_signing_reset"`.
 
 The same operations are available over HTTP at Synapse-compatible `/_synapse/admin/…`
 paths (server admins only), so existing tools keep working.

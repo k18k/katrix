@@ -29,7 +29,7 @@ import type { Homeserver } from "#homeserver.ts";
 import type { Row } from "#storage/types.ts";
 import { copyRoomPushRules } from "#core/pushrules.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 const PARTIAL_REJECTION = "Partial state: ";
 
@@ -1640,7 +1640,7 @@ export class RoomService {
     }
     if (local && (await inviteDecision(this.hs, target, sender)) === "block") {
       throw new MatrixError(403, "M_FORBIDDEN", "This user does not accept invites from you", {
-        "org.matrix.msc4155.errcode": "M_INVITE_BLOCKED",
+        [UNSTABLE.ORG.MATRIX.MSC4155.ERRCODE]: "M_INVITE_BLOCKED",
       });
     }
     await this.requireJoined(roomId, sender);

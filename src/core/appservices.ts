@@ -4,7 +4,7 @@ import { errors, MatrixError } from "#core/errors.ts";
 import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
 import type { StateMap } from "#core/authrules.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 export interface AppServiceNamespace {
   exclusive: boolean;
@@ -23,7 +23,7 @@ export interface AppServiceRegistration {
   rate_limited?: boolean;
   protocols?: string[];
   /** MSC2409: also push ephemeral events (typing, receipts, presence). */
-  "de.sorunome.msc2409.push_ephemeral"?: boolean;
+  [UNSTABLE.DE.SORUNOME.MSC2409.PUSH_EPHEMERAL]?: boolean;
   receive_ephemeral?: boolean;
 }
 
@@ -240,7 +240,7 @@ export class AppServiceService {
   async onEphemeral(roomId: string | null, event: Record<string, any>, users: string[]): Promise<void> {
     for (const svc of this.services) {
       const reg = svc.reg;
-      if (!reg.url || !(reg.receive_ephemeral || reg["de.sorunome.msc2409.push_ephemeral"])) continue;
+      if (!reg.url || !(reg.receive_ephemeral || reg[UNSTABLE.DE.SORUNOME.MSC2409.PUSH_EPHEMERAL])) continue;
       let interested = users.some((u) => this.isInterestedUser(reg, u)) || (roomId !== null && svc.rooms.some((n) => n.re.test(roomId)));
       if (!interested && roomId) {
         for (const u of await this.hs.rooms.joinedMembers(roomId))
@@ -288,7 +288,7 @@ export class AppServiceService {
         const ephemeral = rows.filter((r) => r.kind === "ephemeral").map((r) => r.payload);
         if (ephemeral.length) {
           body.ephemeral = ephemeral;
-          body["de.sorunome.msc2409.ephemeral"] = ephemeral;
+          body[UNSTABLE.DE.SORUNOME.MSC2409.EPHEMERAL] = ephemeral;
         }
         const txnId = String(rows[rows.length - 1].id);
         try {

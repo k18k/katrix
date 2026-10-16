@@ -6,7 +6,7 @@ import { KINDS, loadRules, type Rule } from "#core/pushrules.ts";
 import { isSubscribed } from "#api/threadsubs.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 /** Look up a dotted path; `\.` escapes a literal dot in a key (e.g. `content.m\.relates_to`). */
 export function valueAtPath(obj: unknown, path: string): unknown {
@@ -72,7 +72,7 @@ function conditionMatches(cond: Record<string, any>, ctx: EvalContext): boolean 
       }
       return false;
     }
-    case "io.element.msc4306.thread_subscription":
+    case UNSTABLE.IO.ELEMENT.MSC4306.THREAD_SUBSCRIPTION:
       return ctx.threadSubscribed !== undefined && ctx.threadSubscribed !== null && ctx.threadSubscribed === cond.subscribed;
     case "sender_notification_permission":
       return typeof cond.key === "string" && ctx.senderLevel >= (ctx.notificationLevels[cond.key] ?? 50);

@@ -1,8 +1,9 @@
 import { isObject } from "#core/json.ts";
 import { globMatch } from "#core/glob.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { UNSTABLE } from "#core/m.ts";
 
-export const INVITE_CONFIG_TYPE = "org.matrix.msc4155.invite_permission_config";
+export const INVITE_CONFIG_TYPE = UNSTABLE.ORG.MATRIX.MSC4155.INVITE_PERMISSION_CONFIG;
 
 // Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/2): rules come from users' account data. Compiled to regexes they allowed
 // catastrophic backtracking that hung the server (ReDoS); matched in linear time (core/glob.ts).

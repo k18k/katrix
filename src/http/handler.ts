@@ -3,6 +3,7 @@ import { canonicalJson } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext } from "#http/router.ts";
 import type { Session } from "#core/auth.ts";
+import { UNSTABLE } from "#core/m.ts";
 
 const CORS_HEADERS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -99,7 +100,7 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
           const reg = hs.appservices.byToken(t);
           if (reg) {
             const userId = await hs.appservices.masquerade(reg, url.searchParams.get("user_id"));
-            const deviceId = url.searchParams.get("device_id") ?? url.searchParams.get("org.matrix.msc3202.device_id");
+            const deviceId = url.searchParams.get("device_id") ?? url.searchParams.get(UNSTABLE.ORG.MATRIX.MSC3202.DEVICE_ID);
             if (
               deviceId &&
               !(await hs.db.findOne("devices", [

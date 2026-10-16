@@ -3,7 +3,7 @@ import { errors } from "#core/errors.ts";
 import { isObject } from "#core/json.ts";
 import type { PDU } from "#core/events.ts";
 import type { RequestContext } from "#http/router.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 export interface EventFilter {
   limit?: number;
@@ -19,8 +19,8 @@ export interface EventFilter {
   unread_thread_notifications?: boolean;
   rel_types?: string[];
   not_rel_types?: string[];
-  "org.matrix.msc3874.rel_types"?: string[];
-  "org.matrix.msc3874.not_rel_types"?: string[];
+  [UNSTABLE.ORG.MATRIX.MSC3874.REL_TYPES]?: string[];
+  [UNSTABLE.ORG.MATRIX.MSC3874.NOT_REL_TYPES]?: string[];
 }
 
 export interface SyncFilter {
@@ -28,7 +28,7 @@ export interface SyncFilter {
   event_format?: "client" | "federation";
   /** MSC4429: profile fields whose changes are delivered in sync. */
   profile_fields?: { ids?: string[] };
-  "org.matrix.msc4429.profile_fields"?: { ids?: string[] };
+  [UNSTABLE.ORG.MATRIX.MSC4429.PROFILE_FIELDS]?: { ids?: string[] };
   presence?: EventFilter;
   account_data?: EventFilter;
   room?: {
@@ -64,8 +64,8 @@ export function matchesFilter(
     if (filter.not_rooms?.includes(ev.room_id)) return false;
     if (filter.rooms && !filter.rooms.includes(ev.room_id)) return false;
   }
-  const relTypes = filter.rel_types ?? filter["org.matrix.msc3874.rel_types"];
-  const notRelTypes = filter.not_rel_types ?? filter["org.matrix.msc3874.not_rel_types"];
+  const relTypes = filter.rel_types ?? filter[UNSTABLE.ORG.MATRIX.MSC3874.REL_TYPES];
+  const notRelTypes = filter.not_rel_types ?? filter[UNSTABLE.ORG.MATRIX.MSC3874.NOT_REL_TYPES];
   if (relTypes || notRelTypes) {
     const relType = ev.content?.[M.RELATES_TO]?.rel_type;
     if (relTypes && !relTypes.includes(relType)) return false;

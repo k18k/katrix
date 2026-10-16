@@ -1,6 +1,7 @@
 import { errors, MatrixError } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { UNSTABLE } from "#core/m.ts";
 
 export interface DelayedEventsOptions {
   /** Maximum delay a client may request, in ms. Default: 24 hours. */
@@ -49,7 +50,7 @@ export class DelayedEventService {
   }): Promise<string> {
     if (!Number.isInteger(opts.delayMs) || opts.delayMs < 0) throw errors.invalidParam("Invalid delay");
     if (opts.delayMs > this.maxDelayMs) {
-      throw new MatrixError(400, "M_MAX_DELAY_EXCEEDED", "Delay is too long", { "org.matrix.msc4140.max_delay": this.maxDelayMs });
+      throw new MatrixError(400, "M_MAX_DELAY_EXCEEDED", "Delay is too long", { [UNSTABLE.ORG.MATRIX.MSC4140.MAX_DELAY]: this.maxDelayMs });
     }
     const txnKey = opts.txnId ? `${opts.userId}|${opts.deviceId}|${opts.roomId}|${opts.txnId}` : null;
     if (txnKey) {

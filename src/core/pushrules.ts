@@ -1,6 +1,6 @@
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 export type Rule = Record<string, any>;
 export type Ruleset = Record<string, Rule[]>;
@@ -48,15 +48,19 @@ export function defaultRules(userId: string): Ruleset {
       r(M.RULE.REACTION, [em("type", M.REACTION)], []),
       r(M.RULE.ROOM.SERVER_ACL, [em("type", M.ROOM.SERVER_ACL), em("state_key", "")], []),
       r(M.RULE.SUPPRESS_EDITS, [ep("content.m\\.relates_to.rel_type", M.REPLACE)], []),
-      r(".org.matrix.msc3930.rule.poll_response", [em("type", "org.matrix.msc3381.poll.response")], []),
+      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_RESPONSE, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.RESPONSE)], []),
     ],
     content: [r(M.RULE.CONTAINS_USER_NAME, undefined, [...notify, sound("default"), highlight], { pattern: localpart })],
     // MSC4306: thread replies notify only in subscribed threads.
     postcontent: [
-      r(".io.element.msc4306.rule.unsubscribed_thread", [{ kind: "io.element.msc4306.thread_subscription", subscribed: false }], []),
       r(
-        ".io.element.msc4306.rule.subscribed_thread",
-        [{ kind: "io.element.msc4306.thread_subscription", subscribed: true }],
+        UNSTABLE.IO.ELEMENT.MSC4306.RULE.UNSUBSCRIBED_THREAD,
+        [{ kind: UNSTABLE.IO.ELEMENT.MSC4306.THREAD_SUBSCRIPTION, subscribed: false }],
+        [],
+      ),
+      r(
+        UNSTABLE.IO.ELEMENT.MSC4306.RULE.SUBSCRIBED_THREAD,
+        [{ kind: UNSTABLE.IO.ELEMENT.MSC4306.THREAD_SUBSCRIPTION, subscribed: true }],
         [...notify, sound("default")],
       ),
     ],
@@ -72,17 +76,17 @@ export function defaultRules(userId: string): Ruleset {
       r(M.RULE.ROOM_ONE_TO_ONE, [{ kind: "room_member_count", is: "2" }, em("type", M.ROOM.MESSAGE)], [...notify, sound("default")]),
       r(M.RULE.MESSAGE, [em("type", M.ROOM.MESSAGE)], notify),
       r(
-        ".org.matrix.msc3930.rule.poll_start_one_to_one",
-        [{ kind: "room_member_count", is: "2" }, em("type", "org.matrix.msc3381.poll.start")],
+        UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_START_ONE_TO_ONE,
+        [{ kind: "room_member_count", is: "2" }, em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.START)],
         [...notify, sound("default")],
       ),
       r(
-        ".org.matrix.msc3930.rule.poll_end_one_to_one",
-        [{ kind: "room_member_count", is: "2" }, em("type", "org.matrix.msc3381.poll.end")],
+        UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_END_ONE_TO_ONE,
+        [{ kind: "room_member_count", is: "2" }, em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.END)],
         [...notify, sound("default")],
       ),
-      r(".org.matrix.msc3930.rule.poll_start", [em("type", "org.matrix.msc3381.poll.start")], notify),
-      r(".org.matrix.msc3930.rule.poll_end", [em("type", "org.matrix.msc3381.poll.end")], notify),
+      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_START, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.START)], notify),
+      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_END, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.END)], notify),
       r(M.RULE.ENCRYPTED, [em("type", M.ROOM.ENCRYPTED)], notify),
     ],
   };

@@ -1,6 +1,7 @@
 import { errors } from "#core/errors.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { UNSTABLE } from "#core/m.ts";
 
 /** End-to-end encryption key storage (device keys, one-time keys, cross-signing). */
 export class KeyService {
@@ -79,7 +80,7 @@ export class KeyService {
       }
     }
     // Uploading a fallback key replaces the previous one of the same algorithm.
-    const fallbackKeys = body.fallback_keys ?? body["org.matrix.msc2732.fallback_keys"];
+    const fallbackKeys = body.fallback_keys ?? body[UNSTABLE.ORG.MATRIX.MSC2732.FALLBACK_KEYS];
     if (isObject(fallbackKeys)) {
       for (const [fullId, key] of Object.entries(fallbackKeys)) {
         const [algorithm] = fullId.split(":");

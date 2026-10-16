@@ -12,7 +12,7 @@ import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
 import { matchesFilter, parseRoomEventFilter, type EventFilter } from "#api/filters.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 export const parseToken = (token: string | null): number | null => {
   if (token === null || token === "") return null;
@@ -660,7 +660,7 @@ export function registerRoomRoutes(r: Router): void {
         if (!(s.suspended && ctx.params.eventType === M.ROOM.REDACTION && (await ownEvent(ctx.hs, s.userId, content?.redacts)))) {
           await assertNotSuspended(ctx.hs, s, ctx.params.roomId);
         }
-        const delay = ctx.query.get("org.matrix.msc4140.delay");
+        const delay = ctx.query.get(UNSTABLE.ORG.MATRIX.MSC4140.DELAY);
         if (delay !== null) {
           return {
             delay_id: await ctx.hs.delayedEvents.schedule({
@@ -695,7 +695,7 @@ export function registerRoomRoutes(r: Router): void {
     const key = ctx.params.stateKey ?? "";
     if (!(type === M.ROOM.MEMBER && key === s.userId && content?.membership === "leave")) await assertNotSuspended(ctx.hs, s, roomId);
     await validateStateEvent(ctx.hs, roomId, type, content, key);
-    const delay = ctx.query.get("org.matrix.msc4140.delay");
+    const delay = ctx.query.get(UNSTABLE.ORG.MATRIX.MSC4140.DELAY);
     if (delay !== null) {
       return {
         delay_id: await ctx.hs.delayedEvents.schedule({

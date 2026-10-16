@@ -11,7 +11,7 @@ import { matchesFilter, roomAllowed, validateSyncFilter, type SyncFilter } from 
 import { loadRules } from "#core/pushrules.ts";
 import { fullProfile } from "#core/profile.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 interface SyncToken {
   pos: number;
@@ -61,7 +61,7 @@ export interface SyncParams {
    * back only under the unstable key).
    */
   useStateAfter?: boolean;
-  stateAfterKey?: "state_after" | "org.matrix.msc4222.state_after";
+  stateAfterKey?: "state_after" | typeof UNSTABLE.ORG.MATRIX.MSC4222.STATE_AFTER;
   ignored: Set<string>;
   since: SyncToken | null;
   to: number;
@@ -429,7 +429,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     device_one_time_keys_count: await hs.keys.oneTimeKeyCounts(userId, p.session.deviceId),
     device_unused_fallback_key_types: await hs.keys.unusedFallbackKeyTypes(userId, p.session.deviceId),
   };
-  if (profileUpdates) body["org.matrix.msc4429.users"] = profileUpdates;
+  if (profileUpdates) body[UNSTABLE.ORG.MATRIX.MSC4429.USERS] = profileUpdates;
   if (since !== null) {
     const lists = await hs.keys.changesSince(userId, since, p.to);
     body.device_lists = lists;
@@ -458,9 +458,9 @@ async function sync(ctx: RequestContext) {
     ]);
     const ignored = new Set(Object.keys(ignoredRow?.content?.ignored_users ?? {}));
     const stable = ctx.query.get("use_state_after") === "true";
-    const unstable = ctx.query.get("org.matrix.msc4222.use_state_after") === "true";
+    const unstable = ctx.query.get(UNSTABLE.ORG.MATRIX.MSC4222.USE_STATE_AFTER) === "true";
     const useStateAfter = stable || unstable;
-    const stateAfterKey = stable ? "state_after" : "org.matrix.msc4222.state_after";
+    const stateAfterKey = stable ? "state_after" : UNSTABLE.ORG.MATRIX.MSC4222.STATE_AFTER;
     const { body, empty } = await buildSync(hs, { session, ignored, since, to, filter, fullState, useStateAfter, stateAfterKey });
     const remaining = deadline - Date.now();
     if (!since || !empty || remaining <= 0 || fullState) return body;
@@ -530,7 +530,7 @@ export function registerSyncRoutes(r: Router): void {
  * The initial sync carries current values; users we no longer share any room with get `null`.
  */
 async function profileUpdatesFor(hs: Homeserver, p: SyncParams, memberships: Record<string, any>[]): Promise<Record<string, any> | null> {
-  const ids = (p.filter.profile_fields ?? p.filter["org.matrix.msc4429.profile_fields"])?.ids;
+  const ids = (p.filter.profile_fields ?? p.filter[UNSTABLE.ORG.MATRIX.MSC4429.PROFILE_FIELDS])?.ids;
   if (!Array.isArray(ids) || !ids.length) return null;
   const wanted = new Set(ids.filter((x) => typeof x === "string"));
   const since = p.since?.pos ?? null;

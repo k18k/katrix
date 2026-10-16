@@ -2,7 +2,7 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 interface UiaSession {
   completed: string[];
@@ -32,7 +32,7 @@ export async function requireUia(
 ): Promise<{ threepids: ValidatedThreepid[] }> {
   // With delegated OAuth there are no passwords; sensitive actions are approved at the provider.
   if (hs.oauth && flows.some((f) => f.includes(M.LOGIN.PASSWORD))) {
-    flows = [[M.OAUTH], ["org.matrix.cross_signing_reset"]];
+    flows = [[M.OAUTH], [UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET]];
   }
   // Sessions live in the cluster KV so that any instance can continue them.
   const auth = isObject(body.auth) ? body.auth : null;
@@ -51,7 +51,7 @@ export async function requireUia(
       UIA_TTL_MS,
     );
   const oauthUrl = hs.oauth?.options.accountManagementUrl ?? hs.oauth?.options.issuer;
-  const params = hs.oauth ? { [M.OAUTH]: { url: oauthUrl }, "org.matrix.cross_signing_reset": { url: oauthUrl } } : {};
+  const params = hs.oauth ? { [M.OAUTH]: { url: oauthUrl }, [UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET]: { url: oauthUrl } } : {};
   const challenge = (extra: Record<string, unknown> = {}) =>
     new MatrixError(401, extra.errcode ? String(extra.errcode) : "M_FORBIDDEN", String(extra.error ?? "Authentication required"), {
       flows: flows.map((stages) => ({ stages })),
@@ -74,7 +74,7 @@ export async function requireUia(
         session.completed.add(M.LOGIN.DUMMY);
         break;
       case M.OAUTH:
-      case "org.matrix.cross_signing_reset":
+      case UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET:
         // The client retries after the user approved the action at the provider.
         if (!hs.oauth) throw challenge({ errcode: "M_UNRECOGNIZED", error: "OAuth is not enabled" });
         session.completed.add(auth.type);

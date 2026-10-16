@@ -4,7 +4,7 @@ import { isValidRoomId, isValidUserId } from "#core/ids.ts";
 import type { PDU } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
 import { createUser } from "#api/account.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 export interface AdminRoomOptions {
   /** Enable the admin room and admin bot. Default: true when the option object is given. */
@@ -155,7 +155,7 @@ export class AdminRoomService {
     const content: Record<string, any> = {
       msgtype: M.NOTICE,
       body: text,
-      format: "org.matrix.custom.html",
+      format: UNSTABLE.ORG.MATRIX.CUSTOM.HTML,
       formatted_body: text.includes("\n") ? `<pre><code>${escaped}</code></pre>` : escaped.replace(/`([^`]+)`/g, "<code>$1</code>"),
     };
     if (replyTo) content[M.RELATES_TO] = { [M.IN_REPLY_TO]: { event_id: replyTo } };

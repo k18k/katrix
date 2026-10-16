@@ -5,7 +5,7 @@ import type { Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { canonicalJsonResponse } from "#http/handler.ts";
 import { wellKnown } from "#api/account.ts";
-import { M } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 export const SPEC_VERSIONS = [
   "r0.0.1",
@@ -36,12 +36,12 @@ export function registerMiscRoutes(r: Router): void {
       handler: () => ({
         versions: SPEC_VERSIONS,
         unstable_features: {
-          "org.matrix.simplified_msc3575": true,
-          "org.matrix.msc3916.stable": true,
-          "org.matrix.msc4140": true,
-          "org.matrix.msc4143": true,
-          "org.matrix.msc4222": true,
-          "org.matrix.msc4306": true,
+          [UNSTABLE.ORG.MATRIX.SIMPLIFIED_MSC3575]: true,
+          [UNSTABLE.ORG.MATRIX.MSC3916.STABLE]: true,
+          [UNSTABLE.ORG.MATRIX.MSC4140._]: true,
+          [UNSTABLE.ORG.MATRIX.MSC4143._]: true,
+          [UNSTABLE.ORG.MATRIX.MSC4222._]: true,
+          [UNSTABLE.ORG.MATRIX.MSC4306]: true,
         },
       }),
     }),
