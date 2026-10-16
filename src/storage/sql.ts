@@ -317,9 +317,24 @@ export interface SqliteDatabaseLike {
 }
 
 /** SQLite adapter for `node:sqlite` (`new DatabaseSync(path)`) or `better-sqlite3`. */
-export function sqliteAdapter(db: SqliteDatabaseLike, options: { tablePrefix?: string } = {}): DatabaseAdapter {
+export function sqliteAdapter(
+  db: SqliteDatabaseLike,
+  options: {
+    tablePrefix?: string;
+    /**
+     * When commits reach the disk (SQLite's `synchronous`). `"normal"` (the default): at
+     * checkpoints; a commit survives a crash of the process, and a power loss or operating
+     * system crash can roll back the most recent ones, without corrupting the database.
+     * `"full"`: on every commit, which blocks the event loop for an fsync each time.
+     */
+    synchronous?: "normal" | "full";
+  } = {},
+): DatabaseAdapter {
   try {
     db.exec("PRAGMA journal_mode = WAL");
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/46: with the default (FULL), every
+    // commit waited for an fsync on the main thread. NORMAL is what SQLite recommends with WAL.
+    db.exec(`PRAGMA synchronous = ${options.synchronous === "full" ? "FULL" : "NORMAL"}`);
   } catch {
     /* in-memory databases */
   }

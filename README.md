@@ -66,6 +66,10 @@ mysqlAdapter(mysql.createPool(uri));                 // mysql2/promise
 memoryAdapter();                                     // tests / demos
 ```
 
+SQLite runs in WAL mode with `synchronous = NORMAL`: a commit survives a crash of the process,
+but a power loss can roll back the last few. Pass `sqliteAdapter(db, { synchronous: "full" })`
+to wait for the disk on every commit, at the cost of blocking the event loop each time.
+
 Tables are created on startup. Writes for each event are atomic: SQLite uses
 `BEGIN IMMEDIATE`, Postgres and MySQL use a dedicated pooled connection, and the
 memory adapter keeps an undo log.
