@@ -1,8 +1,9 @@
 // Summarise `go test -json` output from Complement into a Markdown report.
-// Usage: node complement/summarize.ts results.json [passing-list.txt]
+// Usage: node complement/summarize.ts results.json [passing-list.txt] [badge.json]
+//   badge.json: a shields.io endpoint badge with the pass counts (for the README).
 import { readFileSync, writeFileSync } from "node:fs";
 
-const [, , input, passingOut] = process.argv;
+const [, , input, passingOut, badgeOut] = process.argv;
 const results = new Map<string, string>();
 for (const line of readFileSync(input, "utf8").split("\n")) {
   if (!line.startsWith("{")) continue;
@@ -48,4 +49,13 @@ if (passingOut) {
         .join("\n") +
       "\n",
   );
+}
+
+if (badgeOut) {
+  const ran = (list: [string, string][]) => list.length - count(list, "skip");
+  const passed = count(top, "pass");
+  const total = ran(top);
+  const color = total === 0 ? "lightgrey" : passed === total ? "brightgreen" : passed / total >= 0.95 ? "yellow" : "red";
+  const message = total === 0 ? "no result" : `${passed}/${total} tests · ${count(all, "pass")}/${ran(all)} with subtests`;
+  writeFileSync(badgeOut, JSON.stringify({ schemaVersion: 1, label: "Complement", message, color }));
 }

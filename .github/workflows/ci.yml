@@ -70,7 +70,7 @@ jobs:
 
       - name: Summarise results
         if: always()
-        run: node complement/summarize.ts complement-results.json complement-passing.txt >> "$GITHUB_STEP_SUMMARY"
+        run: node complement/summarize.ts complement-results.json complement-passing.txt complement-badge.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check for regressions
         run: |
@@ -88,3 +88,37 @@ jobs:
           path: |
             complement-results.json
             complement-passing.txt
+            complement-badge.json
+
+  # Commits the badge to the complement-results branch, which the README badge reads. Only this
+  # job may write to the repository; it runs no code from the checkout, and only for main.
+  complement-badge:
+    name: Publish Complement badge
+    needs: complement
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.complement.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: complement-results
+          path: ${{ runner.temp }}/results
+      - name: Commit to complement-results
+        env:
+          RESULTS: ${{ runner.temp }}/results
+          SHA: ${{ github.sha }}
+        run: |
+          if git fetch --depth 1 origin complement-results; then
+            git checkout -B complement-results FETCH_HEAD
+          else
+            git switch --orphan complement-results
+          fi
+          mkdir -p badges
+          cp "$RESULTS/complement-badge.json" badges/complement.json
+          printf 'Complement results for %s.\n' "$SHA" > README.md
+          git add badges README.md
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Complement results for $SHA" || exit 0
+          git push origin complement-results
