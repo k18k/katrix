@@ -7,6 +7,7 @@ import { isSubscribed } from "#api/threadsubs.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Row } from "#storage/types.ts";
+import { upsertMany } from "#storage/batch.ts";
 import { M, UNSTABLE } from "#core/m.ts";
 
 /** Look up a dotted path; `\.` escapes a literal dot in a key (e.g. `content.m\.relates_to`). */
@@ -181,9 +182,15 @@ export class PushService {
     // https://github.com/k18k/matrix-nodejs-homeserver/issues/27: each row was its own write, so a
     // message cost one commit per notified member (on SQLite, an fsync each on the main thread).
     // The rows of one event are written in one transaction, then pushed.
-    await this.hs.transaction(async (db) => {
-      for (const n of notified) await db.upsert("notifications", n.row);
-    });
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/39: and with multi-row statements,
+    // not one per member, which made them the most frequent statement under load.
+    await this.hs.transaction((db) =>
+      upsertMany(
+        db,
+        "notifications",
+        notified.map((n) => n.row),
+      ),
+    );
     // https://github.com/k18k/matrix-nodejs-homeserver/issues/31: one query for the pushers of
     // everyone notified, instead of one per member.
     const pushers = await this.hs.db.findMany("pushers", {

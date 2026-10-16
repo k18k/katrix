@@ -61,6 +61,12 @@ export interface DatabaseAdapter {
   create(model: string, data: Row): Promise<void>;
   /** Insert or replace by primary key. */
   upsert(model: string, data: Row): Promise<void>;
+  /**
+   * `upsert` for several rows at once (the last row wins when two share a primary key). Optional;
+   * an adapter that talks to a database server can write them in a few statements. Without it,
+   * callers upsert the rows one by one (see `upsertMany`).
+   */
+  upsertMany?(model: string, rows: Row[]): Promise<void>;
   findOne(model: string, where: WhereClause[]): Promise<Row | null>;
   findMany(model: string, options?: FindManyOptions): Promise<Row[]>;
   update(model: string, where: WhereClause[], data: Row): Promise<number>;

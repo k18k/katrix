@@ -8,3 +8,10 @@ export function readBatch(db: DatabaseAdapter, queries: BatchQuery[]): Promise<R
   if (db.findManyBatch) return db.findManyBatch(queries);
   return Promise.all(queries.map((query) => db.findMany(query.model, query.opts)));
 }
+
+/** Upsert several rows: in a few statements when the adapter can (`upsertMany`), otherwise one by one. */
+export async function upsertMany(db: DatabaseAdapter, model: string, rows: Row[]): Promise<void> {
+  if (rows.length === 0) return;
+  if (db.upsertMany) return db.upsertMany(model, rows);
+  for (const row of rows) await db.upsert(model, row);
+}

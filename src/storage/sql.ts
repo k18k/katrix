@@ -22,6 +22,9 @@ export interface SqlAdapterOptions {
   transaction?<T>(fn: (executor: SqlExecutor) => Promise<T>): Promise<T>;
 }
 
+/** Parameters per statement for multi-row writes: within SQLite's (32766), Postgres' and MySQL's (65535) limits. */
+const MAX_PARAMS = 4000;
+
 const OPS: Record<string, string> = { eq: "=", ne: "<>", lt: "<", lte: "<=", gt: ">", gte: ">=" };
 
 /**
@@ -126,12 +129,23 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
   };
 
   const build = (executor: SqlExecutor, inTx: boolean): DatabaseAdapter => {
-    const insert = async (model: string, data: Row, mode: "insert" | "upsert") => {
-      const fields = Object.keys(data).filter((k) => data[k] !== undefined);
-      const params = fields.map((f) => toDb(model, f, data[f]));
+    // Rows written by one statement share their columns: `insert` is called per group of rows
+    // with the same defined fields.
+    const insert = async (model: string, data: Row | Row[], mode: "insert" | "upsert") => {
+      const rows = Array.isArray(data) ? data : [data];
+      const fields = Object.keys(rows[0]).filter((k) => rows[0][k] !== undefined);
+      const params: unknown[] = [];
+      const values = rows.map(
+        (row) =>
+          `(${fields
+            .map((f) => {
+              params.push(toDb(model, f, row[f]));
+              return placeholder(params.length);
+            })
+            .join(", ")})`,
+      );
       const cols = fields.map(q).join(", ");
-      const ph = fields.map((_, i) => placeholder(i + 1)).join(", ");
-      let sql = `INSERT INTO ${t(model)} (${cols}) VALUES (${ph})`;
+      let sql = `INSERT INTO ${t(model)} (${cols}) VALUES ${values.join(", ")}`;
       if (mode === "upsert") {
         const pk = schema[model]?.primaryKey ?? [];
         const rest = fields.filter((f) => !pk.includes(f));
@@ -182,6 +196,25 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
       },
       create: (model, data) => insert(model, data, "insert"),
       upsert: (model, data) => insert(model, data, "upsert"),
+      // #39: rows grouped by their set of defined fields, de-duplicated by primary key (one
+      // statement may not update a row twice), in chunks that keep parameters within every
+      // driver's limit.
+      async upsertMany(model, rows) {
+        const pk = schema[model]?.primaryKey ?? [];
+        const byKey = new Map<string, Row>();
+        for (const row of rows) byKey.set(JSON.stringify(pk.map((f) => row[f])), row);
+        const groups = new Map<string, Row[]>();
+        for (const row of byKey.values()) {
+          const shape = Object.keys(row)
+            .filter((k) => row[k] !== undefined)
+            .join("\0");
+          groups.set(shape, [...(groups.get(shape) ?? []), row]);
+        }
+        for (const group of groups.values()) {
+          const perStatement = Math.max(1, Math.floor(MAX_PARAMS / Object.keys(group[0]).length));
+          for (let i = 0; i < group.length; i += perStatement) await insert(model, group.slice(i, i + perStatement), "upsert");
+        }
+      },
       async findOne(model, where) {
         const params: unknown[] = [];
         const rows = await executor.query(`SELECT * FROM ${t(model)}${buildWhere(model, where, params)} LIMIT 1`, params);
