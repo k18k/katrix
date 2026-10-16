@@ -146,6 +146,7 @@ export class PushService {
     const pl = powerLevels(state, version);
     const senderLevel = userLevel(pl, event.sender);
     const thread = threadIdOf(event);
+    const notified: { userId: string; row: Record<string, unknown>; tweaks: ReturnType<typeof tweaksOf> }[] = [];
     for (const userId of members) {
       if (userId === event.sender || !this.hs.isLocalUser(userId)) continue;
       const rules = await loadRules(this.hs, userId);
@@ -160,18 +161,30 @@ export class PushService {
       });
       if (!actions || !actions.includes("notify")) continue;
       const tweaks = tweaksOf(actions);
-      await this.hs.db.upsert("notifications", {
-        user_id: userId,
-        room_id: event.room_id,
-        event_id: event.event_id,
-        stream: ev.stream,
-        highlight: tweaks.highlight === true,
-        thread_id: threadIdOf(event),
-        actions,
-        ts: Date.now(),
+      notified.push({
+        userId,
+        tweaks,
+        row: {
+          user_id: userId,
+          room_id: event.room_id,
+          event_id: event.event_id,
+          stream: ev.stream,
+          highlight: tweaks.highlight === true,
+          thread_id: thread,
+          actions,
+          ts: Date.now(),
+        },
       });
-      void this.deliver(userId, ev, state, tweaks).catch((err) => this.hs.logger.warn("Push delivery failed", err));
     }
+    if (notified.length === 0) return;
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/27: each row was its own write, so a
+    // message cost one commit per notified member (on SQLite, an fsync each on the main thread).
+    // The rows of one event are written in one transaction, then pushed.
+    await this.hs.transaction(async (db) => {
+      for (const n of notified) await db.upsert("notifications", n.row);
+    });
+    for (const n of notified)
+      void this.deliver(n.userId, ev, state, n.tweaks).catch((err) => this.hs.logger.warn("Push delivery failed", err));
   }
 
   /** Unread notification counts since the user's read receipts. */
