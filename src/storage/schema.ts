@@ -188,6 +188,8 @@ export const schema: Schema = {
   presence: {
     fields: { user_id: s, presence: s, status_msg: sn, last_active_ts: n, stream: n },
     primaryKey: ["user_id"],
+    // Incremental /sync reads the presence changes after its token (#44).
+    indexes: [["stream"]],
   },
   media: {
     fields: { media_id: s, content_type: sn, filename: sn, size: n, uploader: s, created_ts: n, pending: b },

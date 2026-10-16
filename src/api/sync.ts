@@ -385,6 +385,9 @@ async function changesSince(
   return { touched, receipts, accountData, memberChanges };
 }
 
+/** Presence or device-list changes after a token read without a user filter, at most (#44). */
+const RECENT_CHANGES = 500;
+
 /** How many of a sync's joined rooms are built at once (#38). */
 const JOINED_ROOMS_AT_ONCE = 8;
 
@@ -598,21 +601,44 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     }
   }
   const sharingList = [...sharing];
-  const [presenceRows = [], newlySharedPresence = [], deviceRows] = await readBatch(hs.db, [
-    // Initially everyone's presence; afterwards only what changed since the token (presence rarely
-    // changes, so this is usually nothing, where it used to be a row per user in the user's rooms).
-    {
-      model: "presence",
-      opts: {
-        where: [
-          { field: "user_id", operator: "in", value: wantPresence ? sharingList : [] },
-          ...(since !== null ? [{ field: "stream", operator: "gt" as const, value: since }] : []),
-        ],
-      },
+  // Initially everyone's presence. Afterwards only what changed since the token: presence and
+  // device lists rarely change, so this is usually nothing.
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/44: asking for the changes of the
+  // users sharing a room made the database look each of them up to find nothing, which took most
+  // of its time under load. The changes after the token come through an index on `stream` instead,
+  // and those of users not sharing a room are dropped here; only when there are many (a token from
+  // long ago) are they asked for per user.
+  const recent = (model: string): BatchQuery => ({
+    model,
+    opts: {
+      where: [{ field: "stream", operator: "gt", value: since! }],
+      sortBy: { field: "stream", direction: "asc" },
+      limit: RECENT_CHANGES + 1,
     },
+  });
+  const presenceQuery: BatchQuery =
+    since === null
+      ? { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: wantPresence ? sharingList : [] }] } }
+      : wantPresence
+        ? recent("presence")
+        : { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: [] }] } };
+  let [presenceRows = [], newlySharedPresence = [], deviceRows] = await readBatch(hs.db, [
+    presenceQuery,
     { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: [...newlyShared] }] } },
-    ...(since !== null ? [{ model: "device_list_changes", opts: deviceListChangesQuery(sharing, since) }] : []),
+    ...(since !== null ? [recent("device_list_changes")] : []),
   ]);
+  if (since !== null) {
+    if (presenceRows.length > RECENT_CHANGES)
+      presenceRows = await hs.db.findMany("presence", {
+        where: [
+          { field: "user_id", operator: "in", value: sharingList },
+          { field: "stream", operator: "gt", value: since },
+        ],
+      });
+    else presenceRows = presenceRows.filter((r) => sharing.has(r.user_id));
+    if (deviceRows.length > RECENT_CHANGES)
+      deviceRows = await hs.db.findMany("device_list_changes", deviceListChangesQuery(sharing, since));
+  }
   if (wantPresence) {
     const seen = new Set<string>();
     for (const row of [...presenceRows, ...newlySharedPresence]) {
