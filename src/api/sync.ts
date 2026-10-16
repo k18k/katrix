@@ -103,6 +103,12 @@ export async function roomTimeline(
     { field: "stream", operator: "lte", value: upTo },
   ];
   if (since !== null) where.push({ field: "stream", operator: "gt", value: since });
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/38: the state the client had at the
+  // token does not depend on the timeline, so it is read alongside it rather than after it.
+  const sinceIdsRead = since !== null ? snapshotAt(hs, roomId, since).then((id) => hs.rooms.snapshotIds(id)) : Promise.resolve({});
+  // Every row read while walking the timeline, newest first and without gaps in (since, upTo]:
+  // the state snapshots at the timeline's end and start come from these when they can.
+  const scanned: Row[] = [];
   const events: StoredEvent[] = [];
   let limited = false;
   let cursor = upTo;
@@ -112,6 +118,7 @@ export async function roomTimeline(
     const w = where.map((c) => (c.field === "stream" && c.operator === "lte" ? { ...c, value: cursor } : c));
     const rows = await hs.db.findMany("events", { where: w, sortBy: { field: "stream", direction: "desc" }, limit: batchSize });
     if (rows.length === 0) break;
+    scanned.push(...rows);
     const stored = rows.map((r) => hs.rooms.rowToStored(r));
     const visible = await hs.rooms.filterVisible(p.session.userId, roomId, stored);
     const ok = new Map(visible.map((v) => [v.pdu.event_id, v]));
@@ -152,29 +159,54 @@ export async function roomTimeline(
     events.splice(0, lastGap);
     limited = true;
   }
-  if (!limited && events.length) {
-    // Earlier events exist (even if not visible to us): the timeline is incomplete.
-    const before = await hs.db.findMany("events", {
-      where: [...where.filter((c) => c.operator !== "lte"), { field: "stream", operator: "lt", value: events[0].stream }],
+  const startPos = events.length ? Math.min(...events.map((e) => e.stream)) - 1 : upTo;
+  // #38: the newest event at or before a position, with its state snapshot. The timeline walk read
+  // the room's events from `upTo` down without gaps, so a scanned row answers it when one is old
+  // enough; only otherwise is it a query.
+  const newestAtOrBefore = async (pos: number): Promise<{ stream: number; state_snapshot: number } | null> => {
+    const row = scanned.find((r) => r.stream <= pos);
+    if (row) return row as { stream: number; state_snapshot: number };
+    const rows = await hs.db.findMany("events", {
+      where: [
+        { field: "room_id", value: roomId },
+        { field: "stream", operator: "lte", value: pos },
+      ],
+      sortBy: { field: "stream", direction: "desc" },
       limit: 1,
-      fields: ["stream"],
+      // Only the snapshot ID: the event's JSON is not needed here (https://github.com/k18k/matrix-nodejs-homeserver/issues/33).
+      fields: ["stream", "state_snapshot"],
     });
-    limited = before.length > 0;
+    return (rows[0] as { stream: number; state_snapshot: number } | undefined) ?? null;
+  };
+  const [atStart, atEnd] = await Promise.all([newestAtOrBefore(startPos), startPos === upTo ? null : newestAtOrBefore(upTo)]);
+  const startSnapshot = atStart?.state_snapshot ?? 0;
+  const endSnapshot = startPos === upTo ? startSnapshot : (atEnd?.state_snapshot ?? 0);
+  if (!limited && events.length) {
+    // Earlier events exist (even if not visible to us): the timeline is incomplete. When the
+    // timeline's first event is also its earliest in the stream, the event found for its start
+    // state answers this too (#38).
+    if (events[0].stream === startPos + 1) limited = atStart !== null && (since === null || atStart.stream > since);
+    else {
+      const before = await hs.db.findMany("events", {
+        where: [...where.filter((c) => c.operator !== "lte"), { field: "stream", operator: "lt", value: events[0].stream }],
+        limit: 1,
+        fields: ["stream"],
+      });
+      limited = before.length > 0;
+    }
   }
 
-  const startPos = events.length ? Math.min(...events.map((e) => e.stream)) - 1 : upTo;
   // State section (as Synapse computes it): state at the timeline's start, plus state at its
   // end that the timeline does not itself carry, minus what the client already had at `since`.
   // The end-state part covers state changes on forks merged into the timeline.
-  const startState = await hs.rooms.stateAtSnapshot(await snapshotAt(hs, roomId, startPos));
+  const [startState, endState] = await Promise.all([hs.rooms.stateAtSnapshot(startSnapshot), hs.rooms.stateAtSnapshot(endSnapshot)]);
   const timelineIds = new Set(events.map((e) => e.pdu.event_id));
-  const endState = await hs.rooms.stateAtSnapshot(await snapshotAt(hs, roomId, upTo));
   for (const [key, ev] of endState) {
     if (timelineIds.has(ev.event_id) || startState.get(key)?.event_id === ev.event_id) continue;
     if (events.some((e) => e.pdu.state_key !== undefined && stateKey(e.pdu.type, e.pdu.state_key) === key)) continue;
     startState.set(key, ev);
   }
-  const sinceIds = since !== null ? await hs.rooms.snapshotIds(await snapshotAt(hs, roomId, since)) : {};
+  const sinceIds: Record<string, string> = await sinceIdsRead;
   const sf = p.filter.room?.state;
   const lazy = !!sf?.lazy_load_members;
   const senders = new Set(events.map((e) => e.pdu.sender));
@@ -201,7 +233,6 @@ export async function roomTimeline(
   // MSC4222: state at the end of the timeline, relative to what the client had at `since`.
   const stateAfter: PDU[] = [];
   if (p.useStateAfter) {
-    const endState = await hs.rooms.stateAtSnapshot(await snapshotAt(hs, roomId, upTo));
     for (const [key, ev] of endState) {
       if (sinceIds[key] === ev.event_id) continue;
       const [type, sk] = splitStateKey(key);
@@ -347,6 +378,23 @@ async function changesSince(
   return { touched, receipts, accountData, memberChanges };
 }
 
+/** How many of a sync's joined rooms are built at once (#38). */
+const JOINED_ROOMS_AT_ONCE = 8;
+
+/** `fn` over `items` with at most `limit` running at once; results in input order. */
+async function mapConcurrently<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<string, any>; empty: boolean; nextToDevice: number }> {
   const userId = p.session.userId;
   const since = p.since?.pos ?? null;
@@ -408,6 +456,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   const leave: Record<string, any> = {};
   const knock: Record<string, any> = {};
   let empty = true;
+  const joinedBuilds: Row[] = [];
 
   for (const m of memberships) {
     if (m.stream > p.to || !roomAllowed(p.filter, m.room_id)) continue;
@@ -417,48 +466,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     if (m.membership === "join") {
       // Nothing new in this room since the token: leave it out without asking the database.
       if (changes && !changed && !changes.touched.has(roomId) && hs.typing.typingSince(roomId, since) === null) continue;
-      // MSC3902: without lazy-loaded members the room is withheld until its full state is known,
-      // and then sent as if newly joined.
-      if (!p.filter.room?.state?.lazy_load_members && (await hs.partialState.isPartial(roomId))) continue;
-      const completedAt = await hs.partialState.completedAt(roomId);
-      const initial =
-        since === null || p.fullState || m.stream > since || (completedAt !== null && completedAt > since && completedAt <= p.to);
-      const { timeline, state, stateAfter, timelineEvents } = await roomTimeline(hs, p, roomId, initial ? null : since, p.to);
-      const ephemeral = await roomEphemeral(hs, p, roomId, changes ? (changes.receipts.get(roomId) ?? []) : undefined);
-      const roomAccountData = await accountData(hs, p, roomId, changes ? (changes.accountData.get(roomId) ?? []) : undefined);
-      if (
-        !initial &&
-        timelineEvents.length === 0 &&
-        state.length === 0 &&
-        stateAfter.length === 0 &&
-        ephemeral.length === 0 &&
-        roomAccountData.length === 0
-      )
-        continue;
-      const stateSection = p.useStateAfter
-        ? { [p.stateAfterKey ?? "state_after"]: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } }
-        : { state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) } };
-      join[roomId] = {
-        timeline,
-        ...stateSection,
-        ephemeral: { events: ephemeral },
-        account_data: { events: roomAccountData },
-        summary: await roomSummary(hs, roomId, userId),
-      };
-      const counts = await hs.push.unreadCounts(userId, roomId);
-      if (p.filter.room?.timeline?.unread_thread_notifications) {
-        join[roomId].unread_notifications = counts.room;
-        if (Object.keys(counts.threads).length) join[roomId].unread_thread_notifications = counts.threads;
-      } else {
-        // Without thread-aware clients, thread notifications count towards the room.
-        const total = { ...counts.room };
-        for (const t of Object.values(counts.threads)) {
-          total.notification_count += t.notification_count;
-          total.highlight_count += t.highlight_count;
-        }
-        join[roomId].unread_notifications = total;
-      }
-      empty = false;
+      joinedBuilds.push(m);
     } else if (m.membership === "invite") {
       if (!changed && !p.fullState) continue;
       // Invites to rooms on other servers are stored as outliers.
@@ -495,6 +503,65 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       empty = false;
     }
   }
+
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/38: the changed rooms were built one
+  // after another, each with its reads in sequence, so a sync took as many round trips as its
+  // rooms had reads. They are built concurrently now (a few at a time, so an initial sync of many
+  // rooms does not take the whole database pool), and a room's independent reads run together.
+  const joinedRoom = async (m: Row): Promise<Record<string, any> | null> => {
+    const roomId: string = m.room_id;
+    // MSC3902: without lazy-loaded members the room is withheld until its full state is known,
+    // and then sent as if newly joined.
+    if (!p.filter.room?.state?.lazy_load_members && (await hs.partialState.isPartial(roomId))) return null;
+    const completedAt = await hs.partialState.completedAt(roomId);
+    const initial =
+      since === null || p.fullState || m.stream > since || (completedAt !== null && completedAt > since && completedAt <= p.to);
+    const [{ timeline, state, stateAfter, timelineEvents }, ephemeral, roomAccountData, summary, counts] = await Promise.all([
+      roomTimeline(hs, p, roomId, initial ? null : since, p.to),
+      roomEphemeral(hs, p, roomId, changes ? (changes.receipts.get(roomId) ?? []) : undefined),
+      accountData(hs, p, roomId, changes ? (changes.accountData.get(roomId) ?? []) : undefined),
+      roomSummary(hs, roomId, userId),
+      hs.push.unreadCounts(userId, roomId),
+    ]);
+    if (
+      !initial &&
+      timelineEvents.length === 0 &&
+      state.length === 0 &&
+      stateAfter.length === 0 &&
+      ephemeral.length === 0 &&
+      roomAccountData.length === 0
+    )
+      return null;
+    const stateSection = p.useStateAfter
+      ? { [p.stateAfterKey ?? "state_after"]: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } }
+      : { state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) } };
+    const room: Record<string, any> = {
+      timeline,
+      ...stateSection,
+      ephemeral: { events: ephemeral },
+      account_data: { events: roomAccountData },
+      summary,
+    };
+    if (p.filter.room?.timeline?.unread_thread_notifications) {
+      room.unread_notifications = counts.room;
+      if (Object.keys(counts.threads).length) room.unread_thread_notifications = counts.threads;
+    } else {
+      // Without thread-aware clients, thread notifications count towards the room.
+      const total = { ...counts.room };
+      for (const t of Object.values(counts.threads)) {
+        total.notification_count += t.notification_count;
+        total.highlight_count += t.highlight_count;
+      }
+      room.unread_notifications = total;
+    }
+    return room;
+  };
+  const built = await mapConcurrently(joinedBuilds, JOINED_ROOMS_AT_ONCE, joinedRoom);
+  joinedBuilds.forEach((m, i) => {
+    if (!built[i]) return;
+    join[m.room_id] = built[i];
+    empty = false;
+  });
 
   const globalAccountData = await accountData(hs, p, "", changes ? (changes.accountData.get("") ?? []) : undefined);
   if (since === null && !globalAccountData.some((e) => e.type === M.PUSH_RULES)) {
