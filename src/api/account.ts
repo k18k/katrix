@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import { LOCALPART_RE } from "#core/ids.ts";
@@ -74,7 +74,8 @@ async function validateNewUsername(hs: Homeserver, raw: unknown): Promise<string
 
 async function generateLocalpart(hs: Homeserver): Promise<string> {
   for (;;) {
-    const candidate = String(Math.floor(Math.random() * 1e9));
+    // Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/6): this used Math.random, so generated user IDs were predictable (CWE-338).
+    const candidate = String(randomInt(1e9));
     if (!(await hs.db.findOne("users", [{ field: "localpart", value: candidate }]))) return candidate;
   }
 }
@@ -457,6 +458,8 @@ export function registerAccountRoutes(r: Router): void {
     if (body.nonce === undefined || !(await hs.cluster.get(`regnonce:${body.nonce}`))) throw errors.unknown("Unrecognised nonce");
     await hs.cluster.delete(`regnonce:${body.nonce}`);
     const admin = body.admin === true;
+    // HMAC-SHA1 is what Synapse's shared-secret registration protocol specifies (tools compute the
+    // same MAC). It only authenticates this request; passwords are stored with scrypt.
     const expected = createHmac("sha1", secret)
       .update(`${body.nonce}\u0000${body.username}\u0000${body.password}\u0000${admin ? "admin" : "notadmin"}`)
       .digest("hex");

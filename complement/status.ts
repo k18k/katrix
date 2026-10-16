@@ -37,6 +37,8 @@ for (const file of inputs) {
       continue;
     }
     if (!ev.Test || !["pass", "fail", "skip"].includes(ev.Action ?? "")) continue;
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/8: test names are used as keys; names like `__proto__` would write to the prototype.
+    if (["__proto__", "constructor", "prototype"].includes(ev.Test)) continue;
     ledger.tests[ev.Test] = { status: ev.Action!, pkg: (ev.Package ?? "").replace(/^.*\/tests\/?/, "") || "federation" };
   }
 }

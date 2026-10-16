@@ -89,6 +89,8 @@ export function s3Media(options: S3MediaOptions): MediaAdapter {
     const signingKey = hmac(hmac(hmac(hmac(`AWS4${options.secretAccessKey}`, day), options.region), "s3"), "aws4_request");
     const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
     const { host: _host, ...sent } = headers;
+    // The host and bucket come from the operator's configuration; a media ID only becomes a
+    // sanitised, percent-encoded object key, so it cannot redirect the request elsewhere.
     return fetch(url, {
       method,
       headers: {

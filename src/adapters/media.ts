@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, resolve } from "node:path";
 
 export interface MediaMetadata {
   contentType: string | null;
@@ -74,7 +74,14 @@ export function memoryMedia(): MediaAdapter {
 
 /** Stores media as files inside `directory`. */
 export function filesystemMedia(directory: string): MediaAdapter {
-  const path = (id: string) => join(directory, id.replace(/[^A-Za-z0-9_-]/g, "_"));
+  const root = resolve(directory);
+  // Media IDs become file names: anything but [A-Za-z0-9_-] is replaced, so an ID cannot name a
+  // path outside the directory. The resolved path is checked as well, as a second line of defence.
+  const path = (id: string) => {
+    const file = resolve(root, id.replace(/[^A-Za-z0-9_-]/g, "_"));
+    if (dirname(file) !== root) throw new Error("Invalid media ID");
+    return file;
+  };
   let ready: Promise<unknown> | null = null;
   return {
     async put(id, data) {

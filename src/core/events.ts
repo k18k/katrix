@@ -38,7 +38,14 @@ export const SUPPORTED_ROOM_VERSIONS = [...STABLE_ROOM_VERSIONS, ...UNSTABLE_ROO
 export const DEFAULT_ROOM_VERSION = "10";
 
 /** The stable version an (experimental) room version is based on, e.g. "org.matrix.msc3757.10" → 10. */
-export const versionNum = (v: string) => Number.parseInt(/(\d+)$/.exec(v)?.[1] ?? v, 10);
+// Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/3): room versions come from other servers, and the regex `/(\d+)$/` this used
+// took quadratic time on long digit runs (ReDoS, CWE-1333), blocking the server. A linear scan
+// reads the trailing digits instead.
+export const versionNum = (v: string) => {
+  let start = v.length;
+  while (start > 0 && v.charCodeAt(start - 1) >= 48 && v.charCodeAt(start - 1) <= 57) start--;
+  return Number.parseInt(start < v.length ? v.slice(start) : v, 10);
+};
 
 export const roomVersionFeatures = (version: string) => {
   const n = versionNum(version);

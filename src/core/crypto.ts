@@ -5,6 +5,7 @@ import {
   createPublicKey,
   generateKeyPairSync,
   randomBytes,
+  randomInt,
   scrypt,
   sign,
   timingSafeEqual,
@@ -23,11 +24,12 @@ export function urlSafeBase64(buf: Uint8Array): string {
   return unpaddedBase64(buf).replace(/\+/g, "-").replace(/\//g, "_");
 }
 
+// Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/5): this used `byte % 52`, which made some letters more likely than others
+// (modulo bias, CWE-1241) in nonces, session IDs and tokens. randomInt samples uniformly.
 export function randomString(length: number): string {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  const bytes = randomBytes(length);
   let out = "";
-  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
+  for (let i = 0; i < length; i++) out += alphabet[randomInt(alphabet.length)];
   return out;
 }
 

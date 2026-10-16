@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/7): the jobs run pull request code, so the token may only read the repository.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Typecheck

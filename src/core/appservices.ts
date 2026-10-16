@@ -33,6 +33,7 @@ interface CompiledService {
   rooms: { exclusive: boolean; re: RegExp }[];
 }
 
+// Namespaces are regular expressions by spec, from registration files the operator installs.
 const compile = (ns: AppServiceNamespace[] = []) => ns.map((n) => ({ exclusive: !!n.exclusive, re: new RegExp(`^(?:${n.regex})$`) }));
 
 /**
@@ -64,11 +65,23 @@ function parseScalar(raw: string): unknown {
   return v;
 }
 
+/**
+ * Remove a `# comment` (at the start of the line, or after whitespace).
+ * Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/4): this was the regex `/\s+#.*$/`, polynomial on long whitespace runs (ReDoS,
+ * CWE-1333); registration files are operator-provided, but a malformed one could hang startup.
+ */
+function stripComment(line: string): string {
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === "#" && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i).trimEnd();
+  }
+  return line;
+}
+
 /** Minimal YAML reader (indentation-based maps, "- " lists, scalars, comments). */
 function parseSimpleYaml(text: string): unknown {
   const lines = text
     .split(/\r?\n/)
-    .map((l) => l.replace(/\s+#.*$/, "").replace(/^#.*$/, ""))
+    .map(stripComment)
     .filter((l) => l.trim() !== "")
     .map((l) => ({ indent: l.length - l.trimStart().length, text: l.trim() }));
   let i = 0;
