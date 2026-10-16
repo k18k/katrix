@@ -7,6 +7,7 @@ import type { Homeserver } from "#homeserver.ts";
 import type { BatchQuery, Row } from "#storage/types.ts";
 import { readBatch } from "#storage/batch.ts";
 import { Semaphore } from "#core/semaphore.ts";
+import { deviceListChangesQuery } from "#core/keys.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
@@ -507,25 +508,43 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   const nextToDevice = toDevice.length ? toDevice[toDevice.length - 1].stream : (p.since?.toDevice ?? 0);
   if (toDevice.length) empty = false;
 
-  // Presence for users sharing rooms.
+  // Presence for users sharing rooms, and (incrementally) device-list changes: one batch (#34).
   const presenceEvents: Record<string, any>[] = [];
-  if (!p.filter.presence?.types || p.filter.presence.types.length) {
-    const sharing = await hs.rooms.usersSharingRooms(userId);
-    // Users we started sharing a room with since the last sync get their presence sent regardless of age.
-    const newlyShared = new Set<string>();
-    if (since !== null) {
-      const changes = await memberChanges();
-      const myRooms = new Set(memberships.filter((m) => m.membership === "join").map((m) => m.room_id));
-      for (const c of changes) {
-        if (c.membership !== "join" || !myRooms.has(c.room_id)) continue;
-        if (c.user_id === userId) for (const u of await hs.rooms.joinedMembers(c.room_id)) newlyShared.add(u);
-        else newlyShared.add(c.user_id);
-      }
+  const wantPresence = !p.filter.presence?.types || p.filter.presence.types.length > 0;
+  const sharing = await hs.rooms.usersSharingRooms(userId);
+  const joinedRooms = memberships.filter((m) => m.membership === "join").map((m) => m.room_id as string);
+  // Users we started sharing a room with since the last sync get their presence sent regardless of age.
+  const newlyShared = new Set<string>();
+  if (since !== null && wantPresence) {
+    const myRooms = new Set(joinedRooms);
+    for (const c of await memberChanges()) {
+      if (c.membership !== "join" || !myRooms.has(c.room_id)) continue;
+      if (c.user_id === userId) for (const u of await hs.rooms.joinedMembers(c.room_id)) newlyShared.add(u);
+      else newlyShared.add(c.user_id);
     }
-    const where: any[] = [{ field: "user_id", operator: "in", value: [...sharing] }];
-    for (const row of await hs.db.findMany("presence", { where })) {
+  }
+  const sharingList = [...sharing];
+  const [presenceRows = [], newlySharedPresence = [], deviceRows] = await readBatch(hs.db, [
+    // Initially everyone's presence; afterwards only what changed since the token (presence rarely
+    // changes, so this is usually nothing, where it used to be a row per user in the user's rooms).
+    {
+      model: "presence",
+      opts: {
+        where: [
+          { field: "user_id", operator: "in", value: wantPresence ? sharingList : [] },
+          ...(since !== null ? [{ field: "stream", operator: "gt" as const, value: since }] : []),
+        ],
+      },
+    },
+    { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: [...newlyShared] }] } },
+    ...(since !== null ? [{ model: "device_list_changes", opts: deviceListChangesQuery(sharing, since) }] : []),
+  ]);
+  if (wantPresence) {
+    const seen = new Set<string>();
+    for (const row of [...presenceRows, ...newlySharedPresence]) {
+      if (seen.has(row.user_id)) continue;
+      seen.add(row.user_id);
       if (row.stream > p.to) continue;
-      if (since !== null && row.stream <= since && !newlyShared.has(row.user_id)) continue;
       const content: Record<string, any> = { presence: row.presence, last_active_ago: Date.now() - row.last_active_ts };
       if (row.status_msg) content.status_msg = row.status_msg;
       if (row.presence === "online") content.currently_active = true;
@@ -550,7 +569,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   };
   if (profileUpdates) body[UNSTABLE.ORG.MATRIX.MSC4429.USERS] = profileUpdates;
   if (since !== null) {
-    const lists = await hs.keys.changesSince(userId, since, p.to, await memberChanges());
+    const lists = await hs.keys.changesSince(userId, since, p.to, { memberChanges: await memberChanges(), deviceRows, joinedRooms });
     body.device_lists = lists;
     if (lists.changed.length || lists.left.length) empty = false;
   }
