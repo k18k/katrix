@@ -19,19 +19,17 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           registry-url: https://registry.npmjs.org
-          cache: npm
+          # No dependency cache in this privileged job: a poisoned cache could reach the published package.
       - run: npm ci
       - id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: npm run version-packages
-          publish: npm run release
-          title: Release
-          commit: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          version-script: npm run version-packages
+          publish-script: npm run release
+          pr-title: Release
+          commit-message: Release
