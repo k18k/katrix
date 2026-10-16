@@ -114,14 +114,35 @@ function cacheFor(hs: Homeserver): Map<string, Ruleset> {
   return c;
 }
 
+/** A user's push rules, as a copy the caller may change. */
 export async function loadRules(hs: Homeserver, userId: string): Promise<Ruleset> {
+  return structuredClone(await readOnlyRules(hs, userId));
+}
+
+/**
+ * A user's push rules, shared and frozen: for callers that only read them.
+ *
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/41: push evaluation copied every
+ * member's rules for every message, about 6% of the CPU under load, though it only reads them.
+ * The cached rulesets are deep-frozen, so a caller that tries to change one fails loudly instead
+ * of changing everyone's.
+ */
+export async function readOnlyRules(hs: Homeserver, userId: string): Promise<Readonly<Ruleset>> {
   const cached = cacheFor(hs).get(userId);
-  if (cached) return structuredClone(cached);
-  const rules = await readRules(hs, userId);
+  if (cached) return cached;
+  const rules = deepFreeze(await readRules(hs, userId));
   const cache = cacheFor(hs);
   if (cache.size > 5000) cache.clear();
   cache.set(userId, rules);
-  return structuredClone(rules);
+  return rules;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const v of Object.values(value)) deepFreeze(v);
+  }
+  return value;
 }
 
 async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
@@ -139,7 +160,7 @@ async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
 }
 
 export async function saveRules(hs: Homeserver, userId: string, rules: Ruleset): Promise<void> {
-  cacheFor(hs).set(userId, structuredClone(rules));
+  cacheFor(hs).set(userId, deepFreeze(structuredClone(rules)));
   void hs.cluster.publish("pushrules", { from: hs.instanceId, userId }).catch(() => {});
   await hs.streams.write((stream) =>
     hs.db.upsert("account_data", { user_id: userId, room_id: "", type: M.PUSH_RULES, content: { global: rules }, stream }),

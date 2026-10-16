@@ -2,7 +2,7 @@ import { getState, powerLevels, userLevel, type StateMap } from "#core/authrules
 import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
 import { isObject } from "#core/json.ts";
 import { globMatch, globSearchWords } from "#core/glob.ts";
-import { KINDS, loadRules, type Rule } from "#core/pushrules.ts";
+import { KINDS, readOnlyRules, type Rule } from "#core/pushrules.ts";
 import { isSubscribed } from "#api/threadsubs.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
@@ -151,7 +151,7 @@ export class PushService {
     const notified: { userId: string; row: Record<string, unknown>; tweaks: ReturnType<typeof tweaksOf> }[] = [];
     for (const userId of members) {
       if (userId === event.sender || !this.hs.isLocalUser(userId)) continue;
-      const rules = await loadRules(this.hs, userId);
+      const rules = await readOnlyRules(this.hs, userId);
       const actions = evaluateRules(rules, {
         event,
         userId,

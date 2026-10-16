@@ -398,8 +398,8 @@ async function buildExtensions(
       else if (roomIds.includes(r.room_id) || since !== null) (rooms[r.room_id] ??= []).push(ev);
     }
     if (since === null && !global.some((e) => e.type === M.PUSH_RULES)) {
-      const { loadRules } = await import("#core/pushrules.ts");
-      global.push({ type: M.PUSH_RULES, content: { global: await loadRules(hs, userId) } });
+      const { readOnlyRules } = await import("#core/pushrules.ts");
+      global.push({ type: M.PUSH_RULES, content: { global: await readOnlyRules(hs, userId) } });
     }
     out.account_data = { global, rooms };
   }

@@ -12,7 +12,7 @@ import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
 import { matchesFilter, roomAllowed, validateSyncFilter, type SyncFilter } from "#api/filters.ts";
-import { loadRules } from "#core/pushrules.ts";
+import { readOnlyRules } from "#core/pushrules.ts";
 import { fullProfile } from "#core/profile.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
 import { M, UNSTABLE } from "#core/m.ts";
@@ -565,7 +565,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
 
   const globalAccountData = await accountData(hs, p, "", changes ? (changes.accountData.get("") ?? []) : undefined);
   if (since === null && !globalAccountData.some((e) => e.type === M.PUSH_RULES)) {
-    globalAccountData.push({ type: M.PUSH_RULES, content: { global: await loadRules(hs, userId) } });
+    globalAccountData.push({ type: M.PUSH_RULES, content: { global: await readOnlyRules(hs, userId) } });
   }
   if (globalAccountData.length) empty = false;
 
