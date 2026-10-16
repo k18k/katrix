@@ -131,7 +131,9 @@ export const schema: Schema = {
   memberships: {
     fields: { room_id: s, user_id: s, membership: s, event_id: s, stream: n, forgotten: b },
     primaryKey: ["room_id", "user_id"],
-    indexes: [["user_id"]],
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/28: every incremental /sync asks for
+    // the memberships changed since its token; without an index on stream that scanned the table.
+    indexes: [["user_id"], ["stream"]],
   },
   room_aliases: {
     fields: { alias: s, room_id: s, creator: s },
