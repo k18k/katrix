@@ -1,6 +1,7 @@
 import { errors } from "#core/errors.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
 import { UNSTABLE } from "#core/m.ts";
 
 /** End-to-end encryption key storage (device keys, one-time keys, cross-signing). */
@@ -100,6 +101,8 @@ export class KeyService {
         { field: "device_id", value: deviceId },
         { field: "fallback", value: false },
       ],
+      // Counted on every /sync: only the algorithm, not the keys.
+      fields: ["algorithm"],
     });
     const counts: Record<string, number> = { signed_curve25519: 0 };
     for (const r of rows) counts[r.algorithm] = (counts[r.algorithm] ?? 0) + 1;
@@ -113,6 +116,7 @@ export class KeyService {
         { field: "device_id", value: deviceId },
         { field: "used", value: false },
       ],
+      fields: ["algorithm"],
     });
     return [...new Set(rows.map((r) => r.algorithm))];
   }
@@ -348,7 +352,7 @@ export class KeyService {
   }
 
   /** Users (sharing a room with `userId`) whose device lists changed after `since`. */
-  async changesSince(userId: string, since: number, upTo: number): Promise<{ changed: string[]; left: string[] }> {
+  async changesSince(userId: string, since: number, upTo: number, memberChanges?: Row[]): Promise<{ changed: string[]; left: string[] }> {
     const sharing = await this.hs.rooms.usersSharingRooms(userId);
     // https://github.com/k18k/matrix-nodejs-homeserver/issues/31: this read every device-list change
     // on the server since `since`; it asks for the users sharing a room only (up to a size where an
@@ -363,7 +367,7 @@ export class KeyService {
     for (const r of rows) if (r.stream <= upTo && sharing.has(r.user_id)) changed.add(r.user_id);
     // Users we newly share a room with also count as changed.
     const left = new Set<string>();
-    const memberRows = await this.hs.rooms.membershipChangesSince(userId, since);
+    const memberRows = memberChanges ?? (await this.hs.rooms.membershipChangesSince(userId, since));
     const myRooms = new Set([
       ...(await this.hs.rooms.roomsForUser(userId)),
       ...memberRows.filter((m) => m.user_id === userId).map((m) => m.room_id),

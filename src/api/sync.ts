@@ -332,6 +332,10 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   const since = p.since?.pos ?? null;
   const memberships = await hs.db.findMany("memberships", { where: [{ field: "user_id", value: userId }] });
   const changes = since !== null && !p.fullState ? await changesSince(hs, p, memberships, since) : null;
+  // Membership changes since the token in the user's rooms: needed for presence, profiles and
+  // device lists alike, so read once for this request.
+  let memberChangesRead: Promise<Row[]> | null = null;
+  const memberChanges = () => (memberChangesRead ??= hs.rooms.membershipChangesSince(userId, since ?? 0, memberships));
   const join: Record<string, any> = {};
   const invite: Record<string, any> = {};
   const leave: Record<string, any> = {};
@@ -453,7 +457,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     // Users we started sharing a room with since the last sync get their presence sent regardless of age.
     const newlyShared = new Set<string>();
     if (since !== null) {
-      const changes = await hs.rooms.membershipChangesSince(userId, since, memberships);
+      const changes = await memberChanges();
       const myRooms = new Set(memberships.filter((m) => m.membership === "join").map((m) => m.room_id));
       for (const c of changes) {
         if (c.membership !== "join" || !myRooms.has(c.room_id)) continue;
@@ -474,7 +478,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   }
   if (presenceEvents.length) empty = false;
 
-  const profileUpdates = await profileUpdatesFor(hs, p, memberships);
+  const profileUpdates = await profileUpdatesFor(hs, p, memberships, memberChanges);
   if (profileUpdates) empty = false;
 
   const body: Record<string, any> = {
@@ -489,7 +493,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   };
   if (profileUpdates) body[UNSTABLE.ORG.MATRIX.MSC4429.USERS] = profileUpdates;
   if (since !== null) {
-    const lists = await hs.keys.changesSince(userId, since, p.to);
+    const lists = await hs.keys.changesSince(userId, since, p.to, await memberChanges());
     body.device_lists = lists;
     if (lists.changed.length || lists.left.length) empty = false;
   }
@@ -594,7 +598,12 @@ export function registerSyncRoutes(r: Router): void {
  * MSC4429: profile changes of users sharing a room, limited to the fields the filter asks for.
  * The initial sync carries current values; users we no longer share any room with get `null`.
  */
-async function profileUpdatesFor(hs: Homeserver, p: SyncParams, memberships: Record<string, any>[]): Promise<Record<string, any> | null> {
+async function profileUpdatesFor(
+  hs: Homeserver,
+  p: SyncParams,
+  memberships: Record<string, any>[],
+  memberChanges: () => Promise<Row[]>,
+): Promise<Record<string, any> | null> {
   const ids = (p.filter.profile_fields ?? p.filter[UNSTABLE.ORG.MATRIX.MSC4429.PROFILE_FIELDS])?.ids;
   if (!Array.isArray(ids) || !ids.length) return null;
   const wanted = new Set(ids.filter((x) => typeof x === "string"));
@@ -608,7 +617,7 @@ async function profileUpdatesFor(hs: Homeserver, p: SyncParams, memberships: Rec
   const full = new Set<string>(since === null ? sharing : []);
   if (since !== null) {
     const myRooms = new Set(memberships.filter((m) => m.membership === "join").map((m) => m.room_id));
-    const changes = await hs.rooms.membershipChangesSince(p.session.userId, since, memberships);
+    const changes = await memberChanges();
     for (const c of changes) {
       if (c.stream > p.to || c.user_id === p.session.userId) continue;
       if (c.membership === "join" && myRooms.has(c.room_id)) {
