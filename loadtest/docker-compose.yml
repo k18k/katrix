@@ -68,6 +68,8 @@ services:
 
   k6:
     image: grafana/k6:2.3.0
+    # Root in its container, so it can write the summary into ./results whoever created it.
+    user: root
     command: ["run", "--summary-export=/results/${SUMMARY:-summary}.json", "/scripts/matrix.js"]
     environment:
       BASE_URL: http://lb:8008

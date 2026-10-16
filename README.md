@@ -513,17 +513,18 @@ Latest results: 1000 users online in 25 rooms (40 per room), 50 messages/s, 30 s
 
 | Setup | req/s | send | /sync | join | delivery | messages delivered | failed |
 |---|---|---|---|---|---|---|---|
-| SQLite, 1 process (before #28–#33) | ~800 | 46 ms / 0.69 s | 0.50 s / 2.4 s | 61 ms / 0.15 s | 0.58 s / 0.78 s | 5,816 | 0% |
-| Postgres, no cluster | 313 | 7.9 s / 10.6 s | 3.0 s / 4.8 s | 0.89 s / 8.4 s | 13.2 s / 15.6 s | 12,463 | 0% |
-| Postgres, cluster, 1 node | 298 | 9.8 s / 12.1 s | 3.4 s / 4.4 s | 1.4 s / 10.4 s | 15.2 s / 17.0 s | 4,628 | 0% |
-| Postgres, cluster, 5 nodes | 725 | 3.7 s / 12.5 s | 0.85 s / 2.9 s | 0.49 s / 5.2 s | 5.6 s / 13.0 s | 29,482 | 0% |
+| SQLite, 1 process (before #28–#35) | ~800 | 46 ms / 0.69 s | 0.50 s / 2.4 s | 61 ms / 0.15 s | 0.58 s / 0.78 s | 5,816 | 0% |
+| Postgres, no cluster | 404 | 49 ms / 71 ms | 2.6 s / 3.6 s | 18 ms / 27 ms | 4.6 s / 6.5 s | 56,297 | 0% |
+| Postgres, cluster, 1 node | 314 | 81 ms / 124 ms | 2.8 s / 4.4 s | 50 ms / 70 ms | 5.2 s / 7.5 s | 52,071 | 0% |
+| Postgres, cluster, 5 nodes | 840 | 118 ms / 197 ms | 0.90 s / 1.4 s | 86 ms / 151 ms | 1.6 s / 2.3 s | 58,298 | 0% |
 
 What the load tests found and fixed so far: presence written on every `/sync` (#26), one commit
 per push notification (#27), a missing index (#28), Postgres cluster locks that could deadlock
 the pool (#29), stream writes serialized per instance (#30), `/sync` reading every change on the
-server (#31) and every joined room (#33), lock handover by polling (#32). On Postgres each node's
-pool is still saturated by the queries `/sync` makes when a message wakes every member of a room;
-that is the next thing being reduced.
+server (#31) and every joined room (#33), lock handover by polling (#32). Then `/sync` reads were batched
+(#34) and a process builds at most four sync responses at once (#35), so sends no longer queue
+behind the syncs a message wakes. A Postgres node now builds ~330 syncs/s here; delivery time is
+syncs waiting for their turn, and more nodes shorten it.
 <!-- loadtest-results:end -->
 
 ## License
