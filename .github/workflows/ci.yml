@@ -32,8 +32,10 @@ jobs:
       - run: npm test
       - run: npm run lint
       - run: npm run format:check
-      # The published package must build (tsdown → dist/, .js and .d.ts per module).
+      # The published package must build (tsdown → dist/, .js and .d.ts per module), and its exports
+      # and types must resolve for consumers (publint, arethetypeswrong; the package is ESM only).
       - run: npm pack --dry-run
+      - run: npm run check:package
 
   complement:
     name: Complement

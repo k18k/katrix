@@ -46,6 +46,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "build": "tsdown",
+    "check:package": "publint && attw --pack . --profile esm-only",
     "prepare": "npm run build",
     "start:example": "node examples/node-http.ts",
     "start:multi-node-example": "node examples/multi-node.ts",
@@ -54,10 +55,12 @@
     "release": "changeset publish"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@changesets/cli": "^3.0.3",
     "@types/node": "^26.6.5",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
+    "publint": "^0.3.25",
     "tsdown": "^0.23.1",
     "typescript": "7.0.2",
     "zod": "^4.6.7"
