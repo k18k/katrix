@@ -5,7 +5,7 @@ tied to any HTTP framework, database, auth system or deployment shape. You can u
 it for a demo on SQLite, embed it in a monolith next to your existing users, or run
 it as a horizontally scaled chat backend that replaces Slack or Teams.
 
-- Node.js **26+**. TypeScript with only erasable syntax (`erasableSyntaxOnly`), and no runtime dependencies ([zod](https://zod.dev), used for request validation, is bundled).
+- Node.js **22+** (tested on 22, 24 and 26; development uses 26). TypeScript with only erasable syntax (`erasableSyntaxOnly`), and no runtime dependencies ([zod](https://zod.dev), used for request validation, is bundled).
 - Client-Server API, Server-Server API (federation), end-to-end encryption, sliding sync, VoIP/MatrixRTC and push
 - Runs on `node:http`, Express, Fastify, Hono or any fetch runtime
 - Stores data in SQLite, PostgreSQL, MySQL, memory or your own adapter
