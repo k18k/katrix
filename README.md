@@ -475,6 +475,48 @@ Live status, updated after every Complement run (full or targeted) with
 CI runs the whole suite with the same script. `complement/passing.txt` lists the tests
 (and subtests) that are known to pass, and CI fails if any of them regress.
 
+### Load testing
+
+Load tests run locally, never in CI. [loadtest/](loadtest/) holds a k6 scenario and a
+homeserver that reports, every 10 s, requests per second, memory, event-loop delay and
+(with Postgres) how many queries wait for a pool connection and how long locks are held.
+
+The scenario: `ONLINE_USERS` each hold a long-polling `/sync` open in one of `ROOMS` rooms,
+while `MESSAGES_PER_SECOND` messages are sent in total. Every user registers and joins
+through the client API. It measures each request type and the time from sending a message to
+its arrival in other users' `/sync` (`message_delivery`).
+
+```sh
+# Postgres with N homeserver nodes behind nginx (round-robin, no sticky sessions)
+ONLINE_USERS=1000 MESSAGES_PER_SECOND=50 ROOMS=25 RAMP=30s DURATION=30s \
+  docker compose -p matrix-loadtest -f loadtest/docker-compose.yml up --build \
+  --scale homeserver=5 --abort-on-container-exit --exit-code-from k6 k6
+# CLUSTER=0: one process on Postgres without a cluster adapter
+
+# SQLite, one process, no Docker (needs k6 installed)
+DATA_DIR=/tmp/lt node loadtest/server.ts &
+BASE_URL=http://localhost:8008 ONLINE_USERS=1000 MESSAGES_PER_SECOND=50 ROOMS=25 k6 run loadtest/k6/matrix.js
+```
+
+<!-- loadtest-results:start -->
+Latest results: 1000 users online in 25 rooms (40 per room), 50 messages/s, 30 s ramp-up then
+30 s at full load, on one developer machine (WSL2, Docker Desktop). Times are p50 / p95.
+
+| Setup | req/s | send | /sync | join | delivery | messages delivered | failed |
+|---|---|---|---|---|---|---|---|
+| SQLite, 1 process (before #28–#33) | ~800 | 46 ms / 0.69 s | 0.50 s / 2.4 s | 61 ms / 0.15 s | 0.58 s / 0.78 s | 5,816 | 0% |
+| Postgres, no cluster | 313 | 7.9 s / 10.6 s | 3.0 s / 4.8 s | 0.89 s / 8.4 s | 13.2 s / 15.6 s | 12,463 | 0% |
+| Postgres, cluster, 1 node | 298 | 9.8 s / 12.1 s | 3.4 s / 4.4 s | 1.4 s / 10.4 s | 15.2 s / 17.0 s | 4,628 | 0% |
+| Postgres, cluster, 5 nodes | 725 | 3.7 s / 12.5 s | 0.85 s / 2.9 s | 0.49 s / 5.2 s | 5.6 s / 13.0 s | 29,482 | 0% |
+
+What the load tests found and fixed so far: presence written on every `/sync` (#26), one commit
+per push notification (#27), a missing index (#28), Postgres cluster locks that could deadlock
+the pool (#29), stream writes serialized per instance (#30), `/sync` reading every change on the
+server (#31) and every joined room (#33), lock handover by polling (#32). On Postgres each node's
+pool is still saturated by the queries `/sync` makes when a message wakes every member of a room;
+that is the next thing being reduced.
+<!-- loadtest-results:end -->
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE). Free to use, modify and share for any noncommercial
