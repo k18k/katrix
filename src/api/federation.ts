@@ -297,10 +297,18 @@ export function registerFederationRoutes(r: Router): void {
     }
     return { server_keys: out };
   };
+  // Acting as a key notary for other servers is part of federation.
+  const requireFederation = (ctx: RequestContext) => {
+    if (!ctx.hs.federation.enabled) throw errors.unrecognized("Federation is disabled");
+  };
   r.post("/_matrix/key/v2/query", { input: keyQueryBody }, async (ctx) => {
+    requireFederation(ctx);
     return canonicalJsonResponse(await notary(ctx, Object.keys(ctx.input.server_keys ?? {})));
   });
-  r.get("/_matrix/key/v2/query/:serverName", async (ctx) => canonicalJsonResponse(await notary(ctx, [ctx.params.serverName])));
+  r.get("/_matrix/key/v2/query/:serverName", async (ctx) => {
+    requireFederation(ctx);
+    return canonicalJsonResponse(await notary(ctx, [ctx.params.serverName]));
+  });
 
   // --- Transactions -------------------------------------------------------------
   fed("PUT", "/v1/send/:txnId", async (ctx, origin) => {

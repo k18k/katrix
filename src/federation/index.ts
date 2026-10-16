@@ -26,7 +26,7 @@ import { KeyRing } from "#federation/keyring.ts";
 import { TransactionSender } from "#federation/sender.ts";
 
 export interface FederationOptions {
-  /** Enable federation. Default: true. */
+  /** Enable federation (talking to other homeservers). Default: false, so that a server only joins the network on purpose. */
   enabled?: boolean;
   /** Join remote rooms with partial state first (MSC3902 "faster joins"). Default true. */
   fasterJoins?: boolean;
@@ -70,7 +70,7 @@ export class FederationService {
   constructor(hs: Homeserver, options: FederationOptions = {}) {
     this.hs = hs;
     this.options = options;
-    this.enabled = options.enabled !== false;
+    this.enabled = options.enabled === true;
     this.fasterJoins = options.fasterJoins !== false;
     this.client = new FederationClient(hs, { rejectUnauthorized: options.verifyTls !== false });
     this.keyring = new KeyRing(hs);

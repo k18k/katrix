@@ -91,5 +91,8 @@ export function registerMiscRoutes(r: Router): void {
     );
   });
 
-  r.get("/_matrix/federation/v1/version", () => ({ server: { name: "matrix-nodejs-homeserver", version: "0.1.0" } }));
+  r.get("/_matrix/federation/v1/version", (ctx) => {
+    if (!ctx.hs.federation.enabled) throw errors.unrecognized("Federation is disabled");
+    return { server: { name: "matrix-nodejs-homeserver", version: "0.1.0" } };
+  });
 }

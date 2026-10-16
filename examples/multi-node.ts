@@ -68,6 +68,8 @@ function postgresMedia(pool: any): MediaAdapter {
 const homeserver = createHomeserver({
   homeserver: process.env.SERVER_NAME ?? "localhost",
   publicBaseUrl: process.env.PUBLIC_BASE_URL,
+  // A public deployment talks to the rest of the Matrix network (off by default).
+  federation: { enabled: true },
   databaseAdapter: postgresAdapter(pool),
   cluster,
   mediaAdapter: process.env.S3_BUCKET

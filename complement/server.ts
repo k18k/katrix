@@ -15,6 +15,7 @@ const appservices = await loadAppServiceRegistrations("/complement/appservice");
 const homeserver = createHomeserver({
   appservices,
   homeserver: serverName,
+  federation: { enabled: true },
   databaseAdapter: sqliteAdapter(new DatabaseSync(`${dataDir}/homeserver.db`)),
   mediaAdapter: filesystemMedia(`${dataDir}/media`),
   userAuthAdapter: { registrationEnabled: true },

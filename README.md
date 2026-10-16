@@ -139,8 +139,10 @@ createHomeserver({
 
 ## Federation
 
-Federation is on by default and needs no configuration beyond a reachable port
-8448, or `.well-known/matrix/server` delegation. The implementation includes:
+Federation is **off by default**, so a server only joins the Matrix network on purpose.
+Turn it on with `federation: { enabled: true }`. It then needs no configuration beyond a
+reachable port 8448, or `.well-known/matrix/server` delegation (`federationAddress`). The
+implementation includes:
 
 - Server discovery (`.well-known` and SRV) and signed requests
 - A persistent outbound queue with retries
@@ -155,7 +157,8 @@ Federation is on by default and needs no configuration beyond a reachable port
 federation: { enabled: true, allowedServers: ["partner.org"], blockedServers: ["spam.example"] },
 ```
 
-Set `federation: { enabled: false }` for a private deployment.
+Without federation, local users can only talk to each other: federation endpoints answer
+`M_UNRECOGNIZED`, and remote users, rooms and media cannot be reached.
 
 ## VoIP and MatrixRTC
 
@@ -319,7 +322,7 @@ paths (server admins only), so existing tools keep working.
 | `audit` | `{ enabled, database, sink, actions, retentionDays }`. Disabled by default. |
 | `publicBaseUrl` | Advertised via `/.well-known/matrix/client`. Required for SSO. |
 | `oauth`, `sso` | Delegated OAuth or upstream OIDC SSO. |
-| `federation` | `{ enabled, verifyTls, allowedServers, blockedServers }` |
+| `federation` | `{ enabled, verifyTls, allowedServers, blockedServers, fasterJoins }`. Off unless `enabled: true`. |
 | `rtc` | `{ turn, transports }` |
 | `delayedEvents` | `{ maxDelayMs, maxPerUser }` |
 | `rateLimits` | `false`, or `{ limiter, rules }`. In-memory token buckets by default. Plug in a shared limiter when running a cluster. |
