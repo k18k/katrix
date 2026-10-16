@@ -243,31 +243,36 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
         const rows = await executor.query(sql, params);
         return rows.map((r) => fromDb(model, r));
       },
-      // One round trip for several reads (Postgres): each read becomes a subquery whose rows come
-      // back as JSON, tagged with the read's index and their position in it.
+      // One round trip for several reads (Postgres): each read becomes one row, its index and its
+      // rows as a JSON array.
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/45: the rows used to be numbered
+      // with row_number() and the whole union sorted, which took longer to plan than to run under
+      // load; json_agg needs neither, and ORDER BY inside it keeps each read's order.
       ...(dialect === "postgres"
         ? {
             async findManyBatch(queries: BatchQuery[], options?: BatchOptions) {
               if (queries.length === 0) return [];
               const params: unknown[] = [];
               const parts = queries.map(({ model, opts = {} }, i) => {
-                // The sort column is needed outside the subquery to number the rows.
+                // The sort column is needed outside the subquery to order the aggregate.
                 const fields =
                   opts.fields?.length && opts.sortBy && !opts.fields.includes(opts.sortBy.field)
                     ? [...opts.fields, opts.sortBy.field]
                     : opts.fields;
                 const columns = fields?.length ? fields.map(q).join(", ") : "*";
                 let inner = `SELECT ${columns} FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
-                const order = opts.sortBy ? `${q(opts.sortBy.field)} ${opts.sortBy.direction === "asc" ? "ASC" : "DESC"}` : "";
-                if (order) inner += ` ORDER BY ${order}`;
+                const direction = opts.sortBy?.direction === "asc" ? "ASC" : "DESC";
+                if (opts.sortBy) inner += ` ORDER BY ${q(opts.sortBy.field)} ${direction}`;
                 if (opts.limit !== undefined) inner += limitClause(opts.limit, params);
-                return `SELECT ${i} AS i, row_number() OVER (${order ? `ORDER BY ${order.replace(/^"/, 'b."')}` : ""}) AS n, to_jsonb(b) AS r FROM (${inner}) b`;
+                const aggOrder = opts.sortBy ? ` ORDER BY b.${q(opts.sortBy.field)} ${direction}` : "";
+                return `SELECT ${i} AS i, (SELECT json_agg(b${aggOrder}) FROM (${inner}) b) AS r`;
               });
-              const rows = await executor.query(`${parts.join(" UNION ALL ")} ORDER BY i, n`, params, options);
+              const rows = await executor.query(parts.join(" UNION ALL "), params, options);
               const out: Row[][] = queries.map(() => []);
               for (const row of rows) {
-                const r = typeof row.r === "string" ? JSON.parse(row.r) : row.r;
-                out[Number(row.i)].push(fromDb(queries[Number(row.i)].model, r));
+                const list = typeof row.r === "string" ? JSON.parse(row.r) : row.r;
+                const model = queries[Number(row.i)].model;
+                out[Number(row.i)] = (list ?? []).map((r: Row) => fromDb(model, r));
               }
               return out;
             },
