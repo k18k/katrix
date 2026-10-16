@@ -35,6 +35,8 @@ export interface PgClusterPoolLike {
 }
 
 const PG_CHANNEL = "matrix_cluster";
+/** Internal pub/sub channel announcing released locks. */
+const RELEASED = "__lock_released";
 /** How long a lock lease lasts without renewal (it is renewed every third of that while held). */
 const LOCK_TTL_MS = 30_000;
 const MAX_NOTIFY_PAYLOAD = 7000;
@@ -49,6 +51,22 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
   const kv = `"${options.tablePrefix ?? ""}cluster_kv"`;
   const handlers = new Map<string, Set<(m: any) => void>>();
   const queue = localQueue();
+  // Lock waiters on this instance, woken when another instance releases the lock they wait for.
+  const waiting = new Map<string, Set<() => void>>();
+  const releasedOrAfter = (lockKey: string, ms: number) =>
+    new Promise<void>((resolve) => {
+      let set = waiting.get(lockKey);
+      if (!set) waiting.set(lockKey, (set = new Set()));
+      const wake = () => {
+        clearTimeout(timer);
+        set!.delete(wake);
+        if (set!.size === 0 && waiting.get(lockKey) === set) waiting.delete(lockKey);
+        resolve();
+      };
+      const timer = setTimeout(wake, ms);
+      set.add(wake);
+    });
+  handlers.set(RELEASED, new Set([(lockKey: string) => [...(waiting.get(lockKey) ?? [])].forEach((wake) => wake())]));
   let listener: PgClientLike | null = null;
   let cleanup: ReturnType<typeof setInterval> | null = null;
 
@@ -134,7 +152,11 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
           );
           return (res.rowCount ?? 0) > 0;
         };
-        for (let delay = 5; !(await acquire()); delay = Math.min(delay * 2, 200)) await new Promise((r) => setTimeout(r, delay));
+        // https://github.com/k18k/matrix-nodejs-homeserver/issues/32: waiters only polled (backoff up
+        // to 200 ms), so a lock handed to another node sat free for half the backoff on average.
+        // Releasing now notifies, and a waiter retries at once; polling stays as the fallback for a
+        // lost notification.
+        for (let delay = 5; !(await acquire()); delay = Math.min(delay * 2, 200)) await releasedOrAfter(lockKey, delay);
         const renew = setInterval(
           () =>
             void pool
@@ -146,7 +168,12 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
           return await fn();
         } finally {
           clearInterval(renew);
-          await pool.query(`DELETE FROM ${kv} WHERE key = $1 AND value = $2`, [lockKey, token]).catch(() => {});
+          await pool
+            .query(
+              `WITH released AS (DELETE FROM ${kv} WHERE key = $1 AND value = $2 RETURNING key) SELECT pg_notify($3, $4) FROM released`,
+              [lockKey, token, PG_CHANNEL, JSON.stringify({ channel: RELEASED, message: lockKey })],
+            )
+            .catch(() => {});
         }
       });
     },
