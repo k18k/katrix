@@ -29,6 +29,11 @@ export type Row = Record<string, any>;
 
 export interface FindManyOptions {
   where?: WhereClause[];
+  /**
+   * Only these fields are needed. Adapters should read just these (a smaller query and less to
+   * parse); one that ignores the option and returns whole rows is still correct.
+   */
+  fields?: string[];
   sortBy?: { field: string; direction: "asc" | "desc" };
   limit?: number;
 }

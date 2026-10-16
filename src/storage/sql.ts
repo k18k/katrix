@@ -189,7 +189,8 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
       },
       async findMany(model, opts = {}) {
         const params: unknown[] = [];
-        let sql = `SELECT * FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
+        const columns = opts.fields?.length ? opts.fields.map(q).join(", ") : "*";
+        let sql = `SELECT ${columns} FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
         if (opts.sortBy) sql += ` ORDER BY ${q(opts.sortBy.field)} ${opts.sortBy.direction === "asc" ? "ASC" : "DESC"}`;
         if (opts.limit !== undefined) sql += ` LIMIT ${Math.max(0, Math.floor(opts.limit))}`;
         const rows = await executor.query(sql, params);

@@ -4,6 +4,7 @@ import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "#co
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
@@ -78,6 +79,8 @@ async function snapshotAt(hs: Homeserver, roomId: string, pos: number): Promise<
     ],
     sortBy: { field: "stream", direction: "desc" },
     limit: 1,
+    // Only the snapshot ID: the event's JSON is not needed here (https://github.com/k18k/matrix-nodejs-homeserver/issues/33).
+    fields: ["state_snapshot"],
   });
   return rows[0]?.state_snapshot ?? 0;
 }
@@ -131,7 +134,7 @@ export async function roomTimeline(
     limited = true;
   }
   if (limit === 0 && events.length === 0) {
-    const more = await hs.db.findMany("events", { where, limit: 1 });
+    const more = await hs.db.findMany("events", { where, limit: 1, fields: ["stream"] });
     limited = more.length > 0;
   }
   if (since === null) events.sort((a, b) => (a.pdu.depth ?? 0) - (b.pdu.depth ?? 0) || a.stream - b.stream);
@@ -151,6 +154,7 @@ export async function roomTimeline(
     const before = await hs.db.findMany("events", {
       where: [...where.filter((c) => c.operator !== "lte"), { field: "stream", operator: "lt", value: events[0].stream }],
       limit: 1,
+      fields: ["stream"],
     });
     limited = before.length > 0;
   }
@@ -215,14 +219,14 @@ export async function roomTimeline(
   };
 }
 
-export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: string): Promise<Record<string, any>[]> {
+export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: string, prefetched?: Row[]): Promise<Record<string, any>[]> {
   const since = p.since?.pos ?? null;
   const out: { type: string; content: Record<string, any> }[] = [];
   const typing = hs.typing.typingSince(roomId, since);
   if (typing !== null && (since !== null || typing.length > 0)) out.push({ type: M.TYPING, content: { user_ids: typing } });
   const where: any[] = [{ field: "room_id", value: roomId }];
   if (since !== null) where.push({ field: "stream", operator: "gt", value: since });
-  const receipts = (await hs.db.findMany("receipts", { where })).filter((r) => r.stream <= p.to);
+  const receipts = (prefetched ?? (await hs.db.findMany("receipts", { where }))).filter((r) => r.stream <= p.to);
   const content: Record<string, any> = {};
   for (const r of receipts) {
     if (r.receipt_type === M.READ.PRIVATE && r.user_id !== p.session.userId) continue;
@@ -237,13 +241,13 @@ export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: strin
   return out.filter((e) => matchesFilter(p.filter.room?.ephemeral, e));
 }
 
-async function accountData(hs: Homeserver, p: SyncParams, roomId: string): Promise<{ type: string; content: any }[]> {
+async function accountData(hs: Homeserver, p: SyncParams, roomId: string, prefetched?: Row[]): Promise<{ type: string; content: any }[]> {
   const where: any[] = [
     { field: "user_id", value: p.session.userId },
     { field: "room_id", value: roomId },
   ];
   if (p.since && !p.fullState) where.push({ field: "stream", operator: "gt", value: p.since.pos });
-  const rows = await hs.db.findMany("account_data", { where });
+  const rows = prefetched ?? (await hs.db.findMany("account_data", { where }));
   const filter = roomId ? p.filter.room?.account_data : p.filter.account_data;
   // Account data "deleted" by setting empty content is omitted from initial syncs.
   return rows
@@ -272,10 +276,62 @@ export async function roomSummary(hs: Homeserver, roomId: string, userId: string
   return summary;
 }
 
+/**
+ * What changed for the user since the token, for all of their rooms at once: the rooms with new
+ * events or newly complete state, and the new receipts and account data by room.
+ *
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/33: an incremental sync queried every
+ * joined room (timeline, receipts, account data) and only then found that most had nothing new,
+ * so a sync cost as many queries as the user had rooms, each time a long-poll woke up. These few
+ * queries find the rooms that changed, and only those are built.
+ */
+async function changesSince(
+  hs: Homeserver,
+  p: SyncParams,
+  memberships: Row[],
+  since: number,
+): Promise<{ touched: Set<string>; receipts: Map<string, Row[]>; accountData: Map<string, Row[]> }> {
+  const rooms = memberships.filter((m) => m.membership === "join").map((m) => m.room_id as string);
+  const range = [
+    { field: "stream", operator: "gt" as const, value: since },
+    { field: "stream", operator: "lte" as const, value: p.to },
+  ];
+  const touched = new Set<string>();
+  const receipts = new Map<string, Row[]>();
+  // IN lists in chunks, so a user in thousands of rooms stays within the databases' parameter limits.
+  for (let i = 0; i < rooms.length; i += 500) {
+    const chunk = rooms.slice(i, i + 500);
+    const inRooms = { field: "room_id", operator: "in" as const, value: chunk };
+    for (const r of await hs.db.findMany("events", { where: [inRooms, ...range], fields: ["room_id"] })) touched.add(r.room_id);
+    for (const r of await hs.db.findMany("receipts", { where: [inRooms, ...range] })) {
+      touched.add(r.room_id);
+      receipts.set(r.room_id, [...(receipts.get(r.room_id) ?? []), r]);
+    }
+    // Rooms whose state became complete are sent again as if newly joined (MSC3902).
+    for (const r of await hs.db.findMany("partial_state_rooms", {
+      where: [inRooms, { field: "completed_stream", operator: "gt", value: since }],
+      fields: ["room_id"],
+    }))
+      touched.add(r.room_id);
+  }
+  const accountData = new Map<string, Row[]>();
+  for (const r of await hs.db.findMany("account_data", {
+    where: [
+      { field: "user_id", value: p.session.userId },
+      { field: "stream", operator: "gt", value: since },
+    ],
+  })) {
+    if (r.room_id) touched.add(r.room_id);
+    accountData.set(r.room_id, [...(accountData.get(r.room_id) ?? []), r]);
+  }
+  return { touched, receipts, accountData };
+}
+
 async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<string, any>; empty: boolean; nextToDevice: number }> {
   const userId = p.session.userId;
   const since = p.since?.pos ?? null;
   const memberships = await hs.db.findMany("memberships", { where: [{ field: "user_id", value: userId }] });
+  const changes = since !== null && !p.fullState ? await changesSince(hs, p, memberships, since) : null;
   const join: Record<string, any> = {};
   const invite: Record<string, any> = {};
   const leave: Record<string, any> = {};
@@ -288,6 +344,8 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     const changed = since === null || m.stream > since;
 
     if (m.membership === "join") {
+      // Nothing new in this room since the token: leave it out without asking the database.
+      if (changes && !changed && !changes.touched.has(roomId) && hs.typing.typingSince(roomId, since) === null) continue;
       // MSC3902: without lazy-loaded members the room is withheld until its full state is known,
       // and then sent as if newly joined.
       if (!p.filter.room?.state?.lazy_load_members && (await hs.partialState.isPartial(roomId))) continue;
@@ -295,8 +353,8 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       const initial =
         since === null || p.fullState || m.stream > since || (completedAt !== null && completedAt > since && completedAt <= p.to);
       const { timeline, state, stateAfter, timelineEvents } = await roomTimeline(hs, p, roomId, initial ? null : since, p.to);
-      const ephemeral = await roomEphemeral(hs, p, roomId);
-      const roomAccountData = await accountData(hs, p, roomId);
+      const ephemeral = await roomEphemeral(hs, p, roomId, changes ? (changes.receipts.get(roomId) ?? []) : undefined);
+      const roomAccountData = await accountData(hs, p, roomId, changes ? (changes.accountData.get(roomId) ?? []) : undefined);
       if (
         !initial &&
         timelineEvents.length === 0 &&
@@ -361,13 +419,13 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       leave[roomId] = {
         timeline,
         state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) },
-        account_data: { events: await accountData(hs, p, roomId) },
+        account_data: { events: await accountData(hs, p, roomId, changes ? (changes.accountData.get(roomId) ?? []) : undefined) },
       };
       empty = false;
     }
   }
 
-  const globalAccountData = await accountData(hs, p, "");
+  const globalAccountData = await accountData(hs, p, "", changes ? (changes.accountData.get("") ?? []) : undefined);
   if (since === null && !globalAccountData.some((e) => e.type === M.PUSH_RULES)) {
     globalAccountData.push({ type: M.PUSH_RULES, content: { global: await loadRules(hs, userId) } });
   }

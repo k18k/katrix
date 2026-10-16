@@ -77,6 +77,7 @@ export function memoryAdapter(): DatabaseAdapter {
           rows.sort((a, b) => (a[field] < b[field] ? -dir : a[field] > b[field] ? dir : 0));
         }
         if (opts.limit !== undefined) rows = rows.slice(0, opts.limit);
+        if (opts.fields?.length) return rows.map((r) => Object.fromEntries(opts.fields!.map((f) => [f, structuredClone(r[f] ?? null)])));
         return rows.map((r) => structuredClone(r));
       },
       async update(model, where, data) {
