@@ -520,18 +520,32 @@ Latest results: 1000 users online in 25 rooms (40 per room), 50 messages/s, 30 s
 
 | Setup | req/s | send | /sync | join | delivery | messages delivered | failed |
 |---|---|---|---|---|---|---|---|
-| SQLite, 1 process (before #28–#35) | ~800 | 46 ms / 0.69 s | 0.50 s / 2.4 s | 61 ms / 0.15 s | 0.58 s / 0.78 s | 5,816 | 0% |
-| Postgres, no cluster | 404 | 49 ms / 71 ms | 2.6 s / 3.6 s | 18 ms / 27 ms | 4.6 s / 6.5 s | 56,297 | 0% |
-| Postgres, cluster, 1 node | 314 | 81 ms / 124 ms | 2.8 s / 4.4 s | 50 ms / 70 ms | 5.2 s / 7.5 s | 52,071 | 0% |
-| Postgres, cluster, 5 nodes | 840 | 118 ms / 197 ms | 0.90 s / 1.4 s | 86 ms / 151 ms | 1.6 s / 2.3 s | 58,298 | 0% |
+| SQLite, 1 process | 1004 | 0.65 s / 1.0 s | 0.71 s / 1.5 s | 52 ms / 0.33 s | 0.83 s / 1.25 s | 23,070 | 0% |
+| Postgres, no cluster | 670 | 15 ms / 19 ms | 1.1 s / 1.8 s | 14 ms / 23 ms | 1.76 s / 2.31 s | 58,667 | 0% |
+| Postgres, cluster, 1 node | 593 | 27 ms / 38 ms | 1.3 s / 2.0 s | 36 ms / 51 ms | 1.96 s / 2.57 s | 58,493 | 0% |
+| Postgres, cluster, 5 nodes | 871 | 60 ms / 88 ms | 0.50 s / 1.1 s | 62 ms / 119 ms | 0.70 s / 1.09 s | 59,298 | 0% |
 
 What the load tests found and fixed so far: presence written on every `/sync` (#26), one commit
 per push notification (#27), a missing index (#28), Postgres cluster locks that could deadlock
 the pool (#29), stream writes serialized per instance (#30), `/sync` reading every change on the
 server (#31) and every joined room (#33), lock handover by polling (#32). Then `/sync` reads were batched
 (#34) and a process builds at most four sync responses at once (#35), so sends no longer queue
-behind the syncs a message wakes. A Postgres node now builds ~330 syncs/s here; delivery time is
-syncs waiting for their turn, and more nodes shorten it.
+behind the syncs a message wakes.
+
+Since 0.3.2 (#38–#45), Postgres delivery time fell by about 55% on one node and 50% on five:
+- changed rooms are built concurrently, with fewer reads each (#38);
+- push notifications of a message are written in one statement (#39);
+- Postgres statements are prepared once per connection (#40);
+- push rules are no longer copied per member (#41);
+- to-device acknowledgements run only when needed (#42);
+- reads issued at the same moment by concurrent requests share one statement (#43);
+- presence and device-list changes are found through a stream index (#44);
+- batched reads take half as long to plan (#45).
+
+With every user receiving about two messages a second, delivery time is how long it takes a
+process to rebuild every user's `/sync` in turn: about 750 per second per Postgres node here.
+On SQLite, the database calls run on the main thread, so syncs and sends compete for it: sends
+are slower than on Postgres, and fewer messages are sent than the scenario asks for.
 <!-- loadtest-results:end -->
 
 ## License
