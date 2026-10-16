@@ -24,6 +24,7 @@ import type { Homeserver } from "#homeserver.ts";
 import { FederationClient } from "#federation/client.ts";
 import { KeyRing } from "#federation/keyring.ts";
 import { TransactionSender } from "#federation/sender.ts";
+import { M } from "#core/m.ts";
 
 export interface FederationOptions {
   /** Enable federation (talking to other homeservers). Default: false, so that a server only joins the network on purpose. */
@@ -42,7 +43,7 @@ export const domainOf = (id: string) => id.slice(id.indexOf(":") + 1);
 
 /** Server ACL check (m.room.server_acl). */
 export function serverAllowedByAcl(state: StateMap, serverName: string): boolean {
-  const acl = getState(state, "m.room.server_acl")?.content;
+  const acl = getState(state, M.ROOM.SERVER_ACL)?.content;
   if (!isObject(acl)) return true;
   const host = serverName.replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
   if (acl.allow_ip_literals === false && (/^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(":"))) return false;
@@ -97,7 +98,7 @@ export class FederationService {
     const out: Record<string, any> = { ...rest };
     const f = roomVersionFeatures(version);
     if (!f.legacyEventIds) delete out.event_id;
-    if (f.v12 && out.type === "m.room.create") delete out.room_id;
+    if (f.v12 && out.type === M.ROOM.CREATE) delete out.room_id;
     return out;
   }
 
@@ -121,7 +122,7 @@ export class FederationService {
       throw errors.badJson("Malformed PDU");
     }
     const f = roomVersionFeatures(version);
-    if (!f.v12 || raw.type !== "m.room.create") {
+    if (!f.v12 || raw.type !== M.ROOM.CREATE) {
       if (raw.room_id !== roomId) throw errors.badJson("PDU room_id mismatch");
     }
     const eventId = this.computeEventId(raw, version);
@@ -136,20 +137,14 @@ export class FederationService {
     }
     let joinAuthorisedSignatureValid: boolean | undefined;
     const via = raw.content?.join_authorised_via_users_server;
-    if (
-      f.restricted &&
-      raw.type === "m.room.member" &&
-      raw.content?.membership === "join" &&
-      typeof via === "string" &&
-      via.includes(":")
-    ) {
+    if (f.restricted && raw.type === M.ROOM.MEMBER && raw.content?.membership === "join" && typeof via === "string" && via.includes(":")) {
       joinAuthorisedSignatureValid = await this.keyring.verifySignedBy(redacted, domainOf(via));
     }
     let pdu: PDU = { ...(raw as PDU), event_id: eventId };
     if (raw.hashes?.sha256 !== computeContentHash(raw)) {
       pdu = { ...(redact(raw, version) as PDU), event_id: eventId };
     }
-    if (f.v12 && pdu.type === "m.room.create") pdu.room_id = roomId;
+    if (f.v12 && pdu.type === M.ROOM.CREATE) pdu.room_id = roomId;
     return { pdu, joinAuthorisedSignatureValid };
   }
 
@@ -162,7 +157,7 @@ export class FederationService {
     const servers = new Set<string>();
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
-      if (type === "m.room.member" && ev.content?.membership === "join") servers.add(domainOf(userId));
+      if (type === M.ROOM.MEMBER && ev.content?.membership === "join") servers.add(domainOf(userId));
     }
     servers.delete(this.hs.serverName);
     for (const s of servers) if (!this.serverAllowed(s) || (applyAcl && !serverAllowedByAcl(state, s))) servers.delete(s);
@@ -186,9 +181,9 @@ export class FederationService {
     if (!this.enabled) return;
     void (async () => {
       // A server denied by a new ACL still needs to receive the ACL event itself.
-      const destinations = await this.roomDestinations(pdu.room_id, state, pdu.type !== "m.room.server_acl");
+      const destinations = await this.roomDestinations(pdu.room_id, state, pdu.type !== M.ROOM.SERVER_ACL);
       // Members leaving or being kicked/banned should hear about it too.
-      if (pdu.type === "m.room.member" && typeof pdu.state_key === "string" && !this.hs.isLocalUser(pdu.state_key)) {
+      if (pdu.type === M.ROOM.MEMBER && typeof pdu.state_key === "string" && !this.hs.isLocalUser(pdu.state_key)) {
         destinations.add(domainOf(pdu.state_key));
       }
       if (!destinations.size) return;
@@ -218,14 +213,14 @@ export class FederationService {
   }
 
   async onTyping(roomId: string, userId: string, typing: boolean): Promise<void> {
-    if (this.hs.isLocalUser(userId)) await this.sendEduToRooms([roomId], "m.typing", { room_id: roomId, user_id: userId, typing }, false);
+    if (this.hs.isLocalUser(userId)) await this.sendEduToRooms([roomId], M.TYPING, { room_id: roomId, user_id: userId, typing }, false);
   }
 
   async onReceipt(roomId: string, userId: string, receiptType: string, eventId: string, ts: number, threadId: string): Promise<void> {
-    if (!this.hs.isLocalUser(userId) || receiptType === "m.read.private") return;
+    if (!this.hs.isLocalUser(userId) || receiptType === M.READ.PRIVATE) return;
     const data: Record<string, any> = { ts };
     if (threadId) data.thread_id = threadId;
-    await this.sendEduToRooms([roomId], "m.receipt", { [roomId]: { [receiptType]: { [userId]: { event_ids: [eventId], data } } } });
+    await this.sendEduToRooms([roomId], M.RECEIPT, { [roomId]: { [receiptType]: { [userId]: { event_ids: [eventId], data } } } });
   }
 
   async onPresence(userId: string, presence: string, statusMsg: string | null): Promise<void> {
@@ -234,7 +229,7 @@ export class FederationService {
     if (!servers.size) return;
     await this.sender.sendEdu(
       servers,
-      "m.presence",
+      M.PRESENCE,
       {
         push: [
           {
@@ -276,7 +271,7 @@ export class FederationService {
         const d = devices.find((x) => x.device_id === u.deviceId);
         if (d?.display_name) content.device_display_name = d.display_name;
       }
-      await this.sender.sendEdu(servers, "m.device_list_update", content);
+      await this.sender.sendEdu(servers, M.DEVICE_LIST_UPDATE, content);
     }
   }
 
@@ -287,7 +282,7 @@ export class FederationService {
     const rows = await this.hs.db.findMany("cross_signing_keys", { where: [{ field: "user_id", value: userId }] });
     const content: Record<string, any> = { user_id: userId };
     for (const r of rows) if (r.key_type !== "user_signing") content[`${r.key_type}_key`] = r.key;
-    await this.sender.sendEdu(servers, "m.signing_key_update", content);
+    await this.sender.sendEdu(servers, M.SIGNING_KEY_UPDATE, content);
   }
 
   /** Deliver to-device messages addressed to remote users. */
@@ -300,7 +295,7 @@ export class FederationService {
       (byServer.get(server) ?? byServer.set(server, {}).get(server)!)[userId] = devices;
     }
     for (const [server, msgs] of byServer) {
-      await this.sender.sendEdu([server], "m.direct_to_device", { sender, type, message_id: `${messageId}-${server}`, messages: msgs });
+      await this.sender.sendEdu([server], M.DIRECT_TO_DEVICE, { sender, type, message_id: `${messageId}-${server}`, messages: msgs });
     }
   }
 
@@ -366,7 +361,7 @@ export class FederationService {
    * rescinded or their knock being accepted/rejected.
    */
   private async handleOutOfRoomMembership(origin: string, roomId: string, raw: Record<string, any>): Promise<string> {
-    if (raw?.type !== "m.room.member" || typeof raw.state_key !== "string" || !this.hs.isLocalUser(raw.state_key)) {
+    if (raw?.type !== M.ROOM.MEMBER || typeof raw.state_key !== "string" || !this.hs.isLocalUser(raw.state_key)) {
       throw errors.notFound("Unknown room");
     }
     const row = await this.hs.db.findOne("memberships", [
@@ -376,7 +371,7 @@ export class FederationService {
     if (!row) throw errors.notFound("Unknown room");
     const previous = await this.hs.rooms.getPdu(row.event_id);
     const create = (previous?.unsigned?.invite_room_state ?? previous?.unsigned?.knock_room_state ?? []).find(
-      (e: any) => e?.type === "m.room.create",
+      (e: any) => e?.type === M.ROOM.CREATE,
     );
     const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
     const { pdu } = await this.verifyPdu(raw, version, roomId);
@@ -692,7 +687,7 @@ export class FederationService {
     }
     try {
       const create =
-        roomVersionFeatures(version).v12 && pdu.type !== "m.room.create"
+        roomVersionFeatures(version).v12 && pdu.type !== M.ROOM.CREATE
           ? ((await this.hs.rooms.getPdu(`$${roomId.slice(1)}`)) ?? undefined)
           : undefined;
       checkAuth(pdu, authStateFromAuthEvents(pdu, authPdus, version, create), version);
@@ -721,7 +716,7 @@ export class FederationService {
     const content = edu?.content;
     if (!isObject(content)) return;
     switch (edu.edu_type) {
-      case "m.typing": {
+      case M.TYPING: {
         const { room_id, user_id, typing } = content;
         if (typeof user_id !== "string" || domainOf(user_id) !== origin || typeof room_id !== "string") return;
         if (!(await this.hs.rooms.exists(room_id)) || !(await this.mayActInRoom(room_id, user_id, origin))) return;
@@ -729,12 +724,12 @@ export class FederationService {
         await this.hs.typing.setTyping(room_id, user_id, !!typing, typeof content.timeout === "number" ? content.timeout : 30_000);
         return;
       }
-      case "m.receipt": {
+      case M.RECEIPT: {
         for (const [roomId, byType] of Object.entries(content)) {
           if (!isObject(byType) || !(await this.hs.rooms.exists(roomId))) continue;
           if (!serverAllowedByAcl(await this.hs.rooms.currentState(roomId), origin)) continue;
           for (const [receiptType, byUser] of Object.entries(byType)) {
-            if (!["m.read", "m.read.private"].includes(receiptType) || !isObject(byUser)) continue;
+            if ((receiptType !== M.READ._ && receiptType !== M.READ.PRIVATE) || !isObject(byUser)) continue;
             for (const [userId, r] of Object.entries(byUser)) {
               if (domainOf(userId) !== origin || !isObject(r) || !Array.isArray(r.event_ids)) continue;
               if (!(await this.mayActInRoom(roomId, userId, origin))) continue;
@@ -757,7 +752,7 @@ export class FederationService {
         }
         return;
       }
-      case "m.presence": {
+      case M.PRESENCE: {
         for (const p of Array.isArray(content.push) ? content.push : []) {
           if (!isObject(p) || typeof p.user_id !== "string" || domainOf(p.user_id) !== origin) continue;
           if (!["online", "offline", "unavailable"].includes(p.presence)) continue;
@@ -774,7 +769,7 @@ export class FederationService {
         }
         return;
       }
-      case "m.device_list_update": {
+      case M.DEVICE_LIST_UPDATE: {
         const userId = content.user_id;
         if (typeof userId !== "string" || domainOf(userId) !== origin || typeof content.device_id !== "string") return;
         // An announcement for a user we have never tracked that carries no keys (e.g. sent when they
@@ -786,7 +781,7 @@ export class FederationService {
         if (known || content.deleted || isObject(content.keys)) await this.hs.keys.markDeviceListChanged(userId);
         return;
       }
-      case "m.signing_key_update": {
+      case M.SIGNING_KEY_UPDATE: {
         const userId = content.user_id;
         if (typeof userId !== "string" || domainOf(userId) !== origin) return;
         for (const type of ["master", "self_signing"]) {
@@ -800,7 +795,7 @@ export class FederationService {
         await this.hs.keys.markDeviceListChanged(userId);
         return;
       }
-      case "m.direct_to_device": {
+      case M.DIRECT_TO_DEVICE: {
         const { sender, type, message_id, messages } = content;
         if (typeof sender !== "string" || domainOf(sender) !== origin || typeof type !== "string" || !isObject(messages)) return;
         if (!(await this.hs.cluster.setIfAbsent(`fedtodevice:${origin}|${message_id}`, true, 24 * 3600_000))) return;
@@ -903,7 +898,7 @@ export class FederationService {
       const pdu = await this.hs.rooms.getPdu(id);
       if (!pdu) continue;
       stateIds[stateKey(pdu.type, pdu.state_key!)] = id;
-      if (pdu.type === "m.room.create") create = pdu;
+      if (pdu.type === M.ROOM.CREATE) create = pdu;
     }
     if (!create) throw errors.badJson("send_join response lacks the create event");
     if (!(await this.hs.rooms.exists(roomId))) {
@@ -1218,7 +1213,7 @@ export class FederationService {
     const out = new Set<string>();
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
-      if (type === "m.room.member" && ev.content?.membership === "join") out.add(domainOf(userId));
+      if (type === M.ROOM.MEMBER && ev.content?.membership === "join") out.add(domainOf(userId));
     }
     return [...out];
   }
@@ -1226,7 +1221,7 @@ export class FederationService {
   isMembershipVisibleTo(state: StateMap, server: string): boolean {
     for (const [key] of state) {
       const [type, userId] = splitStateKey(key);
-      if (type === "m.room.member" && domainOf(userId) === server && membershipOf(state, userId) === "join") return true;
+      if (type === M.ROOM.MEMBER && domainOf(userId) === server && membershipOf(state, userId) === "join") return true;
     }
     return false;
   }

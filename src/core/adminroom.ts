@@ -4,6 +4,7 @@ import { isValidRoomId, isValidUserId } from "#core/ids.ts";
 import type { PDU } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
 import { createUser } from "#api/account.ts";
+import { M } from "#core/m.ts";
 
 export interface AdminRoomOptions {
   /** Enable the admin room and admin bot. Default: true when the option object is given. */
@@ -105,7 +106,7 @@ export class AdminRoomService {
         topic: "Server administration. Type 'help' for commands.",
         room_alias_name: this.options.aliasLocalpart,
         power_level_content_override: { users: { [this.botUserId]: 100 }, events_default: 0, invite: 100, kick: 100, ban: 100 },
-        initial_state: [{ type: "m.room.history_visibility", state_key: "", content: { history_visibility: "joined" } }],
+        initial_state: [{ type: M.ROOM.HISTORY_VISIBILITY, state_key: "", content: { history_visibility: "joined" } }],
       });
       this.roomIdCache = room_id;
       return room_id;
@@ -152,21 +153,21 @@ export class AdminRoomService {
     if (!roomId) return;
     const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const content: Record<string, any> = {
-      msgtype: "m.notice",
+      msgtype: M.NOTICE,
       body: text,
       format: "org.matrix.custom.html",
       formatted_body: text.includes("\n") ? `<pre><code>${escaped}</code></pre>` : escaped.replace(/`([^`]+)`/g, "<code>$1</code>"),
     };
-    if (replyTo) content["m.relates_to"] = { "m.in_reply_to": { event_id: replyTo } };
-    await this.hs.rooms.sendEvent(roomId, this.botUserId, { type: "m.room.message", content });
+    if (replyTo) content[M.RELATES_TO] = { [M.IN_REPLY_TO]: { event_id: replyTo } };
+    await this.hs.rooms.sendEvent(roomId, this.botUserId, { type: M.ROOM.MESSAGE, content });
   }
 
   /** Called for every new event; handles commands posted in the admin room. */
   async onEvent(event: PDU): Promise<void> {
-    if (!this.options.enabled || event.type !== "m.room.message" || event.sender === this.botUserId) return;
+    if (!this.options.enabled || event.type !== M.ROOM.MESSAGE || event.sender === this.botUserId) return;
     if (event.room_id !== (await this.roomId())) return;
     const body = typeof event.content?.body === "string" ? event.content.body.trim() : "";
-    if (!body || event.content?.msgtype === "m.notice") return;
+    if (!body || event.content?.msgtype === M.NOTICE) return;
     const user = await this.hs.db.findOne("users", [{ field: "user_id", value: event.sender }]);
     if (!user?.is_admin) return;
     const line = body.replace(/^!admin\s*/i, "").replace(new RegExp(`^${this.botUserId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:?\\s*`), "");
@@ -382,7 +383,7 @@ export class AdminRoomService {
         const target = this.resolveUser(sub);
         const message = pos.slice(2).join(" ");
         if (!message) return "Usage: notice <user> <message>";
-        await hs.admin.sendServerNotice(target, { msgtype: "m.text", body: message });
+        await hs.admin.sendServerNotice(target, { msgtype: M.TEXT, body: message });
         await hs.audit.record({ action: "admin_action", actor, target, details: { op: "server_notice" } });
         return `Notice sent to ${target}`;
       }

@@ -6,6 +6,7 @@ import { KINDS, loadRules, type Rule } from "#core/pushrules.ts";
 import { isSubscribed } from "#api/threadsubs.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { M } from "#core/m.ts";
 
 /** Look up a dotted path; `\.` escapes a literal dot in a key (e.g. `content.m\.relates_to`). */
 export function valueAtPath(obj: unknown, path: string): unknown {
@@ -116,8 +117,8 @@ export function tweaksOf(actions: unknown[]): Record<string, unknown> {
 
 /** Thread an event belongs to for notification purposes ("main" for the main timeline). */
 export function threadIdOf(event: PDU): string {
-  const rel = event.content?.["m.relates_to"];
-  return isObject(rel) && rel.rel_type === "m.thread" && typeof rel.event_id === "string" ? rel.event_id : "main";
+  const rel = event.content?.[M.RELATES_TO];
+  return isObject(rel) && rel.rel_type === M.THREAD && typeof rel.event_id === "string" ? rel.event_id : "main";
 }
 
 /**
@@ -136,12 +137,12 @@ export class PushService {
     const members: string[] = [];
     for (const [key, member] of state) {
       const [type, userId] = splitStateKey(key);
-      if (type !== "m.room.member") continue;
+      if (type !== M.ROOM.MEMBER) continue;
       const m = member.content?.membership;
       // Invitees are evaluated for their own invite event.
-      if (m === "join" || (m === "invite" && event.type === "m.room.member" && event.state_key === userId)) members.push(userId);
+      if (m === "join" || (m === "invite" && event.type === M.ROOM.MEMBER && event.state_key === userId)) members.push(userId);
     }
-    const joined = members.filter((u) => getState(state, "m.room.member", u)?.content?.membership === "join");
+    const joined = members.filter((u) => getState(state, M.ROOM.MEMBER, u)?.content?.membership === "join");
     const pl = powerLevels(state, version);
     const senderLevel = userLevel(pl, event.sender);
     const thread = threadIdOf(event);
@@ -151,7 +152,7 @@ export class PushService {
       const actions = evaluateRules(rules, {
         event,
         userId,
-        displayName: getState(state, "m.room.member", userId)?.content?.displayname ?? null,
+        displayName: getState(state, M.ROOM.MEMBER, userId)?.content?.displayname ?? null,
         memberCount: joined.length,
         senderLevel: Number.isFinite(senderLevel) ? senderLevel : Number.MAX_SAFE_INTEGER,
         notificationLevels: pl.notifications,
@@ -185,7 +186,7 @@ export class PushService {
     let unthreaded = 0;
     const threadRead = new Map<string, number>();
     for (const r of receipts) {
-      if (r.receipt_type !== "m.read" && r.receipt_type !== "m.read.private") continue;
+      if (r.receipt_type !== M.READ._ && r.receipt_type !== M.READ.PRIVATE) continue;
       const target = await this.hs.rooms.getEvent(r.event_id);
       if (!target) continue;
       if (r.thread_id === "") unthreaded = Math.max(unthreaded, target.stream);
@@ -245,11 +246,11 @@ export class PushService {
         notification.type = event.type;
         notification.sender = event.sender;
         notification.content = event.content;
-        const name = getState(state, "m.room.name")?.content?.name;
+        const name = getState(state, M.ROOM.NAME)?.content?.name;
         if (typeof name === "string") notification.room_name = name;
-        const senderName = getState(state, "m.room.member", event.sender)?.content?.displayname;
+        const senderName = getState(state, M.ROOM.MEMBER, event.sender)?.content?.displayname;
         if (typeof senderName === "string") notification.sender_display_name = senderName;
-        if (event.type === "m.room.member") {
+        if (event.type === M.ROOM.MEMBER) {
           notification.membership = event.content?.membership;
           notification.user_is_target = event.state_key === userId;
         }

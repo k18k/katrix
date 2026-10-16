@@ -6,6 +6,7 @@ import { canonicalJson } from "#core/json.ts";
 import { unpaddedBase64 } from "#core/crypto.ts";
 import { sign } from "node:crypto";
 import type { Homeserver } from "#homeserver.ts";
+import { M } from "#core/m.ts";
 
 interface Resolved {
   /** Host to connect to (IP or hostname). */
@@ -122,7 +123,7 @@ export class FederationClient {
       );
       if (res.status !== 200) return null;
       const body = JSON.parse(res.body.toString("utf8"));
-      return typeof body["m.server"] === "string" && body["m.server"] ? body["m.server"] : null;
+      return typeof body[M.SERVER] === "string" && body[M.SERVER] ? body[M.SERVER] : null;
     } catch {
       return null;
     }

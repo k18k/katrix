@@ -6,6 +6,7 @@ import { procedure } from "#http/procedure.ts";
 import { requireUia } from "#api/uia.ts";
 import { z } from "zod";
 import { body, fail } from "#http/input.ts";
+import { M } from "#core/m.ts";
 
 const deleteDevicesBody = body({ devices: z.array(z.unknown(), fail("M_BAD_JSON", "devices must be a list")) });
 const keysQueryBody = body({
@@ -18,7 +19,7 @@ const keysQueryBody = body({
 });
 const keysClaimBody = body({ one_time_keys: z.record(z.string(), z.unknown(), fail("M_BAD_JSON", "one_time_keys must be an object")) });
 
-const SERVER_MANAGED_TYPES = ["m.fully_read", "m.push_rules"];
+const SERVER_MANAGED_TYPES: readonly string[] = [M.FULLY_READ, M.PUSH_RULES];
 
 async function setAccountData(hs: Homeserver, userId: string, roomId: string, type: string, content: Record<string, any>) {
   await hs.streams.write((stream) => hs.db.upsert("account_data", { user_id: userId, room_id: roomId, type, content, stream }));
@@ -122,7 +123,7 @@ export function registerUserRoutes(r: Router): void {
     const row = await hs.db.findOne("account_data", [
       { field: "user_id", value: userId },
       { field: "room_id", value: roomId },
-      { field: "type", value: "m.tag" },
+      { field: "type", value: M.TAG },
     ]);
     return isObject(row?.content?.tags) ? row!.content.tags : {};
   };
@@ -146,7 +147,7 @@ export function registerUserRoutes(r: Router): void {
         if (body.order !== undefined && typeof body.order !== "number") throw errors.badJson("order must be a number");
         const tags = await readTags(ctx.hs, s.userId, ctx.params.roomId);
         tags[ctx.params.tag] = body;
-        await setAccountData(ctx.hs, s.userId, ctx.params.roomId, "m.tag", { tags });
+        await setAccountData(ctx.hs, s.userId, ctx.params.roomId, M.TAG, { tags });
         return {};
       },
     }),
@@ -159,7 +160,7 @@ export function registerUserRoutes(r: Router): void {
         const s = await checkUser(ctx);
         const tags = await readTags(ctx.hs, s.userId, ctx.params.roomId);
         delete tags[ctx.params.tag];
-        await setAccountData(ctx.hs, s.userId, ctx.params.roomId, "m.tag", { tags });
+        await setAccountData(ctx.hs, s.userId, ctx.params.roomId, M.TAG, { tags });
         return {};
       },
     }),
@@ -237,7 +238,7 @@ export function registerUserRoutes(r: Router): void {
           { field: "device_id", value: ctx.params.deviceId },
         ];
         if (!(await ctx.hs.db.findOne("devices", where))) throw errors.notFound("Device not found");
-        await requireUia(ctx.hs, body, [["m.login.password"]], s.userId);
+        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId);
         await ctx.hs.auth.deleteDevice(s.userId, ctx.params.deviceId);
         return {};
       },
@@ -252,7 +253,7 @@ export function registerUserRoutes(r: Router): void {
       handler: async (ctx) => {
         const s = ctx.session;
         const body = ctx.input;
-        await requireUia(ctx.hs, body, [["m.login.password"]], s.userId);
+        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId);
         for (const d of body.devices) if (typeof d === "string") await ctx.hs.auth.deleteDevice(s.userId, d);
         return {};
       },
@@ -347,7 +348,7 @@ export function registerUserRoutes(r: Router): void {
           );
           const types = ["master", "self_signing", "user_signing"].filter((type) => body[`${type}_key`] !== undefined);
           if (types.every((type) => stored.get(type) === canonicalJson(body[`${type}_key`]))) return {};
-          await requireUia(ctx.hs, body, [["m.login.password"]], s.userId);
+          await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId);
         }
         await ctx.hs.keys.uploadCrossSigning(s.userId, body);
         return {};

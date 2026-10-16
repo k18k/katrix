@@ -5,6 +5,7 @@ import type { Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { canonicalJsonResponse } from "#http/handler.ts";
 import { wellKnown } from "#api/account.ts";
+import { M } from "#core/m.ts";
 
 export const SPEC_VERSIONS = [
   "r0.0.1",
@@ -62,7 +63,7 @@ export function registerMiscRoutes(r: Router): void {
     procedure({
       handler: (ctx) => {
         if (!ctx.hs.config.federationAddress) throw errors.notFound("No delegation configured");
-        return { "m.server": ctx.hs.config.federationAddress };
+        return { [M.SERVER]: ctx.hs.config.federationAddress };
       },
     }),
   );
@@ -87,13 +88,13 @@ export function registerMiscRoutes(r: Router): void {
         for (const v of SUPPORTED_ROOM_VERSIONS) available[v] = /^\d+$/.test(v) ? "stable" : "unstable";
         return {
           capabilities: {
-            "m.change_password": { enabled: !ctx.hs.oauth && ctx.hs.userAuth.passwordLoginEnabled },
-            "m.room_versions": { default: ctx.hs.config.defaultRoomVersion, available },
-            "m.set_displayname": { enabled: true },
-            "m.set_avatar_url": { enabled: true },
-            "m.profile_fields": { enabled: true },
-            "m.3pid_changes": { enabled: ctx.hs.threepids.enabled && !ctx.hs.oauth },
-            "m.get_login_token": { enabled: ctx.hs.config.loginViaExistingSession && !ctx.hs.oauth },
+            [M.CHANGE_PASSWORD]: { enabled: !ctx.hs.oauth && ctx.hs.userAuth.passwordLoginEnabled },
+            [M.ROOM_VERSIONS]: { default: ctx.hs.config.defaultRoomVersion, available },
+            [M.SET_DISPLAYNAME]: { enabled: true },
+            [M.SET_AVATAR_URL]: { enabled: true },
+            [M.PROFILE_FIELDS]: { enabled: true },
+            [M.THREEPID_CHANGES]: { enabled: ctx.hs.threepids.enabled && !ctx.hs.oauth },
+            [M.GET_LOGIN_TOKEN]: { enabled: ctx.hs.config.loginViaExistingSession && !ctx.hs.oauth },
           },
         };
       },

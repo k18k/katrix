@@ -3,6 +3,7 @@ import { errors } from "#core/errors.ts";
 import { isObject } from "#core/json.ts";
 import type { PDU } from "#core/events.ts";
 import type { RequestContext } from "#http/router.ts";
+import { M } from "#core/m.ts";
 
 export interface EventFilter {
   limit?: number;
@@ -66,7 +67,7 @@ export function matchesFilter(
   const relTypes = filter.rel_types ?? filter["org.matrix.msc3874.rel_types"];
   const notRelTypes = filter.not_rel_types ?? filter["org.matrix.msc3874.not_rel_types"];
   if (relTypes || notRelTypes) {
-    const relType = ev.content?.["m.relates_to"]?.rel_type;
+    const relType = ev.content?.[M.RELATES_TO]?.rel_type;
     if (relTypes && !relTypes.includes(relType)) return false;
     if (notRelTypes && typeof relType === "string" && notRelTypes.includes(relType)) return false;
   }

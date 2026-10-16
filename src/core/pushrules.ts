@@ -1,5 +1,6 @@
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { M } from "#core/m.ts";
 
 export type Rule = Record<string, any>;
 export type Ruleset = Record<string, Rule[]>;
@@ -23,37 +24,33 @@ export function defaultRules(userId: string): Ruleset {
   const ep = (key: string, value: unknown) => ({ kind: "event_property_is", key, value });
   return {
     override: [
-      r(".m.rule.master", [], [], { enabled: false }),
-      r(".m.rule.suppress_notices", [em("content.msgtype", "m.notice")], []),
+      r(M.RULE.MASTER, [], [], { enabled: false }),
+      r(M.RULE.SUPPRESS_NOTICES, [em("content.msgtype", M.NOTICE)], []),
       r(
-        ".m.rule.invite_for_me",
-        [em("type", "m.room.member"), em("content.membership", "invite"), em("state_key", userId)],
+        M.RULE.INVITE_FOR_ME,
+        [em("type", M.ROOM.MEMBER), em("content.membership", "invite"), em("state_key", userId)],
         [...notify, sound("default")],
       ),
-      r(".m.rule.member_event", [em("type", "m.room.member")], []),
+      r(M.RULE.MEMBER_EVENT, [em("type", M.ROOM.MEMBER)], []),
       r(
-        ".m.rule.is_user_mention",
+        M.RULE.IS_USER_MENTION,
         [{ kind: "event_property_contains", key: "content.m\\.mentions.user_ids", value: userId }],
         [...notify, sound("default"), highlight],
       ),
-      r(".m.rule.contains_display_name", [{ kind: "contains_display_name" }], [...notify, sound("default"), highlight]),
+      r(M.RULE.CONTAINS_DISPLAY_NAME, [{ kind: "contains_display_name" }], [...notify, sound("default"), highlight]),
       r(
-        ".m.rule.is_room_mention",
+        M.RULE.IS_ROOM_MENTION,
         [ep("content.m\\.mentions.room", true), { kind: "sender_notification_permission", key: "room" }],
         [...notify, highlight],
       ),
-      r(
-        ".m.rule.roomnotif",
-        [em("content.body", "@room"), { kind: "sender_notification_permission", key: "room" }],
-        [...notify, highlight],
-      ),
-      r(".m.rule.tombstone", [em("type", "m.room.tombstone"), em("state_key", "")], [...notify, highlight]),
-      r(".m.rule.reaction", [em("type", "m.reaction")], []),
-      r(".m.rule.room.server_acl", [em("type", "m.room.server_acl"), em("state_key", "")], []),
-      r(".m.rule.suppress_edits", [ep("content.m\\.relates_to.rel_type", "m.replace")], []),
+      r(M.RULE.ROOMNOTIF, [em("content.body", "@room"), { kind: "sender_notification_permission", key: "room" }], [...notify, highlight]),
+      r(M.RULE.TOMBSTONE, [em("type", M.ROOM.TOMBSTONE), em("state_key", "")], [...notify, highlight]),
+      r(M.RULE.REACTION, [em("type", M.REACTION)], []),
+      r(M.RULE.ROOM.SERVER_ACL, [em("type", M.ROOM.SERVER_ACL), em("state_key", "")], []),
+      r(M.RULE.SUPPRESS_EDITS, [ep("content.m\\.relates_to.rel_type", M.REPLACE)], []),
       r(".org.matrix.msc3930.rule.poll_response", [em("type", "org.matrix.msc3381.poll.response")], []),
     ],
-    content: [r(".m.rule.contains_user_name", undefined, [...notify, sound("default"), highlight], { pattern: localpart })],
+    content: [r(M.RULE.CONTAINS_USER_NAME, undefined, [...notify, sound("default"), highlight], { pattern: localpart })],
     // MSC4306: thread replies notify only in subscribed threads.
     postcontent: [
       r(".io.element.msc4306.rule.unsubscribed_thread", [{ kind: "io.element.msc4306.thread_subscription", subscribed: false }], []),
@@ -66,14 +63,14 @@ export function defaultRules(userId: string): Ruleset {
     room: [],
     sender: [],
     underride: [
-      r(".m.rule.call", [em("type", "m.call.invite")], [...notify, sound("ring")]),
+      r(M.RULE.CALL, [em("type", M.CALL.INVITE)], [...notify, sound("ring")]),
       r(
-        ".m.rule.encrypted_room_one_to_one",
-        [{ kind: "room_member_count", is: "2" }, em("type", "m.room.encrypted")],
+        M.RULE.ENCRYPTED_ROOM_ONE_TO_ONE,
+        [{ kind: "room_member_count", is: "2" }, em("type", M.ROOM.ENCRYPTED)],
         [...notify, sound("default")],
       ),
-      r(".m.rule.room_one_to_one", [{ kind: "room_member_count", is: "2" }, em("type", "m.room.message")], [...notify, sound("default")]),
-      r(".m.rule.message", [em("type", "m.room.message")], notify),
+      r(M.RULE.ROOM_ONE_TO_ONE, [{ kind: "room_member_count", is: "2" }, em("type", M.ROOM.MESSAGE)], [...notify, sound("default")]),
+      r(M.RULE.MESSAGE, [em("type", M.ROOM.MESSAGE)], notify),
       r(
         ".org.matrix.msc3930.rule.poll_start_one_to_one",
         [{ kind: "room_member_count", is: "2" }, em("type", "org.matrix.msc3381.poll.start")],
@@ -86,7 +83,7 @@ export function defaultRules(userId: string): Ruleset {
       ),
       r(".org.matrix.msc3930.rule.poll_start", [em("type", "org.matrix.msc3381.poll.start")], notify),
       r(".org.matrix.msc3930.rule.poll_end", [em("type", "org.matrix.msc3381.poll.end")], notify),
-      r(".m.rule.encrypted", [em("type", "m.room.encrypted")], notify),
+      r(M.RULE.ENCRYPTED, [em("type", M.ROOM.ENCRYPTED)], notify),
     ],
   };
 }
@@ -127,7 +124,7 @@ async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
   const row = await hs.db.findOne("account_data", [
     { field: "user_id", value: userId },
     { field: "room_id", value: "" },
-    { field: "type", value: "m.push_rules" },
+    { field: "type", value: M.PUSH_RULES },
   ]);
   if (!isObject(row?.content?.global)) return defaultRules(userId);
   const rules: Ruleset = row!.content.global;
@@ -141,7 +138,7 @@ export async function saveRules(hs: Homeserver, userId: string, rules: Ruleset):
   cacheFor(hs).set(userId, structuredClone(rules));
   void hs.cluster.publish("pushrules", { from: hs.instanceId, userId }).catch(() => {});
   await hs.streams.write((stream) =>
-    hs.db.upsert("account_data", { user_id: userId, room_id: "", type: "m.push_rules", content: { global: rules }, stream }),
+    hs.db.upsert("account_data", { user_id: userId, room_id: "", type: M.PUSH_RULES, content: { global: rules }, stream }),
   );
   hs.notifier.notify([userId]);
 }
@@ -155,7 +152,7 @@ async function copyRules(hs: Homeserver, userId: string, oldRoomId: string, newR
   const row = await hs.db.findOne("account_data", [
     { field: "user_id", value: userId },
     { field: "room_id", value: "" },
-    { field: "type", value: "m.push_rules" },
+    { field: "type", value: M.PUSH_RULES },
   ]);
   if (!isObject(row?.content?.global)) return;
   const rules: Ruleset = row!.content.global;

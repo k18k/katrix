@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { eventIdOf, roomVersionFeatures, stateKey } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { M } from "#core/m.ts";
 
 // MSC3902 "faster joins": a remote join with `omit_members=true` returns the room's state
 // without most membership events. The room is usable right away (sending, receiving, lazy
@@ -185,7 +186,7 @@ export class PartialStateService {
         const fullBefore = await this.hs.federation.stateFromPrevs(server, roomId, version, prevIds, { remote: true });
         // Requests fail while shutting down: never complete (or give up on) a resync then.
         if (this.stopped || this.hs.isClosed) return true;
-        if (!fullBefore[stateKey("m.room.create", "")] && !roomVersionFeatures(version).v12)
+        if (!fullBefore[stateKey(M.ROOM.CREATE, "")] && !roomVersionFeatures(version).v12)
           throw new Error("Resynced state lacks the create event");
         // Servers we sent the room's traffic to while partial: the resident's list plus those in our partial state.
         const notified = new Set<string>([

@@ -1,5 +1,6 @@
 import { canonicalJson, isObject } from "#core/json.ts";
 import { randomString, sha256, signJson, unpaddedBase64, urlSafeBase64, type SigningKey } from "#core/crypto.ts";
+import { M } from "#core/m.ts";
 
 export interface PDU {
   event_id?: string;
@@ -94,7 +95,7 @@ export function redact<T extends Record<string, any>>(event: T, roomVersion: str
   const out: Record<string, any> = {};
   for (const k of keep) if (k in event) out[k] = event[k];
   const keepRelation =
-    roomVersion.startsWith("org.matrix.msc3389.") && isObject(event.content?.["m.relates_to"]) ? event.content["m.relates_to"] : undefined;
+    roomVersion.startsWith("org.matrix.msc3389.") && isObject(event.content?.[M.RELATES_TO]) ? event.content[M.RELATES_TO] : undefined;
   const content = isObject(event.content) ? event.content : {};
   const pick = (...keys: string[]) => {
     const c: Record<string, any> = {};
@@ -102,7 +103,7 @@ export function redact<T extends Record<string, any>>(event: T, roomVersion: str
     return c;
   };
   switch (event.type) {
-    case "m.room.member": {
+    case M.ROOM.MEMBER: {
       const c = pick("membership", ...(n >= 9 ? ["join_authorised_via_users_server"] : []));
       if (n >= 11 && isObject(content.third_party_invite) && "signed" in content.third_party_invite) {
         c.third_party_invite = { signed: content.third_party_invite.signed };
@@ -110,13 +111,13 @@ export function redact<T extends Record<string, any>>(event: T, roomVersion: str
       out.content = c;
       break;
     }
-    case "m.room.create":
+    case M.ROOM.CREATE:
       out.content = n >= 11 ? { ...content } : pick("creator");
       break;
-    case "m.room.join_rules":
+    case M.ROOM.JOIN_RULES:
       out.content = pick("join_rule", ...(n >= 8 ? ["allow"] : []));
       break;
-    case "m.room.power_levels":
+    case M.ROOM.POWER_LEVELS:
       out.content = pick(
         "ban",
         "events",
@@ -129,13 +130,13 @@ export function redact<T extends Record<string, any>>(event: T, roomVersion: str
         ...(n >= 11 ? ["invite"] : []),
       );
       break;
-    case "m.room.history_visibility":
+    case M.ROOM.HISTORY_VISIBILITY:
       out.content = pick("history_visibility");
       break;
-    case "m.room.aliases":
+    case M.ROOM.ALIASES:
       out.content = n <= 5 ? pick("aliases") : {};
       break;
-    case "m.room.redaction":
+    case M.ROOM.REDACTION:
       out.content = n >= 11 ? pick("redacts") : {};
       break;
     default:
@@ -146,7 +147,7 @@ export function redact<T extends Record<string, any>>(event: T, roomVersion: str
     const rel: Record<string, unknown> = {};
     if ("rel_type" in keepRelation) rel.rel_type = keepRelation.rel_type;
     if ("event_id" in keepRelation) rel.event_id = keepRelation.event_id;
-    out.content = { ...out.content, "m.relates_to": rel };
+    out.content = { ...out.content, [M.RELATES_TO]: rel };
   }
   return out as T;
 }
@@ -196,7 +197,7 @@ export function toClientEvent(pdu: PDU, opts: { includeRoomId?: boolean } = {}):
   if (opts.includeRoomId !== false) ev.room_id = pdu.room_id;
   if (pdu.state_key !== undefined) ev.state_key = pdu.state_key;
   if (pdu.redacts !== undefined) ev.redacts = pdu.redacts;
-  else if (pdu.type === "m.room.redaction" && typeof pdu.content?.redacts === "string") ev.redacts = pdu.content.redacts;
+  else if (pdu.type === M.ROOM.REDACTION && typeof pdu.content?.redacts === "string") ev.redacts = pdu.content.redacts;
   ev.unsigned = { ...pdu.unsigned, age: Math.max(0, Date.now() - pdu.origin_server_ts) };
   return ev;
 }

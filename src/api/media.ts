@@ -3,6 +3,7 @@ import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
+import { M } from "#core/m.ts";
 
 const DEFAULT_MAX_UPLOAD = 50 * 1024 * 1024;
 const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif|apng)|video\/(mp4|webm|ogg)|audio\/(mpeg|ogg|wav|webm|mp4|aac|flac)|text\/plain)$/;
@@ -156,7 +157,7 @@ async function thumbnail(ctx: RequestContext): Promise<Response> {
 }
 
 export function registerMediaRoutes(r: Router): void {
-  const config = (ctx: RequestContext) => ({ "m.upload.size": maxUpload(ctx.hs) });
+  const config = (ctx: RequestContext) => ({ [M.UPLOAD.SIZE]: maxUpload(ctx.hs) });
   r.get(
     "/_matrix/media/v3/config",
     procedure({

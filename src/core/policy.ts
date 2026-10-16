@@ -5,6 +5,7 @@ import { MatrixError } from "#core/errors.ts";
 import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
 import { redact, type PDU } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { M } from "#core/m.ts";
 
 // Policy Servers (spec v1.18): a room may name a server (`m.room.policy`) that checks events before
 // they are sent. Local events get its signature before they leave this server; remote events
@@ -27,7 +28,7 @@ export class PolicyServers {
   /** The room's policy server, if the room uses one (valid `m.room.policy` and a joined user on `via`). */
   async policyOf(roomId: string): Promise<RoomPolicy | null> {
     const state = await this.hs.rooms.currentState(roomId);
-    const content = getState(state, "m.room.policy", "")?.content;
+    const content = getState(state, M.ROOM.POLICY, "")?.content;
     const via = content?.via;
     const ed25519 = content?.public_keys?.ed25519;
     if (typeof via !== "string" || typeof ed25519 !== "string") return null;
@@ -39,7 +40,7 @@ export class PolicyServers {
     }
     for (const ev of state.values()) {
       if (
-        ev.type === "m.room.member" &&
+        ev.type === M.ROOM.MEMBER &&
         ev.content?.membership === "join" &&
         typeof ev.state_key === "string" &&
         domainOf(ev.state_key) === via
@@ -51,7 +52,7 @@ export class PolicyServers {
 
   /** The policy state event itself is never sent to the policy server. */
   private exempt(pdu: PDU): boolean {
-    return pdu.type === "m.room.policy" && pdu.state_key === "";
+    return pdu.type === M.ROOM.POLICY && pdu.state_key === "";
   }
 
   private validSignature(pdu: PDU, version: string, policy: RoomPolicy): boolean {

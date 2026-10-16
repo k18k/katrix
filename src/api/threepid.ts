@@ -5,6 +5,7 @@ import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { requireUia } from "#api/uia.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
+import { M } from "#core/m.ts";
 
 const submitField = z.string(fail("M_MISSING_PARAM", "sid, client_secret and token are required"));
 const submitBody = body({ sid: submitField, client_secret: submitField, token: submitField });
@@ -103,7 +104,7 @@ export function registerThreepidRoutes(r: Router): void {
         notDelegated(ctx);
         const s = await ctx.auth();
         const body = ctx.input;
-        await requireUia(ctx.hs, body, [["m.login.password"]], s.userId);
+        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId);
         const validated = await ctx.hs.threepids.validated({ sid: body.sid, client_secret: body.client_secret });
         if (!validated) throw new MatrixError(400, "M_THREEPID_AUTH_FAILED", "The address has not been validated");
         await ctx.hs.threepids.add(s.userId, validated);

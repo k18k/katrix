@@ -30,6 +30,7 @@ import { schema } from "#storage/schema.ts";
 import type { DatabaseAdapter } from "#storage/types.ts";
 import { Router } from "#http/router.ts";
 import { registerRoutes } from "#api/index.ts";
+import { M } from "#core/m.ts";
 
 export interface Logger {
   debug(...args: unknown[]): void;
@@ -56,7 +57,7 @@ export interface HomeserverOptions {
   federationAddress?: string;
   /** Contacts and page served at `/.well-known/matrix/support` (e.g. to appeal a locked account). */
   support?: {
-    contacts?: { role: "m.role.admin" | "m.role.security" | (string & {}); matrix_id?: string; email_address?: string }[];
+    contacts?: { role: typeof M.ROLE.ADMIN | typeof M.ROLE.SECURITY | (string & {}); matrix_id?: string; email_address?: string }[];
     supportPage?: string;
   };
   /**

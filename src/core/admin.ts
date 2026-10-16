@@ -3,6 +3,7 @@ import { randomString } from "#core/crypto.ts";
 import { LOCALPART_RE, isValidUserId } from "#core/ids.ts";
 import type { Homeserver } from "#homeserver.ts";
 import { createUser } from "#api/account.ts";
+import { M } from "#core/m.ts";
 
 export interface ServerNoticesOptions {
   /** Localpart of the user that sends server notices. Default: "server". */
@@ -226,7 +227,7 @@ export class AdminService {
     const roomId = await this.noticeRoomFor(userId);
     const membership = await this.hs.rooms.membership(roomId, userId);
     if (membership !== "join" && membership !== "invite") await this.hs.rooms.invite(roomId, noticeUser, userId);
-    const eventId = await this.hs.rooms.sendEvent(roomId, noticeUser, { type: opts.type ?? "m.room.message", content });
+    const eventId = await this.hs.rooms.sendEvent(roomId, noticeUser, { type: opts.type ?? M.ROOM.MESSAGE, content });
     if (txnKey) await this.hs.cluster.set(txnKey, eventId, 24 * 3600_000);
     return eventId;
   }
@@ -238,9 +239,9 @@ export class AdminService {
       const tag = await this.hs.db.findOne("account_data", [
         { field: "user_id", value: userId },
         { field: "room_id", value: room.room_id },
-        { field: "type", value: "m.tag" },
+        { field: "type", value: M.TAG },
       ]);
-      if (tag?.content?.tags?.["m.server_notice"]) return room.room_id;
+      if (tag?.content?.tags?.[M.SERVER_NOTICE]) return room.room_id;
     }
     const { room_id } = await this.hs.rooms.createRoom(noticeUser, {
       preset: "private_chat",
@@ -251,8 +252,8 @@ export class AdminService {
       this.hs.db.upsert("account_data", {
         user_id: userId,
         room_id,
-        type: "m.tag",
-        content: { tags: { "m.server_notice": { order: 0.5 } } },
+        type: M.TAG,
+        content: { tags: { [M.SERVER_NOTICE]: { order: 0.5 } } },
         stream,
       }),
     );

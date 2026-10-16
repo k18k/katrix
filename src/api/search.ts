@@ -7,6 +7,7 @@ import { z } from "zod";
 import { body, fail } from "#http/input.ts";
 import { matchesFilter, type EventFilter } from "#api/filters.ts";
 import { paginate, topoToken } from "#api/rooms.ts";
+import { M } from "#core/m.ts";
 
 const DEFAULT_KEYS = ["content.body", "content.name", "content.topic"];
 
@@ -108,7 +109,7 @@ export function registerSearchRoutes(r: Router): void {
               const state = await hs.rooms.currentState(roomId);
               const profile_info: Record<string, any> = {};
               for (const e of [...before.events, hit.ev, ...after.events]) {
-                const m = getState(state, "m.room.member", e.pdu.sender)?.content;
+                const m = getState(state, M.ROOM.MEMBER, e.pdu.sender)?.content;
                 profile_info[e.pdu.sender] = { displayname: m?.displayname, avatar_url: m?.avatar_url };
               }
               context.profile_info = profile_info;

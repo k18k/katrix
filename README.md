@@ -305,8 +305,11 @@ await hs.admin.createUser("alice", { password: "…", admin: true });
 await hs.admin.createRegistrationToken({ usesAllowed: 10 });
 await hs.admin.deactivateUser("@spammer:example.com");
 await hs.admin.deleteRoom(roomId, { purge: true });
-await hs.admin.sendServerNotice("@alice:example.com", { msgtype: "m.text", body: "Maintenance tonight" });
+await hs.admin.sendServerNotice("@alice:example.com", { msgtype: M.TEXT, body: "Maintenance tonight" });
 ```
+
+`M` (exported from the package) holds the Matrix identifiers as one readonly object:
+`M.ROOM.MEMBER` is `"m.room.member"`, `M.LOGIN.PASSWORD` is `"m.login.password"`.
 
 The same operations are available over HTTP at Synapse-compatible `/_synapse/admin/…`
 paths (server admins only), so existing tools keep working.

@@ -4,6 +4,7 @@ import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
+import { M } from "#core/m.ts";
 
 const pusherKey = z.string(fail("M_MISSING_PARAM", "Missing app_id or pushkey"));
 // `kind: null` deletes a pusher; otherwise kind, the display names, lang and data are required (checked below).
@@ -100,7 +101,7 @@ export function registerPushRoutes(r: Router): void {
           const before = ctx.query.get("before");
           const after = ctx.query.get("after");
           // User rules take priority over server defaults (except the master rule).
-          let index = list.findIndex((x) => x.default && x.rule_id !== ".m.rule.master");
+          let index = list.findIndex((x) => x.default && x.rule_id !== M.RULE.MASTER);
           if (index === -1) index = list.length;
           if (before) {
             index = list.findIndex((x) => x.rule_id === before);

@@ -2,6 +2,7 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { M } from "#core/m.ts";
 
 interface UiaSession {
   completed: string[];
@@ -30,8 +31,8 @@ export async function requireUia(
   userId: string | null,
 ): Promise<{ threepids: ValidatedThreepid[] }> {
   // With delegated OAuth there are no passwords; sensitive actions are approved at the provider.
-  if (hs.oauth && flows.some((f) => f.includes("m.login.password"))) {
-    flows = [["m.oauth"], ["org.matrix.cross_signing_reset"]];
+  if (hs.oauth && flows.some((f) => f.includes(M.LOGIN.PASSWORD))) {
+    flows = [[M.OAUTH], ["org.matrix.cross_signing_reset"]];
   }
   // Sessions live in the cluster KV so that any instance can continue them.
   const auth = isObject(body.auth) ? body.auth : null;
@@ -50,7 +51,7 @@ export async function requireUia(
       UIA_TTL_MS,
     );
   const oauthUrl = hs.oauth?.options.accountManagementUrl ?? hs.oauth?.options.issuer;
-  const params = hs.oauth ? { "m.oauth": { url: oauthUrl }, "org.matrix.cross_signing_reset": { url: oauthUrl } } : {};
+  const params = hs.oauth ? { [M.OAUTH]: { url: oauthUrl }, "org.matrix.cross_signing_reset": { url: oauthUrl } } : {};
   const challenge = (extra: Record<string, unknown> = {}) =>
     new MatrixError(401, extra.errcode ? String(extra.errcode) : "M_FORBIDDEN", String(extra.error ?? "Authentication required"), {
       flows: flows.map((stages) => ({ stages })),
@@ -62,32 +63,32 @@ export async function requireUia(
 
   // Like Synapse, m.login.dummy may be completed without a session, unless the client already
   // started one for this registration (then it must continue that session).
-  if (auth?.type === "m.login.dummy" && !auth.session && typeof body.username === "string" && !userId) {
+  if (auth?.type === M.LOGIN.DUMMY && !auth.session && typeof body.username === "string" && !userId) {
     if (await hs.cluster.get(`uia-register:${body.username.toLowerCase()}`)) {
       throw challenge({ errcode: "M_FORBIDDEN", error: "Missing session" });
     }
   }
   if (auth?.type) {
     switch (auth.type) {
-      case "m.login.dummy":
-        session.completed.add("m.login.dummy");
+      case M.LOGIN.DUMMY:
+        session.completed.add(M.LOGIN.DUMMY);
         break;
-      case "m.oauth":
+      case M.OAUTH:
       case "org.matrix.cross_signing_reset":
         // The client retries after the user approved the action at the provider.
         if (!hs.oauth) throw challenge({ errcode: "M_UNRECOGNIZED", error: "OAuth is not enabled" });
         session.completed.add(auth.type);
         break;
-      case "m.login.registration_token": {
+      case M.LOGIN.REGISTRATION_TOKEN: {
         const { registrationTokenValid } = await import("#api/account.ts");
         if (typeof auth.token !== "string" || !(await registrationTokenValid(hs, auth.token))) {
           throw challenge({ errcode: "M_FORBIDDEN", error: "Invalid registration token" });
         }
-        session.completed.add("m.login.registration_token");
+        session.completed.add(M.LOGIN.REGISTRATION_TOKEN);
         break;
       }
-      case "m.login.password": {
-        const identifier = isObject(auth.identifier) ? auth.identifier : { type: "m.id.user", user: auth.user };
+      case M.LOGIN.PASSWORD: {
+        const identifier = isObject(auth.identifier) ? auth.identifier : { type: M.ID.USER, user: auth.user };
         const user = typeof identifier.user === "string" ? identifier.user : "";
         const target = user.startsWith("@") ? user : `@${user.toLowerCase()}:${hs.serverName}`;
         if (userId && target !== userId) throw errors.forbidden("Credentials do not match the authenticated user");
@@ -103,13 +104,13 @@ export async function requireUia(
             storedHash: row.password_hash,
           }));
         if (!ok) throw challenge({ errcode: "M_FORBIDDEN", error: "Invalid password" });
-        session.completed.add("m.login.password");
+        session.completed.add(M.LOGIN.PASSWORD);
         break;
       }
-      case "m.login.email.identity":
-      case "m.login.msisdn": {
+      case M.LOGIN.EMAIL.IDENTITY:
+      case M.LOGIN.MSISDN: {
         const validated = await hs.threepids.validated(auth.threepid_creds ?? auth.threepidCreds);
-        const medium = auth.type === "m.login.email.identity" ? "email" : "msisdn";
+        const medium = auth.type === M.LOGIN.EMAIL.IDENTITY ? "email" : "msisdn";
         if (!validated || validated.medium !== medium)
           throw challenge({ errcode: "M_UNAUTHORIZED", error: "The address has not been validated" });
         // For an authenticated user, the address must be one of theirs.

@@ -17,6 +17,7 @@ const slidingSyncBody = bodySchema({
   extensions: lenient(z.record(z.string(), z.unknown())),
 });
 import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "#api/sync.ts";
+import { M } from "#core/m.ts";
 
 /**
  * Simplified sliding sync (MSC4186), as used by Element X.
@@ -50,15 +51,7 @@ interface ConnectionState {
   toDeviceSince: number;
 }
 
-const BUMP_TYPES = new Set([
-  "m.room.create",
-  "m.room.message",
-  "m.room.encrypted",
-  "m.sticker",
-  "m.call.invite",
-  "m.poll.start",
-  "m.beacon_info",
-]);
+const BUMP_TYPES = new Set([M.ROOM.CREATE, M.ROOM.MESSAGE, M.ROOM.ENCRYPTED, M.STICKER, M.CALL.INVITE, M.POLL.START, M.BEACON_INFO]);
 
 async function loadConnection(hs: Homeserver, s: Session, connId: string) {
   return hs.db.findOne("sliding_sync_connections", [
@@ -87,7 +80,7 @@ function matchesRequiredState(required: RequiredState, type: string, key: string
     if (t !== "*" && t !== type) continue;
     if (k === "*" || k === key) return true;
     if (k === "$ME" && key === userId) return true;
-    if (k === "$LAZY" && type === "m.room.member" && lazyMembers.has(key)) return true;
+    if (k === "$LAZY" && type === M.ROOM.MEMBER && lazyMembers.has(key)) return true;
   }
   return false;
 }
@@ -160,7 +153,7 @@ async function buildResponse(
   const direct = await hs.db.findOne("account_data", [
     { field: "user_id", value: userId },
     { field: "room_id", value: "" },
-    { field: "type", value: "m.direct" },
+    { field: "type", value: M.DIRECT },
   ]);
   const dmRooms = new Set<string>(
     Object.values(direct?.content ?? {})
@@ -184,7 +177,7 @@ async function buildResponse(
     const state = await hs.rooms.currentState(m.room_id);
     const bump = m.membership === "join" ? await bumpStamp(hs, m.room_id, to) : m.stream;
     infos.push({ roomId: m.room_id, membership: m.membership, bump, state });
-    const invite = getState(state, "m.room.member", userId);
+    const invite = getState(state, M.ROOM.MEMBER, userId);
     if (m.membership === "invite" && invite?.content?.is_direct) dmRooms.add(m.room_id);
   }
   infos.sort((a, b) => b.bump - a.bump);
@@ -198,8 +191,8 @@ async function buildResponse(
     let rooms = infos;
     if (f.is_dm !== undefined) rooms = rooms.filter((r) => dmRooms.has(r.roomId) === f.is_dm);
     if (f.is_invite !== undefined) rooms = rooms.filter((r) => (r.membership === "invite") === f.is_invite);
-    if (f.is_encrypted !== undefined) rooms = rooms.filter((r) => !!getState(r.state, "m.room.encryption") === f.is_encrypted);
-    const roomType = (r: RoomInfo) => getState(r.state, "m.room.create")?.content?.type ?? null;
+    if (f.is_encrypted !== undefined) rooms = rooms.filter((r) => !!getState(r.state, M.ROOM.ENCRYPTION) === f.is_encrypted);
+    const roomType = (r: RoomInfo) => getState(r.state, M.ROOM.CREATE)?.content?.type ?? null;
     if (f.room_types) rooms = rooms.filter((r) => f.room_types!.includes(roomType(r)));
     if (f.not_room_types) rooms = rooms.filter((r) => !f.not_room_types!.includes(roomType(r)));
     if (f.spaces) {
@@ -208,7 +201,7 @@ async function buildResponse(
         if (!(await hs.rooms.exists(space))) continue;
         for (const key of (await hs.rooms.currentState(space)).keys()) {
           const [t, k] = splitStateKey(key);
-          if (t === "m.space.child") children.add(k);
+          if (t === M.SPACE.CHILD) children.add(k);
         }
       }
       rooms = rooms.filter((r) => children.has(r.roomId));
@@ -273,14 +266,14 @@ async function buildRoom(
   const { roomId, state } = info;
   const userId = s.userId;
   const room: Record<string, any> = { bump_stamp: info.bump, timeline: [], required_state: [] };
-  const name = getState(state, "m.room.name")?.content?.name;
+  const name = getState(state, M.ROOM.NAME)?.content?.name;
   if (typeof name === "string") room.name = name;
-  const avatar = getState(state, "m.room.avatar")?.content?.url;
+  const avatar = getState(state, M.ROOM.AVATAR)?.content?.url;
   if (typeof avatar === "string") room.avatar = avatar;
   if (isDm) room.is_dm = true;
 
   if (info.membership === "invite" || info.membership === "knock") {
-    const own = getState(state, "m.room.member", userId);
+    const own = getState(state, M.ROOM.MEMBER, userId);
     const ev = own?.event_id ? await hs.rooms.getEvent(own.event_id) : null;
     if (ev) {
       const key = info.membership === "invite" ? "invite_room_state" : "knock_room_state";
@@ -336,7 +329,7 @@ async function buildRoom(
   const heroes: Record<string, any>[] = [];
   for (const [key, ev] of state) {
     const [type, sk] = splitStateKey(key);
-    if (type !== "m.room.member") continue;
+    if (type !== M.ROOM.MEMBER) continue;
     const m = ev.content?.membership;
     if (m === "join") joined++;
     if (m === "invite") invited++;
@@ -404,9 +397,9 @@ async function buildExtensions(
       if (r.room_id === "") global.push(ev);
       else if (roomIds.includes(r.room_id) || since !== null) (rooms[r.room_id] ??= []).push(ev);
     }
-    if (since === null && !global.some((e) => e.type === "m.push_rules")) {
+    if (since === null && !global.some((e) => e.type === M.PUSH_RULES)) {
       const { loadRules } = await import("#core/pushrules.ts");
-      global.push({ type: "m.push_rules", content: { global: await loadRules(hs, userId) } });
+      global.push({ type: M.PUSH_RULES, content: { global: await loadRules(hs, userId) } });
     }
     out.account_data = { global, rooms };
   }
@@ -436,8 +429,8 @@ async function buildExtensions(
     for (const roomId of since === null ? roomIds : [...joined]) {
       if (!joined.has(roomId)) continue;
       for (const e of await roomEphemeral(hs, p, roomId)) {
-        if (e.type === "m.receipt" && ext.receipts?.enabled) receipts[roomId] = e;
-        if (e.type === "m.typing" && ext.typing?.enabled && (since !== null || e.content.user_ids.length)) typing[roomId] = e;
+        if (e.type === M.RECEIPT && ext.receipts?.enabled) receipts[roomId] = e;
+        if (e.type === M.TYPING && ext.typing?.enabled && (since !== null || e.content.user_ids.length)) typing[roomId] = e;
       }
     }
     if (ext.receipts?.enabled) out.receipts = { rooms: receipts };

@@ -1,5 +1,6 @@
 import { authEventKeys, checkAuth, powerLevels, userLevel, type StateMap } from "#core/authrules.ts";
 import { eventIdOf, roomVersionFeatures, stateKey, type PDU } from "#core/events.ts";
+import { M } from "#core/m.ts";
 
 /** Event lookup used by state resolution (timeline events and outliers). */
 export type EventSource = (eventIds: string[]) => Promise<Map<string, PDU>>;
@@ -8,10 +9,10 @@ export type EventSource = (eventIds: string[]) => Promise<Map<string, PDU>>;
 export type StateIds = Record<string, string>;
 
 const isPowerEvent = (ev: PDU) =>
-  (ev.type === "m.room.power_levels" && ev.state_key === "") ||
-  (ev.type === "m.room.join_rules" && ev.state_key === "") ||
-  (ev.type === "m.room.create" && ev.state_key === "") ||
-  (ev.type === "m.room.member" && ["leave", "ban"].includes(ev.content?.membership) && ev.sender !== ev.state_key);
+  (ev.type === M.ROOM.POWER_LEVELS && ev.state_key === "") ||
+  (ev.type === M.ROOM.JOIN_RULES && ev.state_key === "") ||
+  (ev.type === M.ROOM.CREATE && ev.state_key === "") ||
+  (ev.type === M.ROOM.MEMBER && ["leave", "ban"].includes(ev.content?.membership) && ev.sender !== ev.state_key);
 
 const authIds = (ev: PDU) => (ev.auth_events ?? []).map(eventIdOf);
 
@@ -95,7 +96,7 @@ export async function resolveState(stateSets: StateIds[], roomVersion: string, s
 
   // 5. Remaining events, in mainline order.
   const remaining = [...full].filter((id) => !control.has(id));
-  const mainline = await mainlineOf(cache, resolved[stateKey("m.room.power_levels", "")]);
+  const mainline = await mainlineOf(cache, resolved[stateKey(M.ROOM.POWER_LEVELS, "")]);
   const positions = new Map<string, number>();
   for (const id of remaining) positions.set(id, await mainlinePosition(cache, id, mainline));
   remaining.sort((a, b) => {
@@ -137,7 +138,7 @@ async function senderPowerLevel(cache: EventCache, ev: PDU, roomVersion: string,
     const a = cache.get(id);
     if (a && a.state_key !== undefined) state.set(stateKey(a.type, a.state_key), a);
   }
-  if (createEvent) state.set(stateKey("m.room.create", ""), createEvent);
+  if (createEvent) state.set(stateKey(M.ROOM.CREATE, ""), createEvent);
   const level = userLevel(powerLevels(state, roomVersion), ev.sender);
   return Number.isFinite(level) ? level : Number.MAX_SAFE_INTEGER;
 }
@@ -200,7 +201,7 @@ async function iterativeAuthChecks(
       const sev = sid ? cache.get(sid) : undefined;
       if (sev) authState.set(k, sev);
     }
-    if (createEvent) authState.set(stateKey("m.room.create", ""), createEvent);
+    if (createEvent) authState.set(stateKey(M.ROOM.CREATE, ""), createEvent);
     try {
       checkAuth(ev, authState, roomVersion);
       state[stateKey(ev.type, ev.state_key)] = id;
@@ -222,7 +223,7 @@ async function mainlineOf(cache: EventCache, plId: string | undefined): Promise<
     await cache.load(authIds(ev));
     current = authIds(ev).find((a) => {
       const e = cache.get(a);
-      return e?.type === "m.room.power_levels" && e.state_key === "";
+      return e?.type === M.ROOM.POWER_LEVELS && e.state_key === "";
     });
   }
   // The oldest power levels event gets the lowest position.
@@ -244,7 +245,7 @@ async function mainlinePosition(cache: EventCache, id: string, mainline: Map<str
     await cache.load(authIds(ev));
     current = authIds(ev).find((a) => {
       const e = cache.get(a);
-      return e?.type === "m.room.power_levels" && e.state_key === "";
+      return e?.type === M.ROOM.POWER_LEVELS && e.state_key === "";
     });
   }
   return 0;

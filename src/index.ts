@@ -10,6 +10,7 @@ export {
 } from "#http/adapters.ts";
 export { handleRequest } from "#http/handler.ts";
 export { MatrixError } from "#core/errors.ts";
+export { M } from "#core/m.ts";
 
 // Database adapters
 export type { DatabaseAdapter, Schema, ModelDef, FieldDef, WhereClause, Row, FindManyOptions, Operator } from "#storage/types.ts";

@@ -8,6 +8,7 @@ import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
+import { M } from "#core/m.ts";
 
 async function remoteProfile(ctx: RequestContext, field?: string): Promise<Record<string, any>> {
   if (!isValidUserId(ctx.params.userId)) throw errors.invalidParam("Invalid user ID");
@@ -121,8 +122,8 @@ export function registerProfileRoutes(r: Router): void {
           const state = await ctx.hs.rooms.currentState(room.room_id);
           const isPublic =
             room.is_public ||
-            getState(state, "m.room.join_rules")?.content?.join_rule === "public" ||
-            getState(state, "m.room.history_visibility")?.content?.history_visibility === "world_readable";
+            getState(state, M.ROOM.JOIN_RULES)?.content?.join_rule === "public" ||
+            getState(state, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility === "world_readable";
           if (isPublic) for (const u of await ctx.hs.rooms.joinedMembers(room.room_id)) visible.add(u);
         }
         const users = await ctx.hs.db.findMany("users", {

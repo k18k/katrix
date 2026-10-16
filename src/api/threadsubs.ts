@@ -3,6 +3,7 @@ import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
+import { M } from "#core/m.ts";
 
 // MSC4306: thread subscriptions. A subscription is either manual or "automatic" (made by a
 // client in reaction to an event in the thread). Unsubscribing records the stream position so
@@ -77,8 +78,8 @@ export function registerThreadSubscriptionRoutes(r: Router): void {
         let causeStream: number | null = null;
         if (typeof cause === "string") {
           const ev = await visibleEvent(ctx, s.userId, roomId, cause);
-          const rel = ev?.pdu.content?.["m.relates_to"];
-          if (!ev || !isObject(rel) || rel.rel_type !== "m.thread" || rel.event_id !== threadId) throw notInThread();
+          const rel = ev?.pdu.content?.[M.RELATES_TO];
+          if (!ev || !isObject(rel) || rel.rel_type !== M.THREAD || rel.event_id !== threadId) throw notInThread();
           causeStream = ev.stream;
         }
         await hs.cluster.lock(`threadsub:${s.userId}:${roomId}:${threadId}`, async () => {

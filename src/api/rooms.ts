@@ -12,6 +12,7 @@ import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
 import { matchesFilter, parseRoomEventFilter, type EventFilter } from "#api/filters.ts";
+import { M } from "#core/m.ts";
 
 export const parseToken = (token: string | null): number | null => {
   if (token === null || token === "") return null;
@@ -85,7 +86,7 @@ async function backfillIfNeeded(hs: Homeserver, roomId: string): Promise<boolean
     limit: 1,
   });
   const first = oldest[0];
-  if (!first || first.type === "m.room.create") return false;
+  if (!first || first.type === M.ROOM.CREATE) return false;
   const prevs = ((first.json.prev_events ?? []) as unknown[]).map((p) => (Array.isArray(p) ? p[0] : p) as string);
   const known = await hs.rooms.getEvents(prevs);
   if (prevs.every((p) => known.has(p))) return false;
@@ -196,16 +197,16 @@ async function inviteByThreepid(ctx: RequestContext, s: Session, body: Record<st
   }
   const state = await hs.rooms.currentState(roomId);
   const profile = await hs.profile(s.userId);
-  const create = getState(state, "m.room.create", "");
+  const create = getState(state, M.ROOM.CREATE, "");
   const invite: Record<string, unknown> = {
     medium: body.medium,
     address: body.address,
     room_id: roomId,
     sender: s.userId,
-    room_alias: getState(state, "m.room.canonical_alias", "")?.content?.alias,
-    room_avatar_url: getState(state, "m.room.avatar", "")?.content?.url,
-    room_join_rules: getState(state, "m.room.join_rules", "")?.content?.join_rule,
-    room_name: getState(state, "m.room.name", "")?.content?.name,
+    room_alias: getState(state, M.ROOM.CANONICAL_ALIAS, "")?.content?.alias,
+    room_avatar_url: getState(state, M.ROOM.AVATAR, "")?.content?.url,
+    room_join_rules: getState(state, M.ROOM.JOIN_RULES, "")?.content?.join_rule,
+    room_name: getState(state, M.ROOM.NAME, "")?.content?.name,
     room_type: create?.content?.type,
     sender_display_name: profile.displayname,
     sender_avatar_url: profile.avatar_url,
@@ -214,7 +215,7 @@ async function inviteByThreepid(ctx: RequestContext, s: Session, body: Record<st
   const stored = await hs.identityServers.storeInvite(body.id_server, body.id_access_token, invite);
   const [first] = stored.public_keys;
   await hs.rooms.sendEvent(roomId, s.userId, {
-    type: "m.room.third_party_invite",
+    type: M.ROOM.THIRD_PARTY_INVITE,
     state_key: stored.token,
     content: {
       display_name: stored.display_name,
@@ -289,7 +290,7 @@ async function validateStateEvent(
   content: Record<string, any>,
   stateKeyValue = "",
 ): Promise<void> {
-  if (type === "m.room.create") throw errors.badJson("The create event cannot be sent");
+  if (type === M.ROOM.CREATE) throw errors.badJson("The create event cannot be sent");
   if (
     stateKeyValue.startsWith("@") &&
     roomVersionFeatures((await hs.rooms.roomVersion(roomId))!).ownedState &&
@@ -297,11 +298,11 @@ async function validateStateEvent(
   ) {
     throw errors.badJson("Malformed user-owned state key");
   }
-  if (type === "m.room.power_levels") {
+  if (type === M.ROOM.POWER_LEVELS) {
     const version = (await hs.rooms.roomVersion(roomId))!;
     validatePowerLevelContent(content, roomCreators(await hs.rooms.currentState(roomId), version));
   }
-  if (type === "m.room.canonical_alias") {
+  if (type === M.ROOM.CANONICAL_ALIAS) {
     const aliases = [content.alias, ...(Array.isArray(content.alt_aliases) ? content.alt_aliases : [])].filter(
       (a) => a !== undefined && a !== null,
     );
@@ -321,15 +322,15 @@ async function publicRoomChunk(hs: Homeserver, roomId: string): Promise<Record<s
   const chunk: Record<string, any> = {
     room_id: roomId,
     num_joined_members: (await hs.rooms.joinedMembers(roomId)).length,
-    world_readable: get("m.room.history_visibility")?.history_visibility === "world_readable",
-    guest_can_join: get("m.room.guest_access")?.guest_access === "can_join",
-    join_rule: get("m.room.join_rules")?.join_rule ?? "invite",
+    world_readable: get(M.ROOM.HISTORY_VISIBILITY)?.history_visibility === "world_readable",
+    guest_can_join: get(M.ROOM.GUEST_ACCESS)?.guest_access === "can_join",
+    join_rule: get(M.ROOM.JOIN_RULES)?.join_rule ?? "invite",
   };
-  if (typeof get("m.room.name")?.name === "string") chunk.name = get("m.room.name")!.name;
-  if (typeof get("m.room.topic")?.topic === "string") chunk.topic = get("m.room.topic")!.topic;
-  if (typeof get("m.room.canonical_alias")?.alias === "string") chunk.canonical_alias = get("m.room.canonical_alias")!.alias;
-  if (typeof get("m.room.avatar")?.url === "string") chunk.avatar_url = get("m.room.avatar")!.url;
-  const roomType = get("m.room.create")?.type;
+  if (typeof get(M.ROOM.NAME)?.name === "string") chunk.name = get(M.ROOM.NAME)!.name;
+  if (typeof get(M.ROOM.TOPIC)?.topic === "string") chunk.topic = get(M.ROOM.TOPIC)!.topic;
+  if (typeof get(M.ROOM.CANONICAL_ALIAS)?.alias === "string") chunk.canonical_alias = get(M.ROOM.CANONICAL_ALIAS)!.alias;
+  if (typeof get(M.ROOM.AVATAR)?.url === "string") chunk.avatar_url = get(M.ROOM.AVATAR)!.url;
+  const roomType = get(M.ROOM.CREATE)?.type;
   if (typeof roomType === "string") chunk.room_type = roomType;
   return chunk;
 }
@@ -366,7 +367,7 @@ async function canDeleteAlias(hs: Homeserver, s: Session, alias: Record<string, 
   if (!version) return false;
   const state = await hs.rooms.currentState(alias.room_id);
   const pl = powerLevels(state, version);
-  const needed = pl.events["m.room.canonical_alias"] ?? pl.state_default;
+  const needed = pl.events[M.ROOM.CANONICAL_ALIAS] ?? pl.state_default;
   return membershipOf(state, s.userId) === "join" && userLevel(pl, s.userId) >= needed;
 }
 
@@ -375,12 +376,12 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   const version = await requireRoom(hs, roomId);
   const state = await hs.rooms.requireJoined(roomId, s.userId);
   const pl = powerLevels(state, version);
-  const tombstoneLevel = pl.events["m.room.tombstone"] ?? pl.state_default;
+  const tombstoneLevel = pl.events[M.ROOM.TOMBSTONE] ?? pl.state_default;
   if (userLevel(pl, s.userId) < tombstoneLevel) throw errors.forbidden("You cannot upgrade this room");
 
-  const create = getState(state, "m.room.create")!;
+  const create = getState(state, M.ROOM.CREATE)!;
   const creationContent: Record<string, any> = {};
-  for (const k of ["m.federate", "type"]) if (create.content[k] !== undefined) creationContent[k] = create.content[k];
+  for (const k of [M.FEDERATE, "type"]) if (create.content[k] !== undefined) creationContent[k] = create.content[k];
   const toV12 = roomVersionFeatures(newVersion).v12;
   if (toV12) {
     // v12 predecessors only reference the room; creators may be added explicitly.
@@ -398,22 +399,22 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   }
 
   const copyTypes = [
-    "m.room.server_acl",
-    "m.room.encryption",
-    "m.room.name",
-    "m.room.avatar",
-    "m.room.topic",
-    "m.room.guest_access",
-    "m.room.history_visibility",
-    "m.room.join_rules",
-    "m.room.power_levels",
+    M.ROOM.SERVER_ACL,
+    M.ROOM.ENCRYPTION,
+    M.ROOM.NAME,
+    M.ROOM.AVATAR,
+    M.ROOM.TOPIC,
+    M.ROOM.GUEST_ACCESS,
+    M.ROOM.HISTORY_VISIBILITY,
+    M.ROOM.JOIN_RULES,
+    M.ROOM.POWER_LEVELS,
   ];
   const initialState: any[] = [];
   for (const t of copyTypes) {
     const ev = getState(state, t);
-    if (ev && t !== "m.room.power_levels") initialState.push({ type: t, state_key: "", content: ev.content });
+    if (ev && t !== M.ROOM.POWER_LEVELS) initialState.push({ type: t, state_key: "", content: ev.content });
   }
-  let oldPl: Record<string, any> = structuredClone(getState(state, "m.room.power_levels")?.content ?? {});
+  let oldPl: Record<string, any> = structuredClone(getState(state, M.ROOM.POWER_LEVELS)?.content ?? {});
   const isPublic = (await hs.db.findOne("rooms", [{ field: "room_id", value: roomId }]))?.is_public;
   let override: Record<string, any>;
   if (toV12) {
@@ -436,9 +437,9 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
     visibility: isPublic ? "public" : "private",
   });
   // Restore the original power levels exactly (the creator boost was only needed for setup).
-  if (getState(state, "m.room.power_levels") && !toV12) {
+  if (getState(state, M.ROOM.POWER_LEVELS) && !toV12) {
     try {
-      await hs.rooms.sendEvent(newRoomId, s.userId, { type: "m.room.power_levels", state_key: "", content: oldPl });
+      await hs.rooms.sendEvent(newRoomId, s.userId, { type: M.ROOM.POWER_LEVELS, state_key: "", content: oldPl });
     } catch {
       /* keep boosted */
     }
@@ -447,11 +448,11 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   // Move local aliases to the new room.
   const aliases = await hs.db.findMany("room_aliases", { where: [{ field: "room_id", value: roomId }] });
   for (const a of aliases) await hs.db.update("room_aliases", [{ field: "alias", value: a.alias }], { room_id: newRoomId });
-  const canonical = getState(state, "m.room.canonical_alias");
+  const canonical = getState(state, M.ROOM.CANONICAL_ALIAS);
   if (canonical && Object.keys(canonical.content).length) {
-    await hs.rooms.sendEvent(roomId, s.userId, { type: "m.room.canonical_alias", state_key: "", content: {} }).catch(() => {});
+    await hs.rooms.sendEvent(roomId, s.userId, { type: M.ROOM.CANONICAL_ALIAS, state_key: "", content: {} }).catch(() => {});
     await hs.rooms
-      .sendEvent(newRoomId, s.userId, { type: "m.room.canonical_alias", state_key: "", content: canonical.content })
+      .sendEvent(newRoomId, s.userId, { type: M.ROOM.CANONICAL_ALIAS, state_key: "", content: canonical.content })
       .catch(() => {});
   }
   if (isPublic) {
@@ -459,13 +460,13 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   }
 
   await hs.rooms.sendEvent(roomId, s.userId, {
-    type: "m.room.tombstone",
+    type: M.ROOM.TOMBSTONE,
     state_key: "",
     content: { body: "This room has been replaced", replacement_room: newRoomId },
   });
   // Restrict the old room so people move over.
   const restricted = { ...oldPl, events_default: Math.max(50, oldPl.events_default ?? 0), invite: Math.max(50, oldPl.invite ?? 0) };
-  await hs.rooms.sendEvent(roomId, s.userId, { type: "m.room.power_levels", state_key: "", content: restricted }).catch(() => {});
+  await hs.rooms.sendEvent(roomId, s.userId, { type: M.ROOM.POWER_LEVELS, state_key: "", content: restricted }).catch(() => {});
   return newRoomId;
 }
 
@@ -520,14 +521,14 @@ export function registerRoomRoutes(r: Router): void {
       const proof = signed;
       if ((await ctx.hs.rooms.membership(roomId, s.userId)) !== "invite") {
         const event = {
-          type: "m.room.member",
+          type: M.ROOM.MEMBER,
           room_id: roomId,
           sender,
           state_key: s.userId,
           content: { membership: "invite", third_party_invite: { signed: proof } },
         };
         if (ctx.hs.isLocalUser(sender)) {
-          const pending = getState(await ctx.hs.rooms.currentState(roomId), "m.room.third_party_invite", signed.token);
+          const pending = getState(await ctx.hs.rooms.currentState(roomId), M.ROOM.THIRD_PARTY_INVITE, signed.token);
           if (!pending || pending.sender !== sender) throw errors.forbidden("No such third-party invite");
           await ctx.hs.rooms.invite(roomId, sender, s.userId, {
             thirdPartyInvite: { display_name: pending.content?.display_name ?? "", signed: proof },
@@ -656,7 +657,7 @@ export function registerRoomRoutes(r: Router): void {
         const content = await ctx.json();
         await requireRoom(ctx.hs, ctx.params.roomId);
         // Redactions sent through /send follow the same rule as /redact: own events only while suspended.
-        if (!(s.suspended && ctx.params.eventType === "m.room.redaction" && (await ownEvent(ctx.hs, s.userId, content?.redacts)))) {
+        if (!(s.suspended && ctx.params.eventType === M.ROOM.REDACTION && (await ownEvent(ctx.hs, s.userId, content?.redacts)))) {
           await assertNotSuspended(ctx.hs, s, ctx.params.roomId);
         }
         const delay = ctx.query.get("org.matrix.msc4140.delay");
@@ -692,7 +693,7 @@ export function registerRoomRoutes(r: Router): void {
     await requireRoom(ctx.hs, roomId);
     const type = ctx.params.eventType;
     const key = ctx.params.stateKey ?? "";
-    if (!(type === "m.room.member" && key === s.userId && content?.membership === "leave")) await assertNotSuspended(ctx.hs, s, roomId);
+    if (!(type === M.ROOM.MEMBER && key === s.userId && content?.membership === "leave")) await assertNotSuspended(ctx.hs, s, roomId);
     await validateStateEvent(ctx.hs, roomId, type, content, key);
     const delay = ctx.query.get("org.matrix.msc4140.delay");
     if (delay !== null) {
@@ -782,7 +783,7 @@ export function registerRoomRoutes(r: Router): void {
         const notMembership = ctx.query.get("not_membership");
         const chunk = [];
         for (const [k, ev] of state) {
-          if (splitStateKey(k)[0] !== "m.room.member") continue;
+          if (splitStateKey(k)[0] !== M.ROOM.MEMBER) continue;
           const m = ev.content?.membership;
           if (membership && m !== membership) continue;
           if (notMembership && m === notMembership) continue;
@@ -808,7 +809,7 @@ export function registerRoomRoutes(r: Router): void {
         const joined: Record<string, any> = {};
         for (const [k, ev] of state) {
           const [type, key] = splitStateKey(k);
-          if (type !== "m.room.member" || ev.content?.membership !== "join") continue;
+          if (type !== M.ROOM.MEMBER || ev.content?.membership !== "join") continue;
           joined[key] = { display_name: ev.content.displayname ?? null, avatar_url: ev.content.avatar_url ?? null };
         }
         return { joined };
@@ -854,7 +855,7 @@ export function registerRoomRoutes(r: Router): void {
           const current = await hs.rooms.currentState(roomId);
           const senders = new Set(events.map((e) => e.pdu.sender));
           out.state = [...senders]
-            .map((u) => getState(current, "m.room.member", u))
+            .map((u) => getState(current, M.ROOM.MEMBER, u))
             .filter(Boolean)
             .map((e) => toClientEvent(e!));
         }
@@ -938,7 +939,7 @@ export function registerRoomRoutes(r: Router): void {
         const eventId = await ctx.hs.rooms.sendEvent(
           roomId,
           s.userId,
-          { type: "m.room.redaction", content, redacts: ctx.params.eventId },
+          { type: M.ROOM.REDACTION, content, redacts: ctx.params.eventId },
           { txnId: ctx.params.txnId, deviceId: s.deviceId },
         );
         return { event_id: eventId };
@@ -963,11 +964,11 @@ export function registerRoomRoutes(r: Router): void {
     }),
   );
 
-  const RECEIPT_TYPES = ["m.read", "m.read.private", "m.fully_read"];
+  const RECEIPT_TYPES: readonly string[] = [M.READ._, M.READ.PRIVATE, M.FULLY_READ];
   const setReceipt = async (hs: Homeserver, s: Session, roomId: string, type: string, eventId: string, threadId?: string) => {
-    if (type === "m.fully_read") {
+    if (type === M.FULLY_READ) {
       await hs.streams.write((stream) =>
-        hs.db.upsert("account_data", { user_id: s.userId, room_id: roomId, type: "m.fully_read", content: { event_id: eventId }, stream }),
+        hs.db.upsert("account_data", { user_id: s.userId, room_id: roomId, type: M.FULLY_READ, content: { event_id: eventId }, stream }),
       );
       hs.notifier.notify([s.userId]);
       return;
@@ -985,7 +986,7 @@ export function registerRoomRoutes(r: Router): void {
         stream,
       }),
     );
-    hs.notifier.notify(type === "m.read.private" ? [s.userId] : await hs.rooms.joinedMembers(roomId));
+    hs.notifier.notify(type === M.READ.PRIVATE ? [s.userId] : await hs.rooms.joinedMembers(roomId));
     await hs.federation.onReceipt(roomId, s.userId, type, eventId, Date.now(), threadId ?? "").catch(() => {});
   };
 
@@ -1082,7 +1083,7 @@ export function registerRoomRoutes(r: Router): void {
         if (!(await canDeleteAlias(ctx.hs, s, row))) throw errors.forbidden("You may not delete this alias");
         await ctx.hs.db.delete("room_aliases", [{ field: "alias", value: ctx.params.alias }]);
         // Remove the alias from the room's canonical alias event, too.
-        const canonical = getState(await ctx.hs.rooms.currentState(row.room_id), "m.room.canonical_alias");
+        const canonical = getState(await ctx.hs.rooms.currentState(row.room_id), M.ROOM.CANONICAL_ALIAS);
         if (canonical) {
           const content = { ...canonical.content };
           let changed = false;
@@ -1095,7 +1096,7 @@ export function registerRoomRoutes(r: Router): void {
             changed = true;
           }
           if (changed) {
-            await ctx.hs.rooms.sendEvent(row.room_id, s.userId, { type: "m.room.canonical_alias", state_key: "", content }).catch(() => {});
+            await ctx.hs.rooms.sendEvent(row.room_id, s.userId, { type: M.ROOM.CANONICAL_ALIAS, state_key: "", content }).catch(() => {});
           }
         }
         return {};
@@ -1142,7 +1143,7 @@ export function registerRoomRoutes(r: Router): void {
         if (!version) throw errors.notFound("Room not found");
         const state = await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
         const pl = powerLevels(state, version);
-        if (!s.isAdmin && userLevel(pl, s.userId) < (pl.events["m.room.canonical_alias"] ?? pl.state_default)) {
+        if (!s.isAdmin && userLevel(pl, s.userId) < (pl.events[M.ROOM.CANONICAL_ALIAS] ?? pl.state_default)) {
           throw errors.forbidden("Insufficient power level");
         }
         await ctx.hs.db.update("rooms", [{ field: "room_id", value: ctx.params.roomId }], { is_public: body.visibility === "public" });
@@ -1429,7 +1430,7 @@ async function relations(ctx: RequestContext) {
   const matches: StoredEvent[] = [];
   let next: number | null = null;
   for (const row of rows) {
-    const rel = (row.json as PDU).content?.["m.relates_to"];
+    const rel = (row.json as PDU).content?.[M.RELATES_TO];
     if (!isObject(rel) || rel.event_id !== ctx.params.eventId) continue;
     if (ctx.params.relType && rel.rel_type !== ctx.params.relType) continue;
     if (ctx.params.eventType && row.type !== ctx.params.eventType) continue;
@@ -1462,8 +1463,8 @@ async function threads(ctx: RequestContext) {
   // Latest activity per thread root.
   const latest = new Map<string, { stream: number; latestId: string; count: number; participants: Set<string> }>();
   for (const row of rows) {
-    const rel = (row.json as PDU).content?.["m.relates_to"];
-    if (!isObject(rel) || rel.rel_type !== "m.thread" || typeof rel.event_id !== "string") continue;
+    const rel = (row.json as PDU).content?.[M.RELATES_TO];
+    if (!isObject(rel) || rel.rel_type !== M.THREAD || typeof rel.event_id !== "string") continue;
     const entry = latest.get(rel.event_id) ?? { stream: row.stream, latestId: row.event_id, count: 0, participants: new Set<string>() };
     entry.participants.add(row.sender);
     entry.count++;
@@ -1489,9 +1490,9 @@ async function threads(ctx: RequestContext) {
         const latestEv = await hs.rooms.getEvent(info.latestId);
         ev.unsigned = {
           ...ev.unsigned,
-          "m.relations": {
-            ...ev.unsigned?.["m.relations"],
-            "m.thread": {
+          [M.RELATIONS]: {
+            ...ev.unsigned?.[M.RELATIONS],
+            [M.THREAD]: {
               latest_event: latestEv ? hs.rooms.formatEvent(latestEv, viewer) : undefined,
               count: info.count,
               current_user_participated: r.ev.pdu.sender === s.userId || info.participants.has(s.userId),

@@ -4,6 +4,7 @@ import { splitStateKey, stripState } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
+import { M } from "#core/m.ts";
 
 /** Room-level details shared by /hierarchy, /room_summary and /publicRooms. */
 export async function roomDetails(hs: Homeserver, roomId: string): Promise<Record<string, any>> {
@@ -12,16 +13,16 @@ export async function roomDetails(hs: Homeserver, roomId: string): Promise<Recor
   const out: Record<string, any> = {
     room_id: roomId,
     num_joined_members: (await hs.rooms.joinedMembers(roomId)).length,
-    world_readable: get("m.room.history_visibility")?.history_visibility === "world_readable",
-    guest_can_join: get("m.room.guest_access")?.guest_access === "can_join",
-    join_rule: get("m.room.join_rules")?.join_rule ?? "invite",
+    world_readable: get(M.ROOM.HISTORY_VISIBILITY)?.history_visibility === "world_readable",
+    guest_can_join: get(M.ROOM.GUEST_ACCESS)?.guest_access === "can_join",
+    join_rule: get(M.ROOM.JOIN_RULES)?.join_rule ?? "invite",
   };
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-  if (str(get("m.room.name")?.name)) out.name = get("m.room.name")!.name;
-  if (str(get("m.room.topic")?.topic)) out.topic = get("m.room.topic")!.topic;
-  if (str(get("m.room.canonical_alias")?.alias)) out.canonical_alias = get("m.room.canonical_alias")!.alias;
-  if (str(get("m.room.avatar")?.url)) out.avatar_url = get("m.room.avatar")!.url;
-  if (str(get("m.room.create")?.type)) out.room_type = get("m.room.create")!.type;
+  if (str(get(M.ROOM.NAME)?.name)) out.name = get(M.ROOM.NAME)!.name;
+  if (str(get(M.ROOM.TOPIC)?.topic)) out.topic = get(M.ROOM.TOPIC)!.topic;
+  if (str(get(M.ROOM.CANONICAL_ALIAS)?.alias)) out.canonical_alias = get(M.ROOM.CANONICAL_ALIAS)!.alias;
+  if (str(get(M.ROOM.AVATAR)?.url)) out.avatar_url = get(M.ROOM.AVATAR)!.url;
+  if (str(get(M.ROOM.CREATE)?.type)) out.room_type = get(M.ROOM.CREATE)!.type;
   return out;
 }
 
@@ -29,14 +30,14 @@ export async function roomDetails(hs: Homeserver, roomId: string): Promise<Recor
 async function canAccess(hs: Homeserver, roomId: string, userId: string | null): Promise<boolean> {
   const state = await hs.rooms.currentState(roomId);
   if (userId && ["join", "invite", "knock"].includes(membershipOf(state, userId))) return true;
-  if (getState(state, "m.room.history_visibility")?.content?.history_visibility === "world_readable") return true;
-  const joinRules = getState(state, "m.room.join_rules")?.content;
+  if (getState(state, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility === "world_readable") return true;
+  const joinRules = getState(state, M.ROOM.JOIN_RULES)?.content;
   const rule = joinRules?.join_rule ?? "invite";
   if (rule === "public" || rule === "knock") return true;
   if ((rule === "restricted" || rule === "knock_restricted") && userId) {
     if (rule === "knock_restricted") return true;
     for (const allow of Array.isArray(joinRules?.allow) ? joinRules!.allow : []) {
-      if (allow?.type === "m.room_membership" && typeof allow.room_id === "string" && (await hs.rooms.exists(allow.room_id))) {
+      if (allow?.type === M.ROOM_MEMBERSHIP && typeof allow.room_id === "string" && (await hs.rooms.exists(allow.room_id))) {
         if ((await hs.rooms.membership(allow.room_id, userId)) === "join") return true;
       }
     }
@@ -47,7 +48,7 @@ async function canAccess(hs: Homeserver, roomId: string, userId: string | null):
 function allowedRoomIds(joinRules: Record<string, any> | undefined): string[] | undefined {
   if (!joinRules || !["restricted", "knock_restricted"].includes(joinRules.join_rule)) return undefined;
   return (Array.isArray(joinRules.allow) ? joinRules.allow : [])
-    .filter((a: any) => a?.type === "m.room_membership" && typeof a.room_id === "string")
+    .filter((a: any) => a?.type === M.ROOM_MEMBERSHIP && typeof a.room_id === "string")
     .map((a: any) => a.room_id);
 }
 
@@ -132,7 +133,7 @@ export function registerSpaceRoutes(r: Router): void {
             const remote = await remoteSummary(hs, roomId, via, suggestedOnly, s.userId);
             if (!remote) continue;
             rooms.push(remote);
-            const isSpace = remote.room_type === "m.space";
+            const isSpace = remote.room_type === M.SPACE._;
             const remoteChildren = (isSpace ? (remote.children_state ?? []) : [])
               .filter((c: any) => Array.isArray(c.content?.via) && c.content.via.length)
               .sort(childOrder);
@@ -146,10 +147,10 @@ export function registerSpaceRoutes(r: Router): void {
           const state = await hs.rooms.currentState(roomId);
           const children: Record<string, any>[] = [];
           // Only spaces have children; m.space.child events in ordinary rooms are ignored.
-          const isSpace = getState(state, "m.room.create")?.content?.type === "m.space";
+          const isSpace = getState(state, M.ROOM.CREATE)?.content?.type === M.SPACE._;
           for (const [key, ev] of isSpace ? state : []) {
             const [type] = splitStateKey(key);
-            if (type !== "m.space.child" || !Array.isArray(ev.content?.via) || ev.content.via.length === 0) continue;
+            if (type !== M.SPACE.CHILD || !Array.isArray(ev.content?.via) || ev.content.via.length === 0) continue;
             if (suggestedOnly && ev.content.suggested !== true) continue;
             children.push({ ...stripState(ev), origin_server_ts: ev.origin_server_ts });
           }
@@ -159,7 +160,7 @@ export function registerSpaceRoutes(r: Router): void {
             for (const child of [...children].reverse()) queue.push({ roomId: child.state_key, depth: depth + 1, via: child.content.via });
           }
           const details = await roomDetails(hs, roomId);
-          const allowed = allowedRoomIds(getState(state, "m.room.join_rules")?.content);
+          const allowed = allowedRoomIds(getState(state, M.ROOM.JOIN_RULES)?.content);
           if (allowed) details.allowed_room_ids = allowed;
           details.children_state = children;
           rooms.push(details);
@@ -187,10 +188,10 @@ export function registerSpaceRoutes(r: Router): void {
     const state = await hs.rooms.currentState(roomId);
     const out = await roomDetails(hs, roomId);
     out.room_version = await hs.rooms.roomVersion(roomId);
-    const enc = getState(state, "m.room.encryption")?.content?.algorithm;
+    const enc = getState(state, M.ROOM.ENCRYPTION)?.content?.algorithm;
     if (typeof enc === "string") out.encryption = enc;
     if (s) out.membership = membershipOf(state, s.userId);
-    const allowed = allowedRoomIds(getState(state, "m.room.join_rules")?.content);
+    const allowed = allowedRoomIds(getState(state, M.ROOM.JOIN_RULES)?.content);
     if (allowed) out.allowed_room_ids = allowed;
     return out;
   };

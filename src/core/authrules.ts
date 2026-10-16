@@ -3,6 +3,7 @@ import { roomVersionFeatures, stateKey, versionNum, type PDU } from "#core/event
 import { isObject } from "#core/json.ts";
 import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
 import { isValidUserId } from "#core/ids.ts";
+import { M } from "#core/m.ts";
 
 export type StateMap = Map<string, PDU>;
 
@@ -24,11 +25,11 @@ export function getState(state: StateMap, type: string, key = ""): PDU | undefin
 }
 
 export function membershipOf(state: StateMap, userId: string): string {
-  return getState(state, "m.room.member", userId)?.content?.membership ?? "leave";
+  return getState(state, M.ROOM.MEMBER, userId)?.content?.membership ?? "leave";
 }
 
 export function roomCreator(state: StateMap, roomVersion: string): string | undefined {
-  const create = getState(state, "m.room.create");
+  const create = getState(state, M.ROOM.CREATE);
   if (!create) return undefined;
   return roomVersionFeatures(roomVersion).v11 ? create.sender : (create.content.creator ?? create.sender);
 }
@@ -42,7 +43,7 @@ const toInt = (v: unknown, fallback: number): number => {
 /** v12+: the create event's sender plus `additional_creators`. Empty for older versions. */
 export function roomCreators(state: StateMap, roomVersion: string): Set<string> {
   if (!roomVersionFeatures(roomVersion).v12) return new Set();
-  const create = getState(state, "m.room.create");
+  const create = getState(state, M.ROOM.CREATE);
   if (!create) return new Set();
   const extra = Array.isArray(create.content?.additional_creators) ? create.content.additional_creators : [];
   return new Set([create.sender, ...extra.filter((u: unknown) => typeof u === "string")]);
@@ -66,7 +67,7 @@ export interface PowerLevels {
 }
 
 export function powerLevels(state: StateMap, roomVersion: string): PowerLevels {
-  const pl = getState(state, "m.room.power_levels")?.content;
+  const pl = getState(state, M.ROOM.POWER_LEVELS)?.content;
   const creators = roomCreators(state, roomVersion);
   if (!pl) {
     const creator = roomCreator(state, roomVersion);
@@ -127,18 +128,18 @@ export function authEventKeys(
   event: { type: string; sender: string; state_key?: string; content: Record<string, any> },
   roomVersion: string,
 ): string[] {
-  if (event.type === "m.room.create") return [];
-  const keys = [stateKey("m.room.power_levels", ""), stateKey("m.room.member", event.sender)];
-  if (!roomVersionFeatures(roomVersion).v12) keys.unshift(stateKey("m.room.create", ""));
-  if (event.type === "m.room.member" && typeof event.state_key === "string") {
-    keys.push(stateKey("m.room.member", event.state_key));
+  if (event.type === M.ROOM.CREATE) return [];
+  const keys = [stateKey(M.ROOM.POWER_LEVELS, ""), stateKey(M.ROOM.MEMBER, event.sender)];
+  if (!roomVersionFeatures(roomVersion).v12) keys.unshift(stateKey(M.ROOM.CREATE, ""));
+  if (event.type === M.ROOM.MEMBER && typeof event.state_key === "string") {
+    keys.push(stateKey(M.ROOM.MEMBER, event.state_key));
     const membership = event.content?.membership;
-    if (["join", "invite", "knock"].includes(membership)) keys.push(stateKey("m.room.join_rules", ""));
+    if (["join", "invite", "knock"].includes(membership)) keys.push(stateKey(M.ROOM.JOIN_RULES, ""));
     const token = event.content?.third_party_invite?.signed?.token;
-    if (membership === "invite" && typeof token === "string") keys.push(stateKey("m.room.third_party_invite", token));
+    if (membership === "invite" && typeof token === "string") keys.push(stateKey(M.ROOM.THIRD_PARTY_INVITE, token));
     const via = event.content?.join_authorised_via_users_server;
     if (membership === "join" && typeof via === "string" && roomVersionFeatures(roomVersion).restricted)
-      keys.push(stateKey("m.room.member", via));
+      keys.push(stateKey(M.ROOM.MEMBER, via));
   }
   return [...new Set(keys)];
 }
@@ -156,11 +157,11 @@ export function authStateFromAuthEvents(event: PDU, authEvents: PDU[], roomVersi
     const key = stateKey(ev.type, ev.state_key);
     if (state.has(key)) throw errors.forbidden("Duplicate auth event");
     if (!allowed.has(key)) throw errors.forbidden(`Unexpected auth event ${ev.type}`);
-    if (roomVersionFeatures(roomVersion).v12 && ev.type === "m.room.create")
+    if (roomVersionFeatures(roomVersion).v12 && ev.type === M.ROOM.CREATE)
       throw errors.forbidden("Create event must not be in auth_events");
     state.set(key, ev);
   }
-  if (createEvent) state.set(stateKey("m.room.create", ""), createEvent);
+  if (createEvent) state.set(stateKey(M.ROOM.CREATE, ""), createEvent);
   return state;
 }
 
@@ -176,7 +177,7 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
   };
 
   // 1. Create events.
-  if (event.type === "m.room.create") {
+  if (event.type === M.ROOM.CREATE) {
     if (state.size > 0 || (Array.isArray(event.prev_events) && event.prev_events.length > 0)) deny("Create event must be the first event");
     if (!features.v12 && event.room_id && !sameDomain(event.room_id, event.sender)) deny("Room ID domain must match the creator");
     const rv = event.content?.room_version;
@@ -190,14 +191,14 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
   }
 
   // 3. A create event must be present.
-  const create = getState(state, "m.room.create");
+  const create = getState(state, M.ROOM.CREATE);
   if (!create) deny("No create event in room");
 
   // 4. Non-federated rooms.
-  if (create!.content?.["m.federate"] === false && !sameDomain(event.sender, create!.sender)) deny("Room is not federated");
+  if (create!.content?.[M.FEDERATE] === false && !sameDomain(event.sender, create!.sender)) deny("Room is not federated");
 
   // 5. Aliases events (v1-5).
-  if (n <= 5 && event.type === "m.room.aliases") {
+  if (n <= 5 && event.type === M.ROOM.ALIASES) {
     if (event.state_key === undefined) deny("Aliases event lacks a state key");
     if (event.state_key !== domainOf(event.sender)) deny("Aliases state key must be the sender's domain");
     return;
@@ -208,12 +209,12 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
   const senderLevel = userLevel(pl, event.sender);
 
   // 6. Membership events.
-  if (event.type === "m.room.member") {
+  if (event.type === M.ROOM.MEMBER) {
     const target = event.state_key;
     const membership = event.content?.membership;
     if (typeof target !== "string" || typeof membership !== "string") deny("Member event lacks state_key or membership");
     const targetMembership = membershipOf(state, target!);
-    const joinRule = getState(state, "m.room.join_rules")?.content?.join_rule ?? "invite";
+    const joinRule = getState(state, M.ROOM.JOIN_RULES)?.content?.join_rule ?? "invite";
     const via = event.content?.join_authorised_via_users_server;
 
     switch (membership) {
@@ -290,7 +291,7 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
   if (senderMembership !== "join") deny("You are not joined to this room");
 
   // 8. Third party invites.
-  if (event.type === "m.room.third_party_invite") {
+  if (event.type === M.ROOM.THIRD_PARTY_INVITE) {
     if (senderLevel >= pl.invite) return;
     deny("Insufficient power level to invite");
   }
@@ -309,20 +310,20 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
   }
 
   // 11. Power level changes.
-  if (event.type === "m.room.power_levels" && isState) {
+  if (event.type === M.ROOM.POWER_LEVELS && isState) {
     if (isObject(event.content?.users)) {
       for (const u of Object.keys(event.content.users)) {
         if (!isValidUserId(u)) deny("Power level users must be valid user IDs");
         if (pl.creators.has(u)) deny("Room creators cannot be given a power level");
       }
     }
-    if (getState(state, "m.room.power_levels")) checkPowerLevelChange(event, pl, senderLevel, features.integerPowerLevels, n >= 6, deny);
+    if (getState(state, M.ROOM.POWER_LEVELS)) checkPowerLevelChange(event, pl, senderLevel, features.integerPowerLevels, n >= 6, deny);
     else checkPowerLevelShape(event, features.integerPowerLevels, deny);
     return;
   }
 
   // 12. Redactions (v1-2 only).
-  if (n <= 2 && event.type === "m.room.redaction") {
+  if (n <= 2 && event.type === M.ROOM.REDACTION) {
     if (senderLevel >= pl.redact) return;
     const redacts = event.redacts;
     if (typeof redacts === "string" && redacts.includes(":") && domainOf(redacts) === domainOf(event.sender)) return;
@@ -334,7 +335,7 @@ function checkThirdPartyInvite(event: PDU, state: StateMap): boolean {
   const signed = event.content?.third_party_invite?.signed;
   if (!isObject(signed) || typeof signed.mxid !== "string" || typeof signed.token !== "string") return false;
   if (signed.mxid !== event.state_key) return false;
-  const invite = getState(state, "m.room.third_party_invite", signed.token);
+  const invite = getState(state, M.ROOM.THIRD_PARTY_INVITE, signed.token);
   if (!invite || invite.sender !== event.sender) return false;
   const keys: string[] = [];
   if (typeof invite.content?.public_key === "string") keys.push(invite.content.public_key);

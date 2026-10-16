@@ -33,6 +33,7 @@ const publicRoomsBody = body({
 });
 import { canonicalJsonResponse } from "#http/handler.ts";
 import { roomDetails } from "#api/spaces.ts";
+import { M } from "#core/m.ts";
 
 const F = "/_matrix/federation";
 
@@ -76,12 +77,12 @@ async function checkAcl(hs: Homeserver, roomId: string, origin: string): Promise
 /** Whether `server` may see an event, per history visibility. */
 async function serverCanSee(hs: Homeserver, server: string, ev: StoredEvent): Promise<boolean> {
   const ids = await hs.rooms.snapshotIds(ev.snapshot);
-  const hvId = ids[stateKey("m.room.history_visibility", "")];
+  const hvId = ids[stateKey(M.ROOM.HISTORY_VISIBILITY, "")];
   const hv = hvId ? ((await hs.rooms.getPdu(hvId))?.content?.history_visibility ?? "shared") : "shared";
   if (hv === "world_readable" || hv === "shared") return true;
   for (const [key, id] of Object.entries(ids)) {
     const [type, userId] = splitStateKey(key);
-    if (type !== "m.room.member" || domainOf(userId) !== server) continue;
+    if (type !== M.ROOM.MEMBER || domainOf(userId) !== server) continue;
     const m = (await hs.rooms.getPdu(id))?.content?.membership;
     if (m === "join" || (hv === "invited" && m === "invite")) return true;
   }
@@ -139,14 +140,14 @@ async function makeMembership(
   const extremities = await hs.rooms.extremities(roomId);
   const prevs = [...(await hs.rooms.getPdus(extremities)).values()].sort((a, b) => b.depth - a.depth).slice(0, 10);
   const f = roomVersionFeatures(version);
-  const draft = { type: "m.room.member", sender: userId, state_key: userId, content: { membership, ...content } };
+  const draft = { type: M.ROOM.MEMBER, sender: userId, state_key: userId, content: { membership, ...content } };
   const authIds = authEventKeys(draft, version)
     .map((k) => state.get(k)?.event_id)
     .filter((x): x is string => !!x);
   const ref = (id: string, pdu?: PDU) => (f.legacyEventIds ? [id, pdu?.hashes ?? {}] : id);
   const authPdus = await hs.rooms.getPdus(authIds);
   const event: Record<string, any> = {
-    type: "m.room.member",
+    type: M.ROOM.MEMBER,
     room_id: roomId,
     sender: userId,
     state_key: userId,
@@ -169,7 +170,7 @@ async function makeMembership(
 
 /** For restricted rooms: a local user who can authorise a remote join, or why not. */
 async function restrictedAuthoriser(hs: Homeserver, state: StateMap, version: string, userId: string): Promise<string | null> {
-  const joinRules = getState(state, "m.room.join_rules")?.content;
+  const joinRules = getState(state, M.ROOM.JOIN_RULES)?.content;
   const rule = joinRules?.join_rule;
   const f = roomVersionFeatures(version);
   if (!((rule === "restricted" && f.restricted) || (rule === "knock_restricted" && f.knockRestricted))) return null;
@@ -178,7 +179,7 @@ async function restrictedAuthoriser(hs: Homeserver, state: StateMap, version: st
   let allowed = false;
   let unverifiable = false;
   for (const allow of Array.isArray(joinRules?.allow) ? joinRules!.allow : []) {
-    if (allow?.type !== "m.room_membership" || typeof allow.room_id !== "string") continue;
+    if (allow?.type !== M.ROOM_MEMBERSHIP || typeof allow.room_id !== "string") continue;
     if (!(await hs.rooms.serverIsJoined(allow.room_id))) {
       unverifiable = true;
       continue;
@@ -196,7 +197,7 @@ async function restrictedAuthoriser(hs: Homeserver, state: StateMap, version: st
   const pl = powerLevels(state, version);
   for (const [key, ev] of state) {
     const [type, member] = splitStateKey(key);
-    if (type === "m.room.member" && hs.isLocalUser(member) && ev.content?.membership === "join" && userLevel(pl, member) >= pl.invite)
+    if (type === M.ROOM.MEMBER && hs.isLocalUser(member) && ev.content?.membership === "join" && userLevel(pl, member) >= pl.invite)
       return member;
   }
   throw new MatrixError(400, "M_UNABLE_TO_GRANT_JOIN", "No local user can authorise this join");
@@ -213,7 +214,7 @@ async function exchangeThirdPartyInvite(
 ): Promise<void> {
   const token = signed.token;
   if (typeof token !== "string") throw errors.badJson("signed.token is required");
-  const pending = getState(await hs.rooms.currentState(roomId), "m.room.third_party_invite", token);
+  const pending = getState(await hs.rooms.currentState(roomId), M.ROOM.THIRD_PARTY_INVITE, token);
   if (!pending) throw errors.forbidden("No such third-party invite");
   if (pending.sender !== sender) throw errors.forbidden("The third-party invite was sent by someone else");
   // The auth rules check `signed` against the invite's public keys.
@@ -226,7 +227,7 @@ async function sendMembership(ctx: RequestContext, origin: string, membership: s
   const version = await roomOr404(hs, roomId);
   await checkAcl(hs, roomId, origin);
   const raw = await ctx.json();
-  if (raw.type !== "m.room.member" || raw.content?.membership !== membership || raw.state_key !== raw.sender) {
+  if (raw.type !== M.ROOM.MEMBER || raw.content?.membership !== membership || raw.state_key !== raw.sender) {
     throw errors.badJson(`Expected a ${membership} event`);
   }
   if (domainOf(raw.sender) !== origin) throw errors.forbidden("Sender does not belong to the origin server");
@@ -443,7 +444,7 @@ export function registerFederationRoutes(r: Router): void {
     if (!SUPPORTED_ROOM_VERSIONS.includes(version)) {
       throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Unsupported room version", { room_version: version });
     }
-    if (!isObject(raw) || raw.type !== "m.room.member" || raw.content?.membership !== "invite" || typeof raw.state_key !== "string") {
+    if (!isObject(raw) || raw.type !== M.ROOM.MEMBER || raw.content?.membership !== "invite" || typeof raw.state_key !== "string") {
       throw errors.badJson("Expected an invite event");
     }
     if (raw.room_id !== ctx.params.roomId) throw errors.badJson("Room ID mismatch");
@@ -460,7 +461,7 @@ export function registerFederationRoutes(r: Router): void {
     const ignored = await hs.db.findOne("account_data", [
       { field: "user_id", value: target },
       { field: "room_id", value: "" },
-      { field: "type", value: "m.ignored_user_list" },
+      { field: "type", value: M.IGNORED_USER_LIST },
     ]);
     const signedRedacted = signJson(redact({ ...raw }, version), hs.serverName, hs.signingKey);
     const signatures = { ...pdu.signatures, [hs.serverName]: signedRedacted.signatures[hs.serverName] };
@@ -470,7 +471,7 @@ export function registerFederationRoutes(r: Router): void {
         ? raw.unsigned.invite_room_state
         : [];
     // MSC4311: the stripped state must carry the room's create event (enforced from room version 12).
-    const createInState = inviteState.find((e: any) => e?.type === "m.room.create");
+    const createInState = inviteState.find((e: any) => e?.type === M.ROOM.CREATE);
     if (v2 && !createInState && roomVersionFeatures(version).v12)
       throw errors.missingParam("invite_room_state must include the m.room.create event");
     if (createInState && roomVersionFeatures(version).v12 && createInState.event_id === undefined) {
@@ -730,18 +731,18 @@ export function registerFederationRoutes(r: Router): void {
       const suggestedOnly = ctx.query.get("suggested_only") === "true";
       const summary = async (id: string, s: StateMap) => {
         const details = await roomDetails(hs, id);
-        const jr = getState(s, "m.room.join_rules")?.content;
+        const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
         if (["restricted", "knock_restricted"].includes(jr?.join_rule)) {
           details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : [])
-            .filter((a: any) => a?.type === "m.room_membership")
+            .filter((a: any) => a?.type === M.ROOM_MEMBERSHIP)
             .map((a: any) => a.room_id);
         }
         return details;
       };
       const accessible = async (s: StateMap) => {
-        const jr = getState(s, "m.room.join_rules")?.content;
+        const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
         const rule = jr?.join_rule ?? "invite";
-        const hv = getState(s, "m.room.history_visibility")?.content?.history_visibility;
+        const hv = getState(s, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility;
         if (
           ["public", "knock", "knock_restricted"].includes(rule) ||
           hv === "world_readable" ||
@@ -751,7 +752,7 @@ export function registerFederationRoutes(r: Router): void {
         if (rule !== "restricted") return false;
         // Restricted rooms are visible to servers with a member in an allowed room (as far as we know).
         for (const allow of Array.isArray(jr?.allow) ? jr!.allow : []) {
-          if (allow?.type !== "m.room_membership" || typeof allow.room_id !== "string" || !(await hs.rooms.exists(allow.room_id))) continue;
+          if (allow?.type !== M.ROOM_MEMBERSHIP || typeof allow.room_id !== "string" || !(await hs.rooms.exists(allow.room_id))) continue;
           if (FederationJoinGuard.serverInRoom(await hs.rooms.currentState(allow.room_id), origin)) return true;
         }
         return false;
@@ -762,7 +763,7 @@ export function registerFederationRoutes(r: Router): void {
       const inaccessible: string[] = [];
       for (const [key, ev] of state) {
         const [type, childId] = splitStateKey(key);
-        if (type !== "m.space.child" || !Array.isArray(ev.content?.via) || !ev.content.via.length) continue;
+        if (type !== M.SPACE.CHILD || !Array.isArray(ev.content?.via) || !ev.content.via.length) continue;
         if (suggestedOnly && ev.content.suggested !== true) continue;
         childrenState.push({ type, state_key: childId, sender: ev.sender, content: ev.content, origin_server_ts: ev.origin_server_ts });
         if (!(await hs.rooms.exists(childId))) continue;
@@ -834,7 +835,7 @@ export function registerFederationRoutes(r: Router): void {
       const roomId = ctx.params.roomId;
       const event = await ctx.json();
       const signed = event.content?.third_party_invite?.signed;
-      if (event.type !== "m.room.member" || event.room_id !== roomId || event.content?.membership !== "invite" || !isObject(signed)) {
+      if (event.type !== M.ROOM.MEMBER || event.room_id !== roomId || event.content?.membership !== "invite" || !isObject(signed)) {
         throw errors.badJson("Expected an m.room.member invite with third_party_invite");
       }
       if (typeof event.sender !== "string" || !hs.isLocalUser(event.sender))
@@ -862,7 +863,7 @@ export function registerFederationRoutes(r: Router): void {
           if (!isObject(signed) || typeof signed.mxid !== "string" || !hs.isLocalUser(signed.mxid)) continue;
           if (typeof invite.room_id !== "string" || typeof invite.sender !== "string") continue;
           const event = {
-            type: "m.room.member",
+            type: M.ROOM.MEMBER,
             room_id: invite.room_id,
             sender: invite.sender,
             state_key: signed.mxid,
@@ -894,14 +895,14 @@ const FederationJoinGuard = {
   serverInRoom(state: StateMap, server: string): boolean {
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
-      if (type === "m.room.member" && domainOf(userId) === server && ev.content?.membership === "join") return true;
+      if (type === M.ROOM.MEMBER && domainOf(userId) === server && ev.content?.membership === "join") return true;
     }
     return false;
   },
   noLocalMembers(hs: Homeserver, state: StateMap): boolean {
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
-      if (type === "m.room.member" && hs.isLocalUser(userId) && ev.content?.membership === "join") return false;
+      if (type === M.ROOM.MEMBER && hs.isLocalUser(userId) && ev.content?.membership === "join") return false;
     }
     return true;
   },

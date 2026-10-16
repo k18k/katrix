@@ -11,6 +11,7 @@ import { canonicalAddress, isMedium } from "#core/threepid.ts";
 import { toMsisdn } from "#core/phone.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
+import { M } from "#core/m.ts";
 
 // Fields shared by login and registration requests.
 const deviceFields = {
@@ -41,14 +42,14 @@ function loginFlows(hs: Homeserver): Record<string, unknown>[] {
   // With delegated OAuth, clients must use the authorization server instead.
   if (hs.oauth) return [];
   const flows: Record<string, unknown>[] = [];
-  if (hs.userAuth.passwordLoginEnabled) flows.push({ type: "m.login.password" });
+  if (hs.userAuth.passwordLoginEnabled) flows.push({ type: M.LOGIN.PASSWORD });
   if (hs.sso) {
     flows.push({
-      type: "m.login.sso",
+      type: M.LOGIN.SSO,
       identity_providers: hs.sso.providers.map((p) => ({ id: p.id, name: p.name, icon: p.icon, brand: p.brand })),
     });
   }
-  flows.push({ type: "m.login.token", ...(hs.config.loginViaExistingSession ? { get_login_token: true } : {}) });
+  flows.push({ type: M.LOGIN.TOKEN, ...(hs.config.loginViaExistingSession ? { get_login_token: true } : {}) });
   return flows;
 }
 
@@ -108,9 +109,9 @@ async function resolveLoginUser(hs: Homeserver, body: Record<string, any>): Prom
   // Third-party identifiers (and the legacy top-level medium/address) log in the account they belong to.
   const id = isObject(body.identifier) ? body.identifier : null;
   let threepid: { medium: string; address: string | null } | null = null;
-  if (id?.type === "m.id.thirdparty" && typeof id.medium === "string" && typeof id.address === "string") {
+  if (id?.type === M.ID.THIRDPARTY && typeof id.medium === "string" && typeof id.address === "string") {
     threepid = { medium: id.medium, address: isMedium(id.medium) ? canonicalAddress(id.medium, id.address) : null };
-  } else if (id?.type === "m.id.phone" && typeof id.country === "string" && typeof id.phone === "string") {
+  } else if (id?.type === M.ID.PHONE && typeof id.country === "string" && typeof id.phone === "string") {
     threepid = { medium: "msisdn", address: toMsisdn(id.country, id.phone) };
   } else if (!id && typeof body.medium === "string" && typeof body.address === "string") {
     threepid = { medium: body.medium, address: isMedium(body.medium) ? canonicalAddress(body.medium, body.address) : null };
@@ -121,7 +122,7 @@ async function resolveLoginUser(hs: Homeserver, body: Record<string, any>): Prom
     return owner;
   }
   if (id) {
-    if (id.type !== "m.id.user") throw errors.unknown("Unsupported identifier type");
+    if (id.type !== M.ID.USER) throw errors.unknown("Unsupported identifier type");
     user = id.user;
   } else {
     user = body.user;
@@ -177,7 +178,7 @@ export function registerAccountRoutes(r: Router): void {
         const s = ctx.session;
         if (!ctx.hs.config.loginViaExistingSession || ctx.hs.oauth || s.isGuest) throw errors.unrecognized();
         await ctx.rateLimit("login");
-        await requireUia(ctx.hs, await ctx.json(), [["m.login.password"]], s.userId);
+        await requireUia(ctx.hs, await ctx.json(), [[M.LOGIN.PASSWORD]], s.userId);
         const ttl = 2 * 60_000;
         return { login_token: await ctx.hs.auth.createLoginToken(s.userId, ttl), expires_in_ms: ttl };
       },
@@ -208,7 +209,7 @@ export function registerAccountRoutes(r: Router): void {
         const body = ctx.input;
         const hs = ctx.hs;
         if (hs.oauth) throw errors.unrecognized("Log in through the OAuth provider");
-        if (body.type === "m.login.application_service") {
+        if (body.type === M.LOGIN.APPLICATION_SERVICE) {
           const reg = ctx.accessToken() ? hs.appservices.byToken(ctx.accessToken()!) : null;
           if (!reg) throw errors.unknownToken("An application service token is required");
           const userId = await resolveLoginUser(hs, body);
@@ -220,7 +221,7 @@ export function registerAccountRoutes(r: Router): void {
           });
           return { ...session, home_server: hs.serverName };
         }
-        if (body.type === "m.login.token") {
+        if (body.type === M.LOGIN.TOKEN) {
           if (body.token === undefined) throw errors.missingParam("Missing token");
           const userId = await hs.auth.consumeLoginToken(body.token).catch(async (err) => {
             await hs.audit.record({
@@ -228,7 +229,7 @@ export function registerAccountRoutes(r: Router): void {
               actor: null,
               ip: ctx.ip,
               outcome: "failure",
-              details: { type: "m.login.token" },
+              details: { type: M.LOGIN.TOKEN },
             });
             throw err;
           });
@@ -245,11 +246,11 @@ export function registerAccountRoutes(r: Router): void {
             target: session.device_id,
             ip: ctx.ip,
             userAgent: ctx.request.headers.get("user-agent"),
-            details: { type: "m.login.token" },
+            details: { type: M.LOGIN.TOKEN },
           });
           return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
         }
-        if (body.type !== "m.login.password" || !hs.userAuth.passwordLoginEnabled) throw errors.unknown("Unsupported login type");
+        if (body.type !== M.LOGIN.PASSWORD || !hs.userAuth.passwordLoginEnabled) throw errors.unknown("Unsupported login type");
         const userId = await resolveLoginUser(hs, body);
         if (body.password === undefined) throw errors.missingParam("Missing password");
         let user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
@@ -267,7 +268,7 @@ export function registerAccountRoutes(r: Router): void {
             ip: ctx.ip,
             userAgent: ua,
             outcome: "failure",
-            details: { type: "m.login.password" },
+            details: { type: M.LOGIN.PASSWORD },
           });
           throw errors.forbidden("Invalid username or password");
         }
@@ -288,7 +289,7 @@ export function registerAccountRoutes(r: Router): void {
           target: session.device_id,
           ip: ctx.ip,
           userAgent: ua,
-          details: { type: "m.login.password" },
+          details: { type: M.LOGIN.PASSWORD },
         });
         return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
       },
@@ -399,7 +400,7 @@ export function registerAccountRoutes(r: Router): void {
         }
         if (kind !== "user") throw errors.invalidParam("Unknown kind");
         // Application services register users in their namespace without UIA.
-        if (body.type === "m.login.application_service" || body.auth?.type === "m.login.application_service") {
+        if (body.type === M.LOGIN.APPLICATION_SERVICE || body.auth?.type === M.LOGIN.APPLICATION_SERVICE) {
           const s = await ctx.auth();
           if (!s.appservice) throw errors.forbidden("An application service token is required");
           if (body.username === undefined) throw errors.missingParam("Missing username");
@@ -445,7 +446,7 @@ export function registerAccountRoutes(r: Router): void {
           actor: userId,
           ip: ctx.ip,
           userAgent: ctx.request.headers.get("user-agent"),
-          details: { token: body.auth?.type === "m.login.registration_token" },
+          details: { token: body.auth?.type === M.LOGIN.REGISTRATION_TOKEN },
         });
         if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
         const session = await hs.auth.createSession(userId, {
@@ -471,10 +472,10 @@ export function registerAccountRoutes(r: Router): void {
         let s: { userId: string; deviceId: string | null };
         if (ctx.accessToken()) {
           const session = await ctx.auth();
-          await requireUia(hs, body, [["m.login.password"]], session.userId);
+          await requireUia(hs, body, [[M.LOGIN.PASSWORD]], session.userId);
           s = { userId: session.userId, deviceId: session.deviceId };
         } else {
-          const { threepids } = await requireUia(hs, body, [["m.login.email.identity"], ["m.login.msisdn"]], null);
+          const { threepids } = await requireUia(hs, body, [[M.LOGIN.EMAIL.IDENTITY], [M.LOGIN.MSISDN]], null);
           const owner = threepids.length ? await hs.threepids.userFor(threepids[0].medium, threepids[0].address) : null;
           if (!owner) throw new MatrixError(400, "M_THREEPID_NOT_FOUND", "No account uses this address");
           s = { userId: owner, deviceId: null };
@@ -506,7 +507,7 @@ export function registerAccountRoutes(r: Router): void {
         const hs = ctx.hs;
         rejectIfDelegated(hs);
         const s = await ctx.auth();
-        await requireUia(hs, ctx.input, [["m.login.password"]], s.userId);
+        await requireUia(hs, ctx.input, [[M.LOGIN.PASSWORD]], s.userId);
         for (const membership of ["join", "invite", "knock"]) {
           for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
             try {
@@ -579,11 +580,11 @@ export function registerAccountRoutes(r: Router): void {
 
 export async function registrationFlows(hs: Homeserver): Promise<string[][]> {
   // The very first account (admin bootstrap) never needs a token.
-  if (hs.adminRoom?.options.firstUserCanRegister && (await hs.adminRoom.noUsersYet())) return [["m.login.dummy"]];
-  const base = (await hs.registrationMode()) === "token" ? ["m.login.registration_token"] : ["m.login.dummy"];
+  if (hs.adminRoom?.options.firstUserCanRegister && (await hs.adminRoom.noUsersYet())) return [[M.LOGIN.DUMMY]];
+  const base = (await hs.registrationMode()) === "token" ? [M.LOGIN.REGISTRATION_TOKEN] : [M.LOGIN.DUMMY];
   // With email validation available, an address can be given at registration (or must be).
   if (!hs.threepids.canValidate("email")) return [base];
-  const withEmail = [...base.filter((s) => s !== "m.login.dummy"), "m.login.email.identity"];
+  const withEmail = [...base.filter((s) => s !== M.LOGIN.DUMMY), M.LOGIN.EMAIL.IDENTITY];
   return hs.config.threepid.requireEmailForRegistration ? [withEmail] : [base, withEmail];
 }
 
@@ -595,7 +596,7 @@ export async function registrationTokenValid(hs: Homeserver, token: string): Pro
 }
 
 async function consumeRegistrationToken(hs: Homeserver, body: Record<string, any>): Promise<void> {
-  if (body.auth?.type !== "m.login.registration_token") return;
+  if (body.auth?.type !== M.LOGIN.REGISTRATION_TOKEN) return;
   const token = body.auth?.token;
   const row = await hs.db.findOne("registration_tokens", [{ field: "token", value: token }]);
   if (row) await hs.db.update("registration_tokens", [{ field: "token", value: token }], { completed: row.completed + 1 });
@@ -603,7 +604,7 @@ async function consumeRegistrationToken(hs: Homeserver, body: Record<string, any
 
 export function wellKnown(hs: Homeserver): Record<string, any> | null {
   if (!hs.config.publicBaseUrl) return null;
-  const wk: Record<string, any> = { "m.homeserver": { base_url: hs.config.publicBaseUrl } };
+  const wk: Record<string, any> = { [M.HOMESERVER]: { base_url: hs.config.publicBaseUrl } };
   if (hs.config.rtc.transports?.length) wk["org.matrix.msc4143.rtc_foci"] = hs.config.rtc.transports;
   return wk;
 }

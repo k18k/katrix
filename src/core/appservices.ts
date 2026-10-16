@@ -4,6 +4,7 @@ import { errors, MatrixError } from "#core/errors.ts";
 import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
 import type { StateMap } from "#core/authrules.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { M } from "#core/m.ts";
 
 export interface AppServiceNamespace {
   exclusive: boolean;
@@ -214,7 +215,7 @@ export class AppServiceService {
   private async interestedInEvent(svc: CompiledService, pdu: PDU, state: StateMap): Promise<boolean> {
     const reg = svc.reg;
     if (this.isInterestedUser(reg, pdu.sender)) return true;
-    if (pdu.type === "m.room.member" && typeof pdu.state_key === "string" && this.isInterestedUser(reg, pdu.state_key)) return true;
+    if (pdu.type === M.ROOM.MEMBER && typeof pdu.state_key === "string" && this.isInterestedUser(reg, pdu.state_key)) return true;
     if (svc.rooms.some((n) => n.re.test(pdu.room_id))) return true;
     if (svc.aliases.length) {
       const aliases = await this.hs.db.findMany("room_aliases", { where: [{ field: "room_id", value: pdu.room_id }] });
@@ -222,7 +223,7 @@ export class AppServiceService {
     }
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
-      if (type === "m.room.member" && ev.content?.membership === "join" && this.isInterestedUser(reg, userId)) return true;
+      if (type === M.ROOM.MEMBER && ev.content?.membership === "join" && this.isInterestedUser(reg, userId)) return true;
     }
     return false;
   }

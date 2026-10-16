@@ -11,6 +11,7 @@ import { matchesFilter, roomAllowed, validateSyncFilter, type SyncFilter } from 
 import { loadRules } from "#core/pushrules.ts";
 import { fullProfile } from "#core/profile.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
+import { M } from "#core/m.ts";
 
 interface SyncToken {
   pos: number;
@@ -176,17 +177,17 @@ export async function roomTimeline(
     if (sinceIds[key] === ev.event_id) continue;
     const [type, sk] = splitStateKey(key);
     if (!matchesFilter(sf, ev)) continue;
-    if (lazy && type === "m.room.member" && !senders.has(sk)) continue;
+    if (lazy && type === M.ROOM.MEMBER && !senders.has(sk)) continue;
     state.push(ev);
   }
   if (lazy) {
     // Partial-state rooms (MSC3902) may not know a sender's membership yet: use the one the
     // event itself was authorised by.
     for (const e of events) {
-      const key = stateKey("m.room.member", e.pdu.sender);
-      if (startState.has(key) || state.some((s) => s.type === "m.room.member" && s.state_key === e.pdu.sender)) continue;
+      const key = stateKey(M.ROOM.MEMBER, e.pdu.sender);
+      if (startState.has(key) || state.some((s) => s.type === M.ROOM.MEMBER && s.state_key === e.pdu.sender)) continue;
       const auth = await hs.rooms.getPdus((e.pdu.auth_events ?? []).map(eventIdOf));
-      const member = [...auth.values()].find((a) => a.type === "m.room.member" && a.state_key === e.pdu.sender);
+      const member = [...auth.values()].find((a) => a.type === M.ROOM.MEMBER && a.state_key === e.pdu.sender);
       if (member && matchesFilter(sf, member)) state.push(member);
     }
   }
@@ -198,7 +199,7 @@ export async function roomTimeline(
       if (sinceIds[key] === ev.event_id) continue;
       const [type, sk] = splitStateKey(key);
       if (!matchesFilter(sf, ev)) continue;
-      if (lazy && type === "m.room.member" && !senders.has(sk)) continue;
+      if (lazy && type === M.ROOM.MEMBER && !senders.has(sk)) continue;
       stateAfter.push(ev);
     }
   }
@@ -218,13 +219,13 @@ export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: strin
   const since = p.since?.pos ?? null;
   const out: { type: string; content: Record<string, any> }[] = [];
   const typing = hs.typing.typingSince(roomId, since);
-  if (typing !== null && (since !== null || typing.length > 0)) out.push({ type: "m.typing", content: { user_ids: typing } });
+  if (typing !== null && (since !== null || typing.length > 0)) out.push({ type: M.TYPING, content: { user_ids: typing } });
   const where: any[] = [{ field: "room_id", value: roomId }];
   if (since !== null) where.push({ field: "stream", operator: "gt", value: since });
   const receipts = (await hs.db.findMany("receipts", { where })).filter((r) => r.stream <= p.to);
   const content: Record<string, any> = {};
   for (const r of receipts) {
-    if (r.receipt_type === "m.read.private" && r.user_id !== p.session.userId) continue;
+    if (r.receipt_type === M.READ.PRIVATE && r.user_id !== p.session.userId) continue;
     content[r.event_id] ??= {};
     content[r.event_id][r.receipt_type] ??= {};
     // MSC4102: when receipts clash on one event, the unthreaded one wins.
@@ -232,7 +233,7 @@ export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: strin
       continue;
     content[r.event_id][r.receipt_type][r.user_id] = { ts: r.ts, ...(r.thread_id ? { thread_id: r.thread_id } : {}) };
   }
-  if (Object.keys(content).length) out.push({ type: "m.receipt", content });
+  if (Object.keys(content).length) out.push({ type: M.RECEIPT, content });
   return out.filter((e) => matchesFilter(p.filter.room?.ephemeral, e));
 }
 
@@ -258,15 +259,15 @@ export async function roomSummary(hs: Homeserver, roomId: string, userId: string
   const heroes: string[] = [];
   for (const [key, ev] of state) {
     const [type, sk] = splitStateKey(key);
-    if (type !== "m.room.member") continue;
+    if (type !== M.ROOM.MEMBER) continue;
     const m = ev.content?.membership;
     if (m === "join") joined++;
     if (m === "invite") invited++;
     if ((m === "join" || m === "invite") && sk !== userId && heroes.length < 5) heroes.push(sk);
   }
-  const summary: Record<string, any> = { "m.joined_member_count": joined, "m.invited_member_count": invited };
-  if (!getState(state, "m.room.name")?.content?.name && !getState(state, "m.room.canonical_alias")?.content?.alias) {
-    summary["m.heroes"] = heroes.sort();
+  const summary: Record<string, any> = { [M.JOINED_MEMBER_COUNT]: joined, [M.INVITED_MEMBER_COUNT]: invited };
+  if (!getState(state, M.ROOM.NAME)?.content?.name && !getState(state, M.ROOM.CANONICAL_ALIAS)?.content?.alias) {
+    summary[M.HEROES] = heroes.sort();
   }
   return summary;
 }
@@ -367,8 +368,8 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   }
 
   const globalAccountData = await accountData(hs, p, "");
-  if (since === null && !globalAccountData.some((e) => e.type === "m.push_rules")) {
-    globalAccountData.push({ type: "m.push_rules", content: { global: await loadRules(hs, userId) } });
+  if (since === null && !globalAccountData.some((e) => e.type === M.PUSH_RULES)) {
+    globalAccountData.push({ type: M.PUSH_RULES, content: { global: await loadRules(hs, userId) } });
   }
   if (globalAccountData.length) empty = false;
 
@@ -409,7 +410,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       const content: Record<string, any> = { presence: row.presence, last_active_ago: Date.now() - row.last_active_ts };
       if (row.status_msg) content.status_msg = row.status_msg;
       if (row.presence === "online") content.currently_active = true;
-      const ev = { type: "m.presence", sender: row.user_id, content };
+      const ev = { type: M.PRESENCE, sender: row.user_id, content };
       if (matchesFilter(p.filter.presence, ev)) presenceEvents.push(ev);
     }
   }
@@ -453,7 +454,7 @@ async function sync(ctx: RequestContext) {
     const ignoredRow = await hs.db.findOne("account_data", [
       { field: "user_id", value: session.userId },
       { field: "room_id", value: "" },
-      { field: "type", value: "m.ignored_user_list" },
+      { field: "type", value: M.IGNORED_USER_LIST },
     ]);
     const ignored = new Set(Object.keys(ignoredRow?.content?.ignored_users ?? {}));
     const stable = ctx.query.get("use_state_after") === "true";

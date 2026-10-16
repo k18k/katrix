@@ -7,6 +7,7 @@ import type { Homeserver } from "#homeserver.ts";
 import type { Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
+import { M } from "#core/m.ts";
 
 // MSC2836: threading via `m.relationship` with tree walks (`/event_relationships`).
 // Edges are indexed in `event_edges` as events are persisted or fetched. When a walk reaches
@@ -44,7 +45,7 @@ function parseRequest(body: unknown): WalkRequest {
 }
 
 export function relationshipOf(pdu: PDU): { event_id: string; rel_type: string } | null {
-  const rel = pdu.content?.["m.relationship"];
+  const rel = pdu.content?.[M.RELATIONSHIP];
   return isObject(rel) && typeof rel.event_id === "string" && typeof rel.rel_type === "string"
     ? { event_id: rel.event_id, rel_type: rel.rel_type }
     : null;
@@ -188,7 +189,7 @@ export function registerRelationshipRoutes(r: Router): void {
         if (!roomId) throw errors.forbidden("Unknown event");
         if ((await hs.rooms.membership(roomId, s.userId)) !== "join") {
           // Non-members may only read world-readable rooms.
-          const hv = getState(await hs.rooms.currentState(roomId), "m.room.history_visibility")?.content?.history_visibility;
+          const hv = getState(await hs.rooms.currentState(roomId), M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility;
           if (hv !== "world_readable") throw errors.forbidden("You are not in this room");
         }
         const canSee = async (pdu: PDU) => {
