@@ -1,0 +1,27 @@
+# Dependency updates. Minor and patch updates of each ecosystem arrive as one grouped pull
+# request a week; major updates come one by one. Security updates are opened as soon as an
+# advisory is published, independently of this schedule.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  # The Complement test image (complement/Dockerfile).
+  - package-ecosystem: docker
+    directory: /complement
+    schedule:
+      interval: weekly
