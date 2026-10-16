@@ -11,25 +11,25 @@
   "engines": {
     "node": ">=26"
   },
-  "main": "./src/index.js",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "files": [
-    "src",
-    "README.md"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "build": "tsdown",
+    "prepare": "npm run build",
     "start:example": "node examples/node-http.ts",
-    "start:multi-node-example": "node examples/multi-node.ts",
-    "prepare": "npm run prepack",
-    "prepack": "npm run typecheck && node scripts/strip-types.ts",
-    "postpack": "node scripts/strip-types.ts --clean"
+    "start:multi-node-example": "node examples/multi-node.ts"
   },
   "repository": {
     "type": "git",
@@ -41,7 +41,8 @@
     "chat"
   ],
   "devDependencies": {
-    "@types/node": "latest",
-    "typescript": "^7.0.2"
+    "@types/node": "^26.6.5",
+    "tsdown": "^0.23.1",
+    "typescript": "7.0.2"
   }
 }

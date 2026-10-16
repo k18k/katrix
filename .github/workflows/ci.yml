@@ -18,7 +18,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      # The published package must load from node_modules (runtime .js produced by Node's type stripper).
+      # The published package must build (tsdown → dist/, .js and .d.ts per module).
       - run: npm pack --dry-run
 
   complement:

@@ -358,9 +358,15 @@ and a built-in OAuth authorization server. For OAuth, delegate to an existing pr
 
 ```sh
 npm install
-npm run typecheck                # tsc is only a type checker (noEmit); there is no build step
-node examples/node-http.ts       # Node runs the TypeScript sources directly (type stripping)
+npm run typecheck                # tsc only type-checks (noEmit)
+npm run build                    # tsdown → dist/ (what the published package contains)
+node examples/node-http.ts       # development runs the TypeScript sources directly (type stripping)
 ```
+
+Node does not strip types from files inside `node_modules`, so the package ships `dist/`,
+built by tsdown: one `.js` and one `.d.ts` per source module. `npm pack`, `npm publish` and
+installs from GitHub build it through the `prepare` script. Recent npm versions ask you to
+approve install scripts of git dependencies (`npm install-scripts approve`).
 
 ### Complement
 
