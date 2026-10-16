@@ -26,8 +26,10 @@ jobs:
           registry-url: https://registry.npmjs.org
           # No dependency cache in this privileged job: a poisoned cache could reach the published package.
       - run: npm ci
+      # Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/15): third-party action pinned to a commit, not a movable tag,
+      # because this job can publish the package. Dependabot updates the pin.
       - id: changesets
-        uses: changesets/action@v2
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           version-script: npm run version-packages
           publish-script: npm run release
