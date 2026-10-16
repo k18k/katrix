@@ -97,8 +97,8 @@ jobs:
           if git fetch --depth 1 origin loadtest-results; then
             git checkout -B loadtest-results FETCH_HEAD
           else
-            git checkout --orphan loadtest-results
-            git rm -rq .
+            # A new branch with no history and no files from main.
+            git switch --orphan loadtest-results
           fi
           rm -rf badges results
           mkdir -p badges results
