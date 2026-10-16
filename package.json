@@ -41,6 +41,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\"",
     "lint": "oxlint",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

@@ -10,9 +10,15 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch or pull request makes an older run pointless: it tests code that
+# is already replaced, and Complement takes a runner for ~15 minutes. Cancel it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    name: Typecheck
+    name: Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -22,6 +28,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Unit and HTTP tests on the in-memory adapter: seconds, against Complement's ~15 minutes.
+      - run: npm test
       - run: npm run lint
       - run: npm run format:check
       # The published package must build (tsdown → dist/, .js and .d.ts per module).

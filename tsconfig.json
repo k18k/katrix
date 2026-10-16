@@ -14,5 +14,5 @@
     "noUncheckedIndexedAccess": false,
     "noEmit": true
   },
-  "include": ["src", "examples", "complement", "scripts"]
+  "include": ["src", "test", "examples", "complement", "scripts"]
 }
