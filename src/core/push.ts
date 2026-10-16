@@ -1,6 +1,7 @@
 import { getState, powerLevels, userLevel, type StateMap } from "./authrules.ts";
 import { splitStateKey, toClientEvent, type PDU } from "./events.ts";
 import { isObject } from "./json.ts";
+import { globMatch, globSearchWords } from "./glob.ts";
 import { KINDS, loadRules, type Rule } from "./pushrules.ts";
 import { isSubscribed } from "../api/threadsubs.ts";
 import type { StoredEvent } from "./rooms.ts";
@@ -17,10 +18,6 @@ export function valueAtPath(obj: unknown, path: string): unknown {
   return cur;
 }
 
-function globToRegex(glob: string, wordBoundary: boolean): RegExp {
-  const body = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*?").replace(/\?/g, ".");
-  return wordBoundary ? new RegExp(`(^|\\W)${body}(\\W|$)`, "i") : new RegExp(`^${body}$`, "is");
-}
 
 interface EvalContext {
   event: PDU;
@@ -40,7 +37,10 @@ function conditionMatches(cond: Record<string, any>, ctx: EvalContext): boolean 
       const value = valueAtPath(ctx.event, cond.key);
       if (typeof value !== "string") return false;
       // content.body is matched on word boundaries; other keys must match entirely.
-      return globToRegex(cond.pattern, cond.key === "content.body").test(value);
+      // Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/2): patterns come from users' push rules and run against every event in
+      // their rooms; as regexes they allowed catastrophic backtracking (ReDoS), so they are
+      // matched in linear time (core/glob.ts).
+      return cond.key === "content.body" ? globSearchWords(cond.pattern, value) : globMatch(cond.pattern, value, { caseInsensitive: true });
     }
     case "event_property_is":
       return typeof cond.key === "string" && valueAtPath(ctx.event, cond.key) === cond.value;

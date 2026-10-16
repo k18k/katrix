@@ -1,10 +1,11 @@
 import { isObject } from "./json.ts";
+import { globMatch } from "./glob.ts";
 import type { Homeserver } from "../homeserver.ts";
 
 export const INVITE_CONFIG_TYPE = "org.matrix.msc4155.invite_permission_config";
 
-const globMatch = (pattern: string, value: string) =>
-  new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`).test(value);
+// Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/2): rules come from users' account data. Compiled to regexes they allowed
+// catastrophic backtracking that hung the server (ReDoS); matched in linear time (core/glob.ts).
 
 /**
  * MSC4155 invite filtering: "allow", "ignore" (accept but hide) or "block" (refuse).

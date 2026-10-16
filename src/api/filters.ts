@@ -1,3 +1,4 @@
+import { globMatch as matchGlob } from "../core/glob.ts";
 import { errors } from "../core/errors.ts";
 import { isObject } from "../core/json.ts";
 import type { PDU } from "../core/events.ts";
@@ -40,10 +41,11 @@ export interface SyncFilter {
   };
 }
 
+// Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/2): filter patterns come from clients. Compiled to regexes they allowed
+// catastrophic backtracking that hung the server (ReDoS); matched in linear time (core/glob.ts).
+// Only `*` is a wildcard here.
 function globMatch(pattern: string, value: string): boolean {
-  if (!pattern.includes("*")) return pattern === value;
-  const re = new RegExp(`^${pattern.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
-  return re.test(value);
+  return matchGlob(pattern, value, { questionMark: false });
 }
 
 export function matchesFilter(filter: EventFilter | undefined, ev: { type: string; sender?: string; room_id?: string; content?: any }): boolean {

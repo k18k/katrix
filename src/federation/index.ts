@@ -1,4 +1,5 @@
 import { MatrixError, errors } from "../core/errors.ts";
+import { globMatch } from "../core/glob.ts";
 import { getState, membershipOf, type StateMap } from "../core/authrules.ts";
 import {
   SUPPORTED_ROOM_VERSIONS,
@@ -45,10 +46,13 @@ export function serverAllowedByAcl(state: StateMap, serverName: string): boolean
   if (!isObject(acl)) return true;
   const host = serverName.replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
   if (acl.allow_ip_literals === false && (/^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(":"))) return false;
-  const glob = (p: string) => new RegExp(`^${p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
-  if (Array.isArray(acl.deny) && acl.deny.some((p: unknown) => typeof p === "string" && glob(p).test(host))) return false;
+  // Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/2): ACL entries come from room state, i.e. from any member allowed to set
+  // them. Compiled to regexes they allowed catastrophic backtracking that hung the server (ReDoS);
+  // they are matched in linear time instead (core/glob.ts).
+  const matches = (p: unknown) => typeof p === "string" && globMatch(p, host, { caseInsensitive: true });
+  if (Array.isArray(acl.deny) && acl.deny.some(matches)) return false;
   if (!Array.isArray(acl.allow)) return false;
-  return acl.allow.some((p: unknown) => typeof p === "string" && glob(p).test(host));
+  return acl.allow.some(matches);
 }
 
 /** Server-server API: verification, inbound processing and outbound requests. */
