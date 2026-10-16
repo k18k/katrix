@@ -63,7 +63,10 @@ export class AuthService {
     if (row.expires_ts === null) this.cache.set(token, session);
     await this.hs.db.update(
       "devices",
-      [{ field: "user_id", value: row.user_id }, { field: "device_id", value: row.device_id }],
+      [
+        { field: "user_id", value: row.user_id },
+        { field: "device_id", value: row.device_id },
+      ],
       { last_seen_ts: Date.now(), last_seen_ip: ip },
     );
     return session;
@@ -85,7 +88,14 @@ export class AuthService {
       // Logging in again with the same device ID invalidates the old tokens.
       await this.revokeDeviceTokens(userId, deviceId);
       if (opts.displayName) {
-        await this.hs.db.update("devices", [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }], { display_name: opts.displayName });
+        await this.hs.db.update(
+          "devices",
+          [
+            { field: "user_id", value: userId },
+            { field: "device_id", value: deviceId },
+          ],
+          { display_name: opts.displayName },
+        );
       }
     } else {
       await this.hs.db.create("devices", {
@@ -163,7 +173,10 @@ export class AuthService {
 
   async deleteDevice(userId: string, deviceId: string): Promise<void> {
     await this.revokeDeviceTokens(userId, deviceId);
-    const where = [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }];
+    const where = [
+      { field: "user_id", value: userId },
+      { field: "device_id", value: deviceId },
+    ];
     await this.hs.db.delete("devices", where);
     await this.hs.db.delete("device_keys", where);
     await this.hs.db.delete("one_time_keys", where);

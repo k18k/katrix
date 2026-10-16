@@ -18,7 +18,6 @@ export function valueAtPath(obj: unknown, path: string): unknown {
   return cur;
 }
 
-
 interface EvalContext {
   event: PDU;
   userId: string;
@@ -59,11 +58,16 @@ function conditionMatches(cond: Record<string, any>, ctx: EvalContext): boolean 
       if (!m) return false;
       const n = Number(m[2]);
       switch (m[1] ?? "==") {
-        case "==": return ctx.memberCount === n;
-        case "<": return ctx.memberCount < n;
-        case ">": return ctx.memberCount > n;
-        case "<=": return ctx.memberCount <= n;
-        case ">=": return ctx.memberCount >= n;
+        case "==":
+          return ctx.memberCount === n;
+        case "<":
+          return ctx.memberCount < n;
+        case ">":
+          return ctx.memberCount > n;
+        case "<=":
+          return ctx.memberCount <= n;
+        case ">=":
+          return ctx.memberCount >= n;
       }
       return false;
     }
@@ -156,8 +160,14 @@ export class PushService {
       if (!actions || !actions.includes("notify")) continue;
       const tweaks = tweaksOf(actions);
       await this.hs.db.upsert("notifications", {
-        user_id: userId, room_id: event.room_id, event_id: event.event_id, stream: ev.stream,
-        highlight: tweaks.highlight === true, thread_id: threadIdOf(event), actions, ts: Date.now(),
+        user_id: userId,
+        room_id: event.room_id,
+        event_id: event.event_id,
+        stream: ev.stream,
+        highlight: tweaks.highlight === true,
+        thread_id: threadIdOf(event),
+        actions,
+        ts: Date.now(),
       });
       void this.deliver(userId, ev, state, tweaks).catch((err) => this.hs.logger.warn("Push delivery failed", err));
     }
@@ -166,7 +176,12 @@ export class PushService {
   /** Unread notification counts since the user's read receipts. */
   /** Stream positions up to which the user has read the room (unthreaded) and each thread. */
   private async readPositions(userId: string, roomId: string): Promise<{ unthreaded: number; threads: Map<string, number> }> {
-    const receipts = await this.hs.db.findMany("receipts", { where: [{ field: "room_id", value: roomId }, { field: "user_id", value: userId }] });
+    const receipts = await this.hs.db.findMany("receipts", {
+      where: [
+        { field: "room_id", value: roomId },
+        { field: "user_id", value: userId },
+      ],
+    });
     let unthreaded = 0;
     const threadRead = new Map<string, number>();
     for (const r of receipts) {
@@ -183,14 +198,21 @@ export class PushService {
     return row.stream <= read.unthreaded || row.stream <= (read.threads.get(row.thread_id) ?? 0);
   }
 
-  async unreadCounts(userId: string, roomId: string): Promise<{
+  async unreadCounts(
+    userId: string,
+    roomId: string,
+  ): Promise<{
     room: { notification_count: number; highlight_count: number };
     threads: Record<string, { notification_count: number; highlight_count: number }>;
   }> {
     const read = await this.readPositions(userId, roomId);
     const unthreaded = read.unthreaded;
     const rows = await this.hs.db.findMany("notifications", {
-      where: [{ field: "user_id", value: userId }, { field: "room_id", value: roomId }, { field: "stream", operator: "gt", value: unthreaded }],
+      where: [
+        { field: "user_id", value: userId },
+        { field: "room_id", value: roomId },
+        { field: "stream", operator: "gt", value: unthreaded },
+      ],
     });
     const room = { notification_count: 0, highlight_count: 0 };
     const threads: Record<string, { notification_count: number; highlight_count: number }> = {};
@@ -238,11 +260,16 @@ export class PushService {
         body: JSON.stringify({ notification }),
         signal: AbortSignal.timeout(10_000),
       });
-      if (!res.ok) { this.hs.logger.warn("Push gateway returned", res.status, "for", url); continue; }
-      const body = await res.json().catch(() => ({})) as { rejected?: string[] };
+      if (!res.ok) {
+        this.hs.logger.warn("Push gateway returned", res.status, "for", url);
+        continue;
+      }
+      const body = (await res.json().catch(() => ({}))) as { rejected?: string[] };
       if (Array.isArray(body.rejected) && body.rejected.includes(pusher.pushkey)) {
         await this.hs.db.delete("pushers", [
-          { field: "user_id", value: userId }, { field: "app_id", value: pusher.app_id }, { field: "pushkey", value: pusher.pushkey },
+          { field: "user_id", value: userId },
+          { field: "app_id", value: pusher.app_id },
+          { field: "pushkey", value: pusher.pushkey },
         ]);
       }
     }
@@ -262,8 +289,12 @@ export class PushService {
       let read = readByRoom.get(row.room_id);
       if (!read) readByRoom.set(row.room_id, (read = await this.readPositions(userId, row.room_id)));
       out.push({
-        actions: row.actions, event: toClientEvent(ev.pdu), room_id: row.room_id, ts: row.ts,
-        read: this.isRead(row, read), stream: row.stream,
+        actions: row.actions,
+        event: toClientEvent(ev.pdu),
+        room_id: row.room_id,
+        ts: row.ts,
+        read: this.isRead(row, read),
+        stream: row.stream,
       });
     }
     return out;

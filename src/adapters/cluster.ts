@@ -79,7 +79,10 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
       })().catch(() => {});
     });
     await listener.query(`LISTEN ${PG_CHANNEL}`);
-    cleanup = setInterval(() => void pool.query(`DELETE FROM ${kv} WHERE expires_at IS NOT NULL AND expires_at < $1`, [Date.now()]).catch(() => {}), 60_000);
+    cleanup = setInterval(
+      () => void pool.query(`DELETE FROM ${kv} WHERE expires_at IS NOT NULL AND expires_at < $1`, [Date.now()]).catch(() => {}),
+      60_000,
+    );
     cleanup.unref?.();
   })();
   ready.catch(() => {});
@@ -91,7 +94,10 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
 
   return {
     async nextId(name) {
-      const res = await q(`INSERT INTO ${seq} (name, value) VALUES ($1, 1) ON CONFLICT (name) DO UPDATE SET value = ${seq}.value + 1 RETURNING value`, [name]);
+      const res = await q(
+        `INSERT INTO ${seq} (name, value) VALUES ($1, 1) ON CONFLICT (name) DO UPDATE SET value = ${seq}.value + 1 RETURNING value`,
+        [name],
+      );
       return Number(res.rows[0].value);
     },
     async currentId(name) {
@@ -99,7 +105,10 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
       return res.rows[0] ? Number(res.rows[0].value) : 0;
     },
     async advance(name, value) {
-      await q(`INSERT INTO ${seq} (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = GREATEST(${seq}.value, EXCLUDED.value)`, [name, value]);
+      await q(
+        `INSERT INTO ${seq} (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = GREATEST(${seq}.value, EXCLUDED.value)`,
+        [name, value],
+      );
     },
     lock(key, fn) {
       return queue(key, async () => {
@@ -156,7 +165,10 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
     },
     async entries(prefix) {
       const escaped = prefix.replace(/[\\%_]/g, (c) => `\\${c}`);
-      const res = await q(`SELECT key, value FROM ${kv} WHERE key LIKE $1 AND (expires_at IS NULL OR expires_at > $2)`, [`${escaped}%`, Date.now()]);
+      const res = await q(`SELECT key, value FROM ${kv} WHERE key LIKE $1 AND (expires_at IS NULL OR expires_at > $2)`, [
+        `${escaped}%`,
+        Date.now(),
+      ]);
       return res.rows.map((r: any) => [r.key, JSON.parse(r.value)] as [string, any]);
     },
     async close() {
@@ -210,15 +222,26 @@ export function redisCluster(opts: { client: RedisLike; subscriber: RedisSubscri
     try {
       const { channel: name, message } = JSON.parse(raw);
       for (const h of handlers.get(name) ?? []) h(message);
-    } catch { /* ignore malformed */ }
+    } catch {
+      /* ignore malformed */
+    }
   });
   const k = (key: string) => `${prefix}${key}`;
 
   return {
-    async nextId(name) { return Number(await client.incr(k(`seq:${name}`))); },
-    async currentId(name) { return Number((await client.get(k(`seq:${name}`))) ?? 0); },
+    async nextId(name) {
+      return Number(await client.incr(k(`seq:${name}`)));
+    },
+    async currentId(name) {
+      return Number((await client.get(k(`seq:${name}`))) ?? 0);
+    },
     async advance(name, value) {
-      await client.eval(`local v = tonumber(redis.call("get", KEYS[1]) or "0") if v < tonumber(ARGV[1]) then redis.call("set", KEYS[1], ARGV[1]) end return 1`, 1, k(`seq:${name}`), value);
+      await client.eval(
+        `local v = tonumber(redis.call("get", KEYS[1]) or "0") if v < tonumber(ARGV[1]) then redis.call("set", KEYS[1], ARGV[1]) end return 1`,
+        1,
+        k(`seq:${name}`),
+        value,
+      );
     },
     lock(key, fn) {
       return queue(key, async () => {
@@ -262,7 +285,9 @@ export function redisCluster(opts: { client: RedisLike; subscriber: RedisSubscri
         : await client.set(k(`kv:${key}`), JSON.stringify(value), "NX");
       return res === "OK";
     },
-    async delete(key) { await client.del(k(`kv:${key}`)); },
+    async delete(key) {
+      await client.del(k(`kv:${key}`));
+    },
     async entries(keyPrefix) {
       const out: [string, any][] = [];
       let cursor = "0";

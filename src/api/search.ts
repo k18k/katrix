@@ -18,7 +18,8 @@ export function registerSearchRoutes(r: Router): void {
     const hs = ctx.hs;
     const body = await ctx.json();
     const criteria = body.search_categories?.room_events;
-    if (!isObject(criteria) || typeof criteria.search_term !== "string") throw errors.badJson("Missing search_categories.room_events.search_term");
+    if (!isObject(criteria) || typeof criteria.search_term !== "string")
+      throw errors.badJson("Missing search_categories.room_events.search_term");
     const terms = criteria.search_term.toLowerCase().split(/\s+/).filter(Boolean);
     const keys: string[] = Array.isArray(criteria.keys) && criteria.keys.length ? criteria.keys : DEFAULT_KEYS;
     const filter: EventFilter = isObject(criteria.filter) ? criteria.filter : {};
@@ -32,7 +33,10 @@ export function registerSearchRoutes(r: Router): void {
 
     const hits: { ev: StoredEvent; rank: number }[] = [];
     for (const roomId of rooms) {
-      const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }], sortBy: { field: "stream", direction: "desc" } });
+      const rows = await hs.db.findMany("events", {
+        where: [{ field: "room_id", value: roomId }],
+        sortBy: { field: "stream", direction: "desc" },
+      });
       const candidates: { ev: StoredEvent; rank: number }[] = [];
       for (const row of rows) {
         if (row.state_key !== null || !matchesFilter(filter, row.json)) continue;
@@ -48,7 +52,15 @@ export function registerSearchRoutes(r: Router): void {
           candidates.push({ ev: hs.rooms.rowToStored(row), rank });
         }
       }
-      const visible = new Set((await hs.rooms.filterVisible(s.userId, roomId, candidates.map((c) => c.ev))).map((v) => v.pdu.event_id));
+      const visible = new Set(
+        (
+          await hs.rooms.filterVisible(
+            s.userId,
+            roomId,
+            candidates.map((c) => c.ev),
+          )
+        ).map((v) => v.pdu.event_id),
+      );
       hits.push(...candidates.filter((c) => visible.has(c.ev.pdu.event_id)));
     }
     hits.sort((a, b) => (orderBy === "rank" && b.rank !== a.rank ? b.rank - a.rank : b.ev.stream - a.ev.stream));
@@ -88,7 +100,9 @@ export function registerSearchRoutes(r: Router): void {
     if (criteria.include_state) {
       out.state = {};
       for (const roomId of new Set(page.map((h) => h.ev.pdu.room_id))) {
-        out.state[roomId] = [...(await hs.rooms.currentState(roomId)).values()].map((e) => hs.rooms.formatEvent({ pdu: e, stream: 0, snapshot: 0, txnId: null, txnToken: null }));
+        out.state[roomId] = [...(await hs.rooms.currentState(roomId)).values()].map((e) =>
+          hs.rooms.formatEvent({ pdu: e, stream: 0, snapshot: 0, txnId: null, txnToken: null }),
+        );
       }
     }
     if (criteria.groupings?.group_by?.some?.((g: any) => g?.key === "room_id")) {

@@ -30,7 +30,7 @@ export function membershipOf(state: StateMap, userId: string): string {
 export function roomCreator(state: StateMap, roomVersion: string): string | undefined {
   const create = getState(state, "m.room.create");
   if (!create) return undefined;
-  return roomVersionFeatures(roomVersion).v11 ? create.sender : create.content.creator ?? create.sender;
+  return roomVersionFeatures(roomVersion).v11 ? create.sender : (create.content.creator ?? create.sender);
 }
 
 const toInt = (v: unknown, fallback: number): number => {
@@ -73,8 +73,15 @@ export function powerLevels(state: StateMap, roomVersion: string): PowerLevels {
     return {
       creators,
       users: creator ? { [creator]: 100 } : {},
-      users_default: 0, events: {}, events_default: 0, state_default: 0,
-      ban: 50, kick: 50, redact: 50, invite: 0, notifications: { room: 50 },
+      users_default: 0,
+      events: {},
+      events_default: 0,
+      state_default: 0,
+      ban: 50,
+      kick: 50,
+      redact: 50,
+      invite: 0,
+      notifications: { room: 50 },
     };
   }
   const users: Record<string, number> = {};
@@ -84,7 +91,10 @@ export function powerLevels(state: StateMap, roomVersion: string): PowerLevels {
   const notifications: Record<string, number> = { room: 50 };
   if (isObject(pl.notifications)) for (const [e, v] of Object.entries(pl.notifications)) notifications[e] = toInt(v, 50);
   return {
-    creators, users, events, notifications,
+    creators,
+    users,
+    events,
+    notifications,
     users_default: toInt(pl.users_default, 0),
     events_default: toInt(pl.events_default, 0),
     state_default: toInt(pl.state_default, 50),
@@ -113,7 +123,10 @@ const sameDomain = (a: string, b: string) => a.slice(a.indexOf(":") + 1) === b.s
 const domainOf = (id: string) => id.slice(id.indexOf(":") + 1);
 
 /** The (type, state_key) pairs an event's auth_events may reference (spec "auth events selection"). */
-export function authEventKeys(event: { type: string; sender: string; state_key?: string; content: Record<string, any> }, roomVersion: string): string[] {
+export function authEventKeys(
+  event: { type: string; sender: string; state_key?: string; content: Record<string, any> },
+  roomVersion: string,
+): string[] {
   if (event.type === "m.room.create") return [];
   const keys = [stateKey("m.room.power_levels", ""), stateKey("m.room.member", event.sender)];
   if (!roomVersionFeatures(roomVersion).v12) keys.unshift(stateKey("m.room.create", ""));
@@ -124,7 +137,8 @@ export function authEventKeys(event: { type: string; sender: string; state_key?:
     const token = event.content?.third_party_invite?.signed?.token;
     if (membership === "invite" && typeof token === "string") keys.push(stateKey("m.room.third_party_invite", token));
     const via = event.content?.join_authorised_via_users_server;
-    if (membership === "join" && typeof via === "string" && roomVersionFeatures(roomVersion).restricted) keys.push(stateKey("m.room.member", via));
+    if (membership === "join" && typeof via === "string" && roomVersionFeatures(roomVersion).restricted)
+      keys.push(stateKey("m.room.member", via));
   }
   return [...new Set(keys)];
 }
@@ -142,7 +156,8 @@ export function authStateFromAuthEvents(event: PDU, authEvents: PDU[], roomVersi
     const key = stateKey(ev.type, ev.state_key);
     if (state.has(key)) throw errors.forbidden("Duplicate auth event");
     if (!allowed.has(key)) throw errors.forbidden(`Unexpected auth event ${ev.type}`);
-    if (roomVersionFeatures(roomVersion).v12 && ev.type === "m.room.create") throw errors.forbidden("Create event must not be in auth_events");
+    if (roomVersionFeatures(roomVersion).v12 && ev.type === "m.room.create")
+      throw errors.forbidden("Create event must not be in auth_events");
     state.set(key, ev);
   }
   if (createEvent) state.set(stateKey("m.room.create", ""), createEvent);
@@ -156,7 +171,9 @@ export function authStateFromAuthEvents(event: PDU, authEvents: PDU[], roomVersi
 export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts: AuthCheckOptions = {}): void {
   const features = roomVersionFeatures(roomVersion);
   const n = versionNum(roomVersion);
-  const deny = (msg: string): never => { throw errors.forbidden(msg); };
+  const deny = (msg: string): never => {
+    throw errors.forbidden(msg);
+  };
 
   // 1. Create events.
   if (event.type === "m.room.create") {
@@ -215,7 +232,8 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
         if ((features.restricted && joinRule === "restricted") || (features.knockRestricted && joinRule === "knock_restricted")) {
           if (targetMembership === "join" || targetMembership === "invite") return;
           // Only when the restricted rule is what admits the user must the authorising server have signed the join.
-          if (typeof via === "string" && opts.joinAuthorisedSignatureValid === false) deny("join_authorised_via_users_server is not signed by that server");
+          if (typeof via === "string" && opts.joinAuthorisedSignatureValid === false)
+            deny("join_authorised_via_users_server is not signed by that server");
           if (typeof via === "string" && membershipOf(state, via) === "join" && userLevel(pl, via) >= pl.invite) return;
           deny("Join not authorised by restricted join rules");
         }
@@ -231,7 +249,8 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
           return;
         }
         if (senderMembership !== "join") deny("Sender not in room");
-        if (targetMembership === "join" || targetMembership === "ban") deny(`User is already ${targetMembership === "join" ? "joined" : "banned"}`);
+        if (targetMembership === "join" || targetMembership === "ban")
+          deny(`User is already ${targetMembership === "join" ? "joined" : "banned"}`);
         if (senderLevel >= pl.invite) return;
         deny("Insufficient power level to invite");
         break;
@@ -257,7 +276,8 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
         if (!features.knock) deny("Knocking is not supported in this room version");
         if (joinRule !== "knock" && !(features.knockRestricted && joinRule === "knock_restricted")) deny("Room does not allow knocking");
         if (event.sender !== target) deny("Cannot knock on behalf of another user");
-        if (targetMembership === "ban" || targetMembership === "join" || targetMembership === "invite") deny(`Cannot knock while ${targetMembership}`);
+        if (targetMembership === "ban" || targetMembership === "join" || targetMembership === "invite")
+          deny(`Cannot knock while ${targetMembership}`);
         return;
       }
       default:
@@ -318,10 +338,15 @@ function checkThirdPartyInvite(event: PDU, state: StateMap): boolean {
   if (!invite || invite.sender !== event.sender) return false;
   const keys: string[] = [];
   if (typeof invite.content?.public_key === "string") keys.push(invite.content.public_key);
-  for (const k of Array.isArray(invite.content?.public_keys) ? invite.content.public_keys : []) if (typeof k?.public_key === "string") keys.push(k.public_key);
+  for (const k of Array.isArray(invite.content?.public_keys) ? invite.content.public_keys : [])
+    if (typeof k?.public_key === "string") keys.push(k.public_key);
   for (const key of keys) {
     let pub;
-    try { pub = publicKeyFromBase64(key); } catch { continue; }
+    try {
+      pub = publicKeyFromBase64(key);
+    } catch {
+      continue;
+    }
     for (const [server, sigs] of Object.entries(isObject(signed.signatures) ? signed.signatures : {})) {
       for (const keyId of Object.keys(isObject(sigs) ? sigs : {})) {
         if (verifyJsonSignature(signed, server, keyId, pub)) return true;
@@ -345,7 +370,12 @@ function checkPowerLevelShape(event: PDU, integerOnly: boolean, deny: (m: string
 }
 
 function checkPowerLevelChange(
-  event: PDU, current: PowerLevels, senderLevel: number, integerOnly: boolean, checkNotifications: boolean, deny: (m: string) => never,
+  event: PDU,
+  current: PowerLevels,
+  senderLevel: number,
+  integerOnly: boolean,
+  checkNotifications: boolean,
+  deny: (m: string) => never,
 ): void {
   const c = event.content ?? {};
   checkPowerLevelShape(event, integerOnly, deny);
@@ -353,9 +383,13 @@ function checkPowerLevelChange(
     for (const map of ["users", "events", "notifications"]) if (map in c && !isObject(c[map])) deny(`${map} must be an object`);
   }
   const next = {
-    users_default: toInt(c.users_default, 0), events_default: toInt(c.events_default, 0),
-    state_default: toInt(c.state_default, 50), ban: toInt(c.ban, 50), redact: toInt(c.redact, 50),
-    kick: toInt(c.kick, 50), invite: toInt(c.invite, 0),
+    users_default: toInt(c.users_default, 0),
+    events_default: toInt(c.events_default, 0),
+    state_default: toInt(c.state_default, 50),
+    ban: toInt(c.ban, 50),
+    redact: toInt(c.redact, 50),
+    kick: toInt(c.kick, 50),
+    invite: toInt(c.invite, 0),
   } as Record<string, number>;
   for (const key of Object.keys(next)) {
     const old = (current as any)[key] as number;
@@ -381,6 +415,6 @@ function checkPowerLevelChange(
   if (checkNotifications) {
     const oldNotif = { ...current.notifications };
     // `room` defaults to 50 when unset; only compare explicitly set values.
-    compareMap(oldNotif, { room: 50, ...(c.notifications ?? {}) }, false);
+    compareMap(oldNotif, { room: 50, ...c.notifications }, false);
   }
 }

@@ -57,7 +57,8 @@ export function resolveUserAuth(adapter: UserAuthAdapter = {}): ResolvedUserAuth
     registrationRequiresToken: adapter.registrationRequiresToken ?? false,
     passwordLoginEnabled: adapter.passwordLoginEnabled ?? true,
     guestAccessEnabled: adapter.guestAccessEnabled ?? false,
-    checkPassword: adapter.checkPassword?.bind(adapter) ??
+    checkPassword:
+      adapter.checkPassword?.bind(adapter) ??
       (async ({ password, storedHash }) => (storedHash ? verifyPassword(password, storedHash) : false)),
     hashPassword: adapter.hashPassword?.bind(adapter) ?? hashPassword,
     autoProvision: adapter.autoProvision?.bind(adapter) ?? (async () => false),

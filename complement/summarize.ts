@@ -7,7 +7,11 @@ const results = new Map<string, string>();
 for (const line of readFileSync(input, "utf8").split("\n")) {
   if (!line.startsWith("{")) continue;
   let ev: { Action?: string; Test?: string; Package?: string };
-  try { ev = JSON.parse(line); } catch { continue; }
+  try {
+    ev = JSON.parse(line);
+  } catch {
+    continue;
+  }
   if (!ev.Test || !["pass", "fail", "skip"].includes(ev.Action ?? "")) continue;
   results.set(ev.Test, ev.Action!);
 }
@@ -34,5 +38,14 @@ const lines = [
 console.log(lines.join("\n"));
 
 if (passingOut) {
-  writeFileSync(passingOut, "# Complement tests (top-level and subtests) known to pass. CI fails if any of these regress.\n# Regenerate from a run with: node complement/summarize.ts results.json passing.txt\n" + all.filter(([, r]) => r === "pass").map(([n]) => n).sort().join("\n") + "\n");
+  writeFileSync(
+    passingOut,
+    "# Complement tests (top-level and subtests) known to pass. CI fails if any of these regress.\n# Regenerate from a run with: node complement/summarize.ts results.json passing.txt\n" +
+      all
+        .filter(([, r]) => r === "pass")
+        .map(([n]) => n)
+        .sort()
+        .join("\n") +
+      "\n",
+  );
 }

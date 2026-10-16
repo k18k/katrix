@@ -16,8 +16,13 @@ async function storeUpload(ctx: RequestContext, mediaId: string): Promise<void> 
   const filename = ctx.query.get("filename");
   await hs.media.put(mediaId, data, { contentType, filename, size: data.length });
   return void (await hs.db.upsert("media", {
-    media_id: mediaId, content_type: contentType, filename, size: data.length,
-    uploader: (await ctx.auth()).userId, created_ts: Date.now(), pending: false,
+    media_id: mediaId,
+    content_type: contentType,
+    filename,
+    size: data.length,
+    uploader: (await ctx.auth()).userId,
+    created_ts: Date.now(),
+    pending: false,
   }));
 }
 
@@ -31,7 +36,10 @@ async function remoteMedia(ctx: RequestContext): Promise<{ data: Uint8Array; con
   const hs = ctx.hs;
   const { serverName, mediaId } = ctx.params;
   if (ctx.query.get("allow_remote") === "false") throw errors.notFound("Remote media not allowed");
-  const cached = await hs.db.findOne("remote_media", [{ field: "server_name", value: serverName }, { field: "media_id", value: mediaId }]);
+  const cached = await hs.db.findOne("remote_media", [
+    { field: "server_name", value: serverName },
+    { field: "media_id", value: mediaId },
+  ]);
   if (cached) {
     const data = await hs.media.get(cached.local_id);
     if (data) return { data, contentType: cached.content_type, filename: cached.filename };
@@ -47,8 +55,13 @@ async function remoteMedia(ctx: RequestContext): Promise<{ data: Uint8Array; con
   const localId = `remote_${randomString(24)}`;
   await hs.media.put(localId, fetched.data, { contentType: fetched.contentType, filename: fetched.filename, size: fetched.data.length });
   await hs.db.upsert("remote_media", {
-    server_name: serverName, media_id: mediaId, local_id: localId, content_type: fetched.contentType, filename: fetched.filename,
-    size: fetched.data.length, fetched_ts: Date.now(),
+    server_name: serverName,
+    media_id: mediaId,
+    local_id: localId,
+    content_type: fetched.contentType,
+    filename: fetched.filename,
+    size: fetched.data.length,
+    fetched_ts: Date.now(),
   });
   return fetched;
 }
@@ -64,7 +77,8 @@ async function download(ctx: RequestContext): Promise<Response> {
       headers: {
         "content-type": remote.contentType ?? "application/octet-stream",
         "content-disposition": contentDisposition(remote.contentType, filename),
-        "content-security-policy": "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; media-src 'self'; object-src 'self';",
+        "content-security-policy":
+          "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; media-src 'self'; object-src 'self';",
         "cross-origin-resource-policy": "cross-origin",
         "cache-control": "public, max-age=86400, immutable",
       },
@@ -81,7 +95,8 @@ async function download(ctx: RequestContext): Promise<Response> {
     headers: {
       "content-type": meta.content_type ?? "application/octet-stream",
       "content-disposition": contentDisposition(meta.content_type, filename),
-      "content-security-policy": "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; media-src 'self'; object-src 'self';",
+      "content-security-policy":
+        "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; media-src 'self'; object-src 'self';",
       "cross-origin-resource-policy": "cross-origin",
       "cache-control": "public, max-age=86400, immutable",
     },
@@ -118,7 +133,15 @@ async function thumbnail(ctx: RequestContext): Promise<Response> {
     thumb = made.data;
     contentType = made.contentType;
     await hs.media.put(thumbId, thumb, { contentType, filename: null, size: thumb.length });
-    await hs.db.upsert("media", { media_id: thumbId, content_type: contentType, filename: null, size: thumb.length, uploader: "", created_ts: Date.now(), pending: false });
+    await hs.db.upsert("media", {
+      media_id: thumbId,
+      content_type: contentType,
+      filename: null,
+      size: thumb.length,
+      uploader: "",
+      created_ts: Date.now(),
+      pending: false,
+    });
   }
   return new Response(thumb as Uint8Array<ArrayBuffer>, {
     status: 200,
@@ -133,9 +156,18 @@ async function thumbnail(ctx: RequestContext): Promise<Response> {
 
 export function registerMediaRoutes(r: Router): void {
   const config = (ctx: RequestContext) => ({ "m.upload.size": maxUpload(ctx.hs) });
-  r.get("/_matrix/media/v3/config", async (ctx) => { await ctx.auth(); return config(ctx); });
-  r.get("/_matrix/media/r0/config", async (ctx) => { await ctx.auth(); return config(ctx); });
-  r.get("/_matrix/client/v1/media/config", async (ctx) => { await ctx.auth(); return config(ctx); });
+  r.get("/_matrix/media/v3/config", async (ctx) => {
+    await ctx.auth();
+    return config(ctx);
+  });
+  r.get("/_matrix/media/r0/config", async (ctx) => {
+    await ctx.auth();
+    return config(ctx);
+  });
+  r.get("/_matrix/client/v1/media/config", async (ctx) => {
+    await ctx.auth();
+    return config(ctx);
+  });
 
   const upload = async (ctx: RequestContext) => {
     await ctx.auth();
@@ -151,7 +183,13 @@ export function registerMediaRoutes(r: Router): void {
     const s = await ctx.auth();
     const mediaId = randomString(24);
     await ctx.hs.db.create("media", {
-      media_id: mediaId, content_type: null, filename: null, size: 0, uploader: s.userId, created_ts: Date.now(), pending: true,
+      media_id: mediaId,
+      content_type: null,
+      filename: null,
+      size: 0,
+      uploader: s.userId,
+      created_ts: Date.now(),
+      pending: true,
     });
     return { content_uri: `mxc://${ctx.hs.serverName}/${mediaId}`, unused_expires_at: Date.now() + 24 * 3600_000 };
   });
@@ -173,8 +211,14 @@ export function registerMediaRoutes(r: Router): void {
     r.get(`${prefix}/download/:serverName/:mediaId/:fileName`, download);
     r.get(`${prefix}/thumbnail/:serverName/:mediaId`, thumbnail);
   }
-  const authed = async (ctx: RequestContext) => { await ctx.auth(); return download(ctx); };
+  const authed = async (ctx: RequestContext) => {
+    await ctx.auth();
+    return download(ctx);
+  };
   r.get("/_matrix/client/v1/media/download/:serverName/:mediaId", authed);
   r.get("/_matrix/client/v1/media/download/:serverName/:mediaId/:fileName", authed);
-  r.get("/_matrix/client/v1/media/thumbnail/:serverName/:mediaId", async (ctx) => { await ctx.auth(); return thumbnail(ctx); });
+  r.get("/_matrix/client/v1/media/thumbnail/:serverName/:mediaId", async (ctx) => {
+    await ctx.auth();
+    return thumbnail(ctx);
+  });
 }

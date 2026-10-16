@@ -105,7 +105,10 @@ export class TransactionSender {
         const delay = Math.min(Math.round(MIN_RETRY_MS * 1.5 ** (failures - 1)), cap);
         await this.hs.db.upsert("destination_status", { destination, failures, retry_after_ts: Date.now() + delay });
         // Ephemeral items are not worth retrying.
-        await this.hs.db.delete("federation_outbox", [{ field: "destination", value: destination }, { field: "kind", value: "edu-ephemeral" }]);
+        await this.hs.db.delete("federation_outbox", [
+          { field: "destination", value: destination },
+          { field: "kind", value: "edu-ephemeral" },
+        ]);
         this.hs.logger.debug("Federation send to", destination, "failed; retrying in", delay, "ms", err);
         this.schedule(destination, delay);
       }

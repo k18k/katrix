@@ -39,7 +39,10 @@ export function memoryRateLimiter(): RateLimiter {
       }
       b.tokens = Math.min(rule.burst, b.tokens + ((now - b.updated) / 1000) * rule.perSecond);
       b.updated = now;
-      if (b.tokens >= 1) { b.tokens -= 1; return 0; }
+      if (b.tokens >= 1) {
+        b.tokens -= 1;
+        return 0;
+      }
       return Math.ceil(((1 - b.tokens) / rule.perSecond) * 1000);
     },
   };

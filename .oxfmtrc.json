@@ -1,0 +1,8 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 140,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "ignorePatterns": ["dist/**", "package-lock.json", "complement/results.json", "complement/passing.txt", "CLAUDE-SECURITY-*/**", "*.md"]
+}

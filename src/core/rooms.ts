@@ -8,12 +8,20 @@ import {
   roomVersionFeatures,
   splitStateKey,
   stateKey,
-  stripState,
   toClientEvent,
   type ClientEvent,
   type PDU,
 } from "./events.ts";
-import { authEventKeys, authStateFromAuthEvents, checkAuth, getState, membershipOf, powerLevels, userLevel, type StateMap } from "./authrules.ts";
+import {
+  authEventKeys,
+  authStateFromAuthEvents,
+  checkAuth,
+  getState,
+  membershipOf,
+  powerLevels,
+  userLevel,
+  type StateMap,
+} from "./authrules.ts";
 import { resolveState, type StateIds } from "./stateres.ts";
 import { generateRoomId, isValidUserId, parseId } from "./ids.ts";
 import { isObject } from "./json.ts";
@@ -95,10 +103,15 @@ export class MissingStateError extends Error {
 class LruCache<K, V> {
   private map = new Map<K, V>();
   private max: number;
-  constructor(max: number) { this.max = max; }
+  constructor(max: number) {
+    this.max = max;
+  }
   get(k: K): V | undefined {
     const v = this.map.get(k);
-    if (v !== undefined) { this.map.delete(k); this.map.set(k, v); }
+    if (v !== undefined) {
+      this.map.delete(k);
+      this.map.set(k, v);
+    }
     return v;
   }
   set(k: K, v: V): void {
@@ -106,7 +119,9 @@ class LruCache<K, V> {
     this.map.set(k, v);
     if (this.map.size > this.max) this.map.delete(this.map.keys().next().value as K);
   }
-  delete(k: K): void { this.map.delete(k); }
+  delete(k: K): void {
+    this.map.delete(k);
+  }
 }
 
 const MAX_EVENT_SIZE = 65536;
@@ -224,10 +239,13 @@ export class RoomService {
     const missing: string[] = [];
     for (const id of eventIds) {
       const c = this.eventCache.get(id);
-      if (c) out.set(id, c); else missing.push(id);
+      if (c) out.set(id, c);
+      else missing.push(id);
     }
     for (let i = 0; i < missing.length; i += 500) {
-      const rows = await this.hs.db.findMany("events", { where: [{ field: "event_id", operator: "in", value: missing.slice(i, i + 500) }] });
+      const rows = await this.hs.db.findMany("events", {
+        where: [{ field: "event_id", operator: "in", value: missing.slice(i, i + 500) }],
+      });
       for (const row of rows) {
         const stored = this.rowToStored(row);
         this.eventCache.set(row.event_id, stored);
@@ -363,7 +381,10 @@ export class RoomService {
       if (visited.has(id) || visited.size > 200) continue;
       visited.add(id);
       const snap = await this.snapshotOf(id);
-      if (snap !== null) { snapshots.push(snap); continue; }
+      if (snap !== null) {
+        snapshots.push(snap);
+        continue;
+      }
       const o = await this.getOutlier(id);
       if (o?.rejected) {
         queue.push(...(o.pdu.prev_events ?? []).map(eventIdOf));
@@ -376,7 +397,12 @@ export class RoomService {
     const unique = [...new Set(snapshots)];
     if (unique.length === 1) return { ids: await this.snapshotIds(unique[0]), snapshot: unique[0] };
     const sets = await Promise.all(unique.map((s) => this.snapshotIds(s)));
-    const ids = await resolveState(sets, version, (eids) => this.getPdus(eids), createEvent ?? (version && roomVersionFeatures(version).v12 ? await this.createEventOf(roomId) : undefined));
+    const ids = await resolveState(
+      sets,
+      version,
+      (eids) => this.getPdus(eids),
+      createEvent ?? (version && roomVersionFeatures(version).v12 ? await this.createEventOf(roomId) : undefined),
+    );
     return { ids, snapshot: null };
   }
 
@@ -390,7 +416,10 @@ export class RoomService {
     return this.withLock(roomId, async () => {
       if (opts.txnId && opts.deviceId) {
         const token = txnTokenOf(sender, opts.deviceId);
-        const existing = await this.hs.db.findOne("events", [{ field: "txn_id", value: opts.txnId }, { field: "txn_token", value: token }]);
+        const existing = await this.hs.db.findOne("events", [
+          { field: "txn_id", value: opts.txnId },
+          { field: "txn_token", value: token },
+        ]);
         if (existing && existing.room_id === roomId) return existing.event_id as string;
       }
       const version = await this.roomVersion(roomId);
@@ -407,14 +436,23 @@ export class RoomService {
     const extremities = await this.extremities(roomId);
     const prevs = [...(await this.getPdus(extremities)).values()].sort((a, b) => b.depth - a.depth).slice(0, 10);
     const prevIds = prevs.map((p) => p.event_id!);
-    const before = prevIds.length === extremities.length
-      ? await this.currentState(roomId)
-      : await this.stateIdsToMap((await this.stateBefore(roomId, version, prevIds)).ids);
-    const authEvents = authEventKeys({ ...draft, sender }, version).map((k) => before.get(k)?.event_id).filter((x): x is string => !!x);
+    const before =
+      prevIds.length === extremities.length
+        ? await this.currentState(roomId)
+        : await this.stateIdsToMap((await this.stateBefore(roomId, version, prevIds)).ids);
+    const authEvents = authEventKeys({ ...draft, sender }, version)
+      .map((k) => before.get(k)?.event_id)
+      .filter((x): x is string => !!x);
     const depth = Math.min(prevs.reduce((m, p) => Math.max(m, p.depth), 0) + 1, Number.MAX_SAFE_INTEGER);
     const pdu: PDU = {
-      room_id: roomId, sender, type: draft.type, content: draft.content, origin_server_ts: ts ?? Date.now(),
-      depth, prev_events: prevIds, auth_events: authEvents,
+      room_id: roomId,
+      sender,
+      type: draft.type,
+      content: draft.content,
+      origin_server_ts: ts ?? Date.now(),
+      depth,
+      prev_events: prevIds,
+      auth_events: authEvents,
     };
     if (draft.state_key !== undefined) pdu.state_key = draft.state_key;
     if (draft.redacts !== undefined) {
@@ -442,13 +480,22 @@ export class RoomService {
     const eventId = pdu.event_id!;
     if (await this.getEvent(eventId)) return { eventId, status: "persisted" };
     const createEvent = features.v12
-      ? (pdu.type === "m.room.create" ? undefined : opts.createEvent ?? (await this.createEventOf(roomId)) ?? (await this.findCreateEvent(roomId)))
+      ? pdu.type === "m.room.create"
+        ? undefined
+        : (opts.createEvent ?? (await this.createEventOf(roomId)) ?? (await this.findCreateEvent(roomId)))
       : undefined;
     const prevIds = (pdu.prev_events ?? []).map(eventIdOf);
 
     if (!opts.local) {
       const reject = async (reason: string) => {
-        await this.hs.db.upsert("outliers", { event_id: eventId, room_id: roomId, json: pdu, state_snapshot: null, rejected: reason, soft_failed: false });
+        await this.hs.db.upsert("outliers", {
+          event_id: eventId,
+          room_id: roomId,
+          json: pdu,
+          state_snapshot: null,
+          rejected: reason,
+          soft_failed: false,
+        });
         this.outlierCache.delete(eventId);
         return { eventId, status: "rejected" as const, reason };
       };
@@ -483,7 +530,14 @@ export class RoomService {
     }
     if (!opts.local) {
       const reject = async (reason: string) => {
-        await this.hs.db.upsert("outliers", { event_id: eventId, room_id: roomId, json: pdu, state_snapshot: null, rejected: reason, soft_failed: false });
+        await this.hs.db.upsert("outliers", {
+          event_id: eventId,
+          room_id: roomId,
+          json: pdu,
+          state_snapshot: null,
+          rejected: reason,
+          soft_failed: false,
+        });
         this.outlierCache.delete(eventId);
         return { eventId, status: "rejected" as const, reason };
       };
@@ -500,10 +554,19 @@ export class RoomService {
         if (createEvent) current.set(stateKey("m.room.create", ""), createEvent);
         const softFail = async () => {
           const ids = pdu.state_key !== undefined ? { ...before.ids, [stateKey(pdu.type, pdu.state_key)]: eventId } : before.ids;
-          await this.hs.streams.write((snap) => this.hs.transaction(async (db) => {
-            await db.create("state_snapshots", { id: snap, room_id: roomId, prev: null, depth: 0, state: ids });
-            await db.upsert("outliers", { event_id: eventId, room_id: roomId, json: pdu, state_snapshot: snap, rejected: null, soft_failed: true });
-          }));
+          await this.hs.streams.write((snap) =>
+            this.hs.transaction(async (db) => {
+              await db.create("state_snapshots", { id: snap, room_id: roomId, prev: null, depth: 0, state: ids });
+              await db.upsert("outliers", {
+                event_id: eventId,
+                room_id: roomId,
+                json: pdu,
+                state_snapshot: snap,
+                rejected: null,
+                soft_failed: true,
+              });
+            }),
+          );
           this.outlierCache.delete(eventId);
           return { eventId, status: "soft_failed" as const };
         };
@@ -527,17 +590,24 @@ export class RoomService {
    * remote event against its now complete state (events wrongly accepted become rejected), then
    * rebuild the room's current state. Caller holds the room lock.
    */
-  async completePartialState(roomId: string, version: string, joinEventId: string, fullBefore: StateIds, notified: Set<string>): Promise<string[]> {
+  async completePartialState(
+    roomId: string,
+    version: string,
+    joinEventId: string,
+    fullBefore: StateIds,
+    notified: Set<string>,
+  ): Promise<string[]> {
     const features = roomVersionFeatures(version);
     const join = await this.getEvent(joinEventId);
     if (!join) return [];
-    const createEvent = features.v12 ? (await this.findCreateEvent(roomId)) : undefined;
-    const writeSnapshot = (ids: StateIds) => this.hs.streams.write(async (id) => {
-      await this.hs.db.create("state_snapshots", { id, room_id: roomId, prev: null, depth: 0, state: ids });
-      this.snapshotCache.set(id, ids);
-      this.snapshotDepths.set(id, 0);
-      return id;
-    });
+    const createEvent = features.v12 ? await this.findCreateEvent(roomId) : undefined;
+    const writeSnapshot = (ids: StateIds) =>
+      this.hs.streams.write(async (id) => {
+        await this.hs.db.create("state_snapshots", { id, room_id: roomId, prev: null, depth: 0, state: ids });
+        this.snapshotCache.set(id, ids);
+        this.snapshotDepths.set(id, 0);
+        return id;
+      });
     const setSnapshot = async (eventId: string, snapshot: number) => {
       await this.hs.db.update("events", [{ field: "event_id", value: eventId }], { state_snapshot: snapshot });
       this.eventCache.delete(eventId);
@@ -547,13 +617,22 @@ export class RoomService {
     await setSnapshot(joinEventId, await writeSnapshot({ ...fullBefore, [joinKey]: joinEventId }));
 
     // Everything after the join, plus events rejected against the partial state, in DAG order.
-    const later = (await this.hs.db.findMany("events", {
-      where: [{ field: "room_id", value: roomId }, { field: "stream", operator: "gt", value: join.stream }],
-      sortBy: { field: "stream", direction: "asc" },
-    })).map((row) => ({ pdu: this.rowToStored(row).pdu, stream: row.stream as number, rejected: false }));
+    const later = (
+      await this.hs.db.findMany("events", {
+        where: [
+          { field: "room_id", value: roomId },
+          { field: "stream", operator: "gt", value: join.stream },
+        ],
+        sortBy: { field: "stream", direction: "asc" },
+      })
+    ).map((row) => ({ pdu: this.rowToStored(row).pdu, stream: row.stream as number, rejected: false }));
     for (const row of await this.hs.db.findMany("outliers", { where: [{ field: "room_id", value: roomId }] })) {
       if (typeof row.rejected === "string" && row.rejected.startsWith(PARTIAL_REJECTION)) {
-        later.push({ pdu: row.json.room_id ? row.json : { ...row.json, room_id: roomId }, stream: Number.MAX_SAFE_INTEGER, rejected: true });
+        later.push({
+          pdu: row.json.room_id ? row.json : { ...row.json, room_id: roomId },
+          stream: Number.MAX_SAFE_INTEGER,
+          rejected: true,
+        });
       }
     }
     later.sort((a, b) => (a.pdu.depth ?? 0) - (b.pdu.depth ?? 0) || a.stream - b.stream);
@@ -595,18 +674,27 @@ export class RoomService {
         await this.hs.transaction(async (db) => {
           await db.delete("events", [{ field: "event_id", value: pdu.event_id }]);
           await db.delete("relations", [{ field: "event_id", value: pdu.event_id }]);
-          await db.upsert("outliers", { event_id: pdu.event_id, room_id: roomId, json: pdu, state_snapshot: null, rejected: `State before: ${reason}`, soft_failed: false });
+          await db.upsert("outliers", {
+            event_id: pdu.event_id,
+            room_id: roomId,
+            json: pdu,
+            state_snapshot: null,
+            rejected: `State before: ${reason}`,
+            soft_failed: false,
+          });
         });
         this.eventCache.delete(pdu.event_id!);
         this.outlierCache.delete(pdu.event_id!);
         touched.push(pdu.event_id!);
         continue;
       }
-      if (pdu.type === "m.room.member" && pdu.content?.membership === "join") joinedServers.add(pdu.state_key!.slice(pdu.state_key!.indexOf(":") + 1));
+      if (pdu.type === "m.room.member" && pdu.content?.membership === "join")
+        joinedServers.add(pdu.state_key!.slice(pdu.state_key!.indexOf(":") + 1));
       const isState = pdu.state_key !== undefined;
-      const snapshot = !isState && before.snapshot !== null && before.snapshot !== 0
-        ? before.snapshot
-        : await writeSnapshot(isState ? { ...before.ids, [stateKey(pdu.type, pdu.state_key!)]: pdu.event_id! } : before.ids);
+      const snapshot =
+        !isState && before.snapshot !== null && before.snapshot !== 0
+          ? before.snapshot
+          : await writeSnapshot(isState ? { ...before.ids, [stateKey(pdu.type, pdu.state_key!)]: pdu.event_id! } : before.ids);
       await setSnapshot(pdu.event_id!, snapshot);
       touched.push(pdu.event_id!);
     }
@@ -615,7 +703,11 @@ export class RoomService {
       const referenced = new Set(later.filter((i) => !i.rejected).flatMap((i) => (i.pdu.prev_events ?? []).map(eventIdOf)));
       const stale = reinstated.filter((id) => referenced.has(id));
       if (stale.length) {
-        for (const id of stale) await this.hs.db.delete("forward_extremities", [{ field: "room_id", value: roomId }, { field: "event_id", value: id }]);
+        for (const id of stale)
+          await this.hs.db.delete("forward_extremities", [
+            { field: "room_id", value: roomId },
+            { field: "event_id", value: id },
+          ]);
         this.extremityCache.delete(roomId);
       }
     }
@@ -649,24 +741,39 @@ export class RoomService {
     const newIds = sets.length === 1 ? sets[0] : await resolveState(sets, version, (ids) => this.getPdus(ids), createEvent);
     const oldIds = await this.currentStateIds(roomId);
     const pdus = await this.getPdus(Object.values(newIds));
-    await this.hs.streams.write((stream) => this.hs.transaction(async (db) => {
-      for (const k of new Set([...Object.keys(oldIds), ...Object.keys(newIds)])) {
-        if (oldIds[k] === newIds[k]) continue;
-        const [type, sk] = splitStateKey(k);
-        const where = [{ field: "room_id", value: roomId }, { field: "type", value: type }, { field: "state_key", value: sk }];
-        if (!newIds[k]) {
-          await db.delete("current_state", where);
-          if (type === "m.room.member") await db.delete("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: sk }]);
-          continue;
+    await this.hs.streams.write((stream) =>
+      this.hs.transaction(async (db) => {
+        for (const k of new Set([...Object.keys(oldIds), ...Object.keys(newIds)])) {
+          if (oldIds[k] === newIds[k]) continue;
+          const [type, sk] = splitStateKey(k);
+          const where = [
+            { field: "room_id", value: roomId },
+            { field: "type", value: type },
+            { field: "state_key", value: sk },
+          ];
+          if (!newIds[k]) {
+            await db.delete("current_state", where);
+            if (type === "m.room.member")
+              await db.delete("memberships", [
+                { field: "room_id", value: roomId },
+                { field: "user_id", value: sk },
+              ]);
+            continue;
+          }
+          await db.upsert("current_state", { room_id: roomId, type, state_key: sk, event_id: newIds[k] });
+          if (type === "m.room.member") {
+            await db.upsert("memberships", {
+              room_id: roomId,
+              user_id: sk,
+              membership: pdus.get(newIds[k])?.content?.membership ?? "leave",
+              event_id: newIds[k],
+              stream,
+              forgotten: false,
+            });
+          }
         }
-        await db.upsert("current_state", { room_id: roomId, type, state_key: sk, event_id: newIds[k] });
-        if (type === "m.room.member") {
-          await db.upsert("memberships", {
-            room_id: roomId, user_id: sk, membership: pdus.get(newIds[k])?.content?.membership ?? "leave", event_id: newIds[k], stream, forgotten: false,
-          });
-        }
-      }
-    }));
+      }),
+    );
     this.stateCache.delete(roomId);
     this.sharingCache.clear();
     this.invalidate({ rooms: [roomId], events: touched, sharing: true });
@@ -688,8 +795,13 @@ export class RoomService {
   }
 
   private async store(
-    roomId: string, version: string, pdu: PDU, before: StateBefore, beforeMap: StateMap,
-    features: ReturnType<typeof roomVersionFeatures>, opts: PersistOptions,
+    roomId: string,
+    version: string,
+    pdu: PDU,
+    before: StateBefore,
+    beforeMap: StateMap,
+    features: ReturnType<typeof roomVersionFeatures>,
+    opts: PersistOptions,
   ): Promise<PersistResult> {
     const eventId = pdu.event_id!;
     const sender = pdu.sender;
@@ -699,184 +811,232 @@ export class RoomService {
     const stream = opts.stream ?? (backfill ? await this.hs.streams.backfillId() : lease!.id);
     let wake: (() => Promise<void>) | null = null;
     try {
-    const isState = pdu.state_key !== undefined;
-    const key = isState ? stateKey(pdu.type, pdu.state_key!) : null;
-    const prevState = key ? beforeMap.get(key) : undefined;
-    const afterIds: StateIds = key ? { ...before.ids, [key]: eventId } : before.ids;
+      const isState = pdu.state_key !== undefined;
+      const key = isState ? stateKey(pdu.type, pdu.state_key!) : null;
+      const prevState = key ? beforeMap.get(key) : undefined;
+      const afterIds: StateIds = key ? { ...before.ids, [key]: eventId } : before.ids;
 
-    // State snapshot: reuse the predecessor's for non-state events; otherwise store a delta or a full snapshot.
-    let snapshot: number;
-    let snapshotRow: Row | null = null;
-    if (!isState && before.snapshot !== null && before.snapshot !== 0) {
-      snapshot = before.snapshot;
-    } else {
-      snapshot = stream;
-      const depth = before.snapshot ? (await this.snapshotDepth(before.snapshot)) + 1 : 0;
-      snapshotRow = before.snapshot && key && depth < SNAPSHOT_INTERVAL
-        ? { id: snapshot, room_id: roomId, prev: before.snapshot, depth, state: { [key]: eventId } }
-        : { id: snapshot, room_id: roomId, prev: null, depth: 0, state: afterIds };
-    }
-
-    const unsigned: Record<string, any> = { ...(pdu.unsigned ?? {}) };
-    if (prevState) {
-      unsigned.prev_content = prevState.content;
-      unsigned.prev_sender = prevState.sender;
-      unsigned.replaces_state = prevState.event_id;
-    }
-    if (pdu.type === "m.room.member" && ["invite", "knock"].includes(pdu.content.membership) && opts.local) {
-      unsigned[pdu.content.membership === "invite" ? "invite_room_state" : "knock_room_state"] = this.strippedState(beforeMap);
-    }
-    const stored: PDU = Object.keys(unsigned).length ? { ...pdu, unsigned } : pdu;
-    const view: PDU = stored.room_id ? stored : { ...stored, room_id: roomId };
-    const txnToken = opts.txnId && opts.deviceId ? txnTokenOf(sender, opts.deviceId) : null;
-    const relation = pdu.content?.["m.relates_to"];
-    const redactsId = features.v11 ? pdu.content?.redacts : pdu.redacts;
-    const redaction = pdu.type === "m.room.redaction" && typeof redactsId === "string"
-      ? await this.prepareRedaction(redactsId, view, version)
-      : null;
-
-    // Forward extremities and the resulting current state.
-    let newExtremities: string[] | null = null;
-    let stateChanges: { key: string; eventId: string | null }[] = [];
-    let newCurrentIds: StateIds | null = null;
-    if (!backfill) {
-      const prevIds = new Set((pdu.prev_events ?? []).map(eventIdOf));
-      const old = await this.extremities(roomId);
-      newExtremities = [...old.filter((id) => !prevIds.has(id)), eventId];
-      const oldCurrent = await this.currentStateIds(roomId);
-      if (newExtremities.length === 1) {
-        newCurrentIds = afterIds;
+      // State snapshot: reuse the predecessor's for non-state events; otherwise store a delta or a full snapshot.
+      let snapshot: number;
+      let snapshotRow: Row | null = null;
+      if (!isState && before.snapshot !== null && before.snapshot !== 0) {
+        snapshot = before.snapshot;
       } else {
-        const sets: StateIds[] = [afterIds];
-        for (const ext of newExtremities) {
-          if (ext === eventId) continue;
-          const snap = await this.snapshotOf(ext);
-          if (snap !== null) sets.push(await this.snapshotIds(snap));
-        }
-        const createEvent = features.v12 ? (beforeMap.get(stateKey("m.room.create", "")) ?? (pdu.type === "m.room.create" ? pdu : undefined)) : undefined;
-        newCurrentIds = await resolveState(sets, version, async (ids) => {
-          const found = await this.getPdus(ids);
-          if (ids.includes(eventId)) found.set(eventId, view);
-          return found;
-        }, createEvent);
+        snapshot = stream;
+        const depth = before.snapshot ? (await this.snapshotDepth(before.snapshot)) + 1 : 0;
+        snapshotRow =
+          before.snapshot && key && depth < SNAPSHOT_INTERVAL
+            ? { id: snapshot, room_id: roomId, prev: before.snapshot, depth, state: { [key]: eventId } }
+            : { id: snapshot, room_id: roomId, prev: null, depth: 0, state: afterIds };
       }
-      for (const k of new Set([...Object.keys(oldCurrent), ...Object.keys(newCurrentIds)])) {
-        if (oldCurrent[k] !== newCurrentIds[k]) stateChanges.push({ key: k, eventId: newCurrentIds[k] ?? null });
-      }
-    }
-    const changedPdus = await this.getPdus(stateChanges.map((c) => c.eventId).filter((x): x is string => !!x && x !== eventId));
-    changedPdus.set(eventId, view);
 
-    await this.hs.transaction(async (db) => {
-      if (snapshotRow) await db.create("state_snapshots", snapshotRow);
-      await db.create("events", {
-        event_id: eventId, room_id: roomId, stream, depth: pdu.depth, type: pdu.type,
-        state_key: pdu.state_key ?? null, sender, json: stored, state_snapshot: snapshot,
-        txn_id: txnToken ? opts.txnId : null, txn_token: txnToken, redacted_by: null, gap: !!opts.gap,
-      });
-      // An outlier that is now part of the timeline.
-      await db.delete("outliers", [{ field: "event_id", value: eventId }]);
-      const edge = pdu.content?.["m.relationship"];
-      if (isObject(edge) && typeof edge.event_id === "string" && typeof edge.rel_type === "string") {
-        await db.upsert("event_edges", { event_id: eventId, room_id: roomId, parent_id: edge.event_id, rel_type: edge.rel_type, ts: pdu.origin_server_ts ?? 0, depth: pdu.depth ?? 0 });
+      const unsigned: Record<string, any> = { ...pdu.unsigned };
+      if (prevState) {
+        unsigned.prev_content = prevState.content;
+        unsigned.prev_sender = prevState.sender;
+        unsigned.replaces_state = prevState.event_id;
       }
-      if (isObject(relation) && typeof relation.event_id === "string" && typeof relation.rel_type === "string") {
-        await db.upsert("relations", {
-          event_id: eventId, room_id: roomId, parent_id: relation.event_id, rel_type: relation.rel_type, type: pdu.type, sender, stream,
+      if (pdu.type === "m.room.member" && ["invite", "knock"].includes(pdu.content.membership) && opts.local) {
+        unsigned[pdu.content.membership === "invite" ? "invite_room_state" : "knock_room_state"] = this.strippedState(beforeMap);
+      }
+      const stored: PDU = Object.keys(unsigned).length ? { ...pdu, unsigned } : pdu;
+      const view: PDU = stored.room_id ? stored : { ...stored, room_id: roomId };
+      const txnToken = opts.txnId && opts.deviceId ? txnTokenOf(sender, opts.deviceId) : null;
+      const relation = pdu.content?.["m.relates_to"];
+      const redactsId = features.v11 ? pdu.content?.redacts : pdu.redacts;
+      const redaction =
+        pdu.type === "m.room.redaction" && typeof redactsId === "string" ? await this.prepareRedaction(redactsId, view, version) : null;
+
+      // Forward extremities and the resulting current state.
+      let newExtremities: string[] | null = null;
+      let stateChanges: { key: string; eventId: string | null }[] = [];
+      let newCurrentIds: StateIds | null = null;
+      if (!backfill) {
+        const prevIds = new Set((pdu.prev_events ?? []).map(eventIdOf));
+        const old = await this.extremities(roomId);
+        newExtremities = [...old.filter((id) => !prevIds.has(id)), eventId];
+        const oldCurrent = await this.currentStateIds(roomId);
+        if (newExtremities.length === 1) {
+          newCurrentIds = afterIds;
+        } else {
+          const sets: StateIds[] = [afterIds];
+          for (const ext of newExtremities) {
+            if (ext === eventId) continue;
+            const snap = await this.snapshotOf(ext);
+            if (snap !== null) sets.push(await this.snapshotIds(snap));
+          }
+          const createEvent = features.v12
+            ? (beforeMap.get(stateKey("m.room.create", "")) ?? (pdu.type === "m.room.create" ? pdu : undefined))
+            : undefined;
+          newCurrentIds = await resolveState(
+            sets,
+            version,
+            async (ids) => {
+              const found = await this.getPdus(ids);
+              if (ids.includes(eventId)) found.set(eventId, view);
+              return found;
+            },
+            createEvent,
+          );
+        }
+        for (const k of new Set([...Object.keys(oldCurrent), ...Object.keys(newCurrentIds)])) {
+          if (oldCurrent[k] !== newCurrentIds[k]) stateChanges.push({ key: k, eventId: newCurrentIds[k] ?? null });
+        }
+      }
+      const changedPdus = await this.getPdus(stateChanges.map((c) => c.eventId).filter((x): x is string => !!x && x !== eventId));
+      changedPdus.set(eventId, view);
+
+      await this.hs.transaction(async (db) => {
+        if (snapshotRow) await db.create("state_snapshots", snapshotRow);
+        await db.create("events", {
+          event_id: eventId,
+          room_id: roomId,
+          stream,
+          depth: pdu.depth,
+          type: pdu.type,
+          state_key: pdu.state_key ?? null,
+          sender,
+          json: stored,
+          state_snapshot: snapshot,
+          txn_id: txnToken ? opts.txnId : null,
+          txn_token: txnToken,
+          redacted_by: null,
+          gap: !!opts.gap,
         });
-      }
-      if (newExtremities) {
-        for (const prev of (pdu.prev_events ?? []).map(eventIdOf)) {
-          await db.delete("forward_extremities", [{ field: "room_id", value: roomId }, { field: "event_id", value: prev }]);
-        }
-        await db.upsert("forward_extremities", { room_id: roomId, event_id: eventId });
-      }
-      for (const change of stateChanges) {
-        const [type, sk] = splitStateKey(change.key);
-        const where = [{ field: "room_id", value: roomId }, { field: "type", value: type }, { field: "state_key", value: sk }];
-        if (change.eventId === null) {
-          await db.delete("current_state", where);
-          if (type === "m.room.member") await db.delete("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: sk }]);
-          continue;
-        }
-        await db.upsert("current_state", { room_id: roomId, type, state_key: sk, event_id: change.eventId });
-        if (type === "m.room.member") {
-          const member = changedPdus.get(change.eventId);
-          await db.upsert("memberships", {
-            room_id: roomId, user_id: sk, membership: member?.content?.membership ?? "leave", event_id: change.eventId, stream, forgotten: false,
+        // An outlier that is now part of the timeline.
+        await db.delete("outliers", [{ field: "event_id", value: eventId }]);
+        const edge = pdu.content?.["m.relationship"];
+        if (isObject(edge) && typeof edge.event_id === "string" && typeof edge.rel_type === "string") {
+          await db.upsert("event_edges", {
+            event_id: eventId,
+            room_id: roomId,
+            parent_id: edge.event_id,
+            rel_type: edge.rel_type,
+            ts: pdu.origin_server_ts ?? 0,
+            depth: pdu.depth ?? 0,
           });
         }
-      }
-      if (redaction) {
-        await db.update("events", [{ field: "event_id", value: redaction.targetId }], { json: redaction.redacted, redacted_by: eventId });
-        await db.delete("relations", [{ field: "event_id", value: redaction.targetId }]);
-      }
-    });
-
-    // Committed: update caches.
-    this.outlierCache.delete(eventId);
-    if (snapshotRow) {
-      this.snapshotCache.set(snapshot, afterIds);
-      this.snapshotDepths.set(snapshot, snapshotRow.depth);
-    }
-    this.eventCache.set(eventId, { pdu: view, stream, snapshot, txnId: txnToken ? opts.txnId! : null, txnToken, gap: !!opts.gap });
-    if (newExtremities) this.extremityCache.set(roomId, newExtremities);
-    let newState = await this.currentState(roomId);
-    if (stateChanges.length) {
-      newState = new Map(newState);
-      for (const c of stateChanges) {
-        if (c.eventId === null) newState.delete(c.key);
-        else newState.set(c.key, changedPdus.get(c.eventId)!);
-      }
-      this.stateCache.set(roomId, newState);
-    }
-    if (redaction) this.commitRedaction(redaction, roomId);
-    this.invalidate({
-      rooms: newExtremities ? [roomId] : [],
-      events: [eventId, ...(redaction ? [redaction.targetId] : [])],
-      sharing: stateChanges.some((c) => c.key.startsWith("m.room.member\u0000")),
-    });
-
-    const memberChanges = stateChanges.filter((c) => c.key.startsWith("m.room.member\u0000"));
-    if (memberChanges.length) {
-      this.sharingCache.clear();
-      for (const c of memberChanges) {
-        const userId = splitStateKey(c.key)[1];
-        if (this.hs.isLocalUser(userId) || c.eventId === eventId) await this.hs.keys.markDeviceListChanged(userId, false);
-        // A remote user's cached device list is only trusted while continuously tracked.
-        if (!this.hs.isLocalUser(userId)) {
-          const m = changedPdus.get(c.eventId ?? "")?.content?.membership;
-          if (m === "join" && prevState?.content?.membership !== "join" && c.eventId === eventId) await this.hs.keys.dropRemoteCache(userId);
-          else if (m !== "join" && !(await this.hs.keys.isTracked(userId))) await this.hs.keys.dropRemoteCache(userId);
+        if (isObject(relation) && typeof relation.event_id === "string" && typeof relation.rel_type === "string") {
+          await db.upsert("relations", {
+            event_id: eventId,
+            room_id: roomId,
+            parent_id: relation.event_id,
+            rel_type: relation.rel_type,
+            type: pdu.type,
+            sender,
+            stream,
+          });
         }
-        // A local user joining a room shares their devices with the servers in it.
-        const joinedNow = changedPdus.get(c.eventId ?? "")?.content?.membership === "join";
-        const wasJoined = c.eventId === eventId && prevState?.content?.membership === "join";
-        if (this.hs.isLocalUser(userId) && joinedNow && !wasJoined) {
-          // Only the servers of this room, as far as its (possibly partial) state tells.
-          const to = this.hs.federation.serversInRoom(newState);
-          if (to.size) void this.hs.federation.onDeviceListChange(userId, undefined, to).catch(() => {});
+        if (newExtremities) {
+          for (const prev of (pdu.prev_events ?? []).map(eventIdOf)) {
+            await db.delete("forward_extremities", [
+              { field: "room_id", value: roomId },
+              { field: "event_id", value: prev },
+            ]);
+          }
+          await db.upsert("forward_extremities", { room_id: roomId, event_id: eventId });
+        }
+        for (const change of stateChanges) {
+          const [type, sk] = splitStateKey(change.key);
+          const where = [
+            { field: "room_id", value: roomId },
+            { field: "type", value: type },
+            { field: "state_key", value: sk },
+          ];
+          if (change.eventId === null) {
+            await db.delete("current_state", where);
+            if (type === "m.room.member")
+              await db.delete("memberships", [
+                { field: "room_id", value: roomId },
+                { field: "user_id", value: sk },
+              ]);
+            continue;
+          }
+          await db.upsert("current_state", { room_id: roomId, type, state_key: sk, event_id: change.eventId });
+          if (type === "m.room.member") {
+            const member = changedPdus.get(change.eventId);
+            await db.upsert("memberships", {
+              room_id: roomId,
+              user_id: sk,
+              membership: member?.content?.membership ?? "leave",
+              event_id: change.eventId,
+              stream,
+              forgotten: false,
+            });
+          }
+        }
+        if (redaction) {
+          await db.update("events", [{ field: "event_id", value: redaction.targetId }], { json: redaction.redacted, redacted_by: eventId });
+          await db.delete("relations", [{ field: "event_id", value: redaction.targetId }]);
+        }
+      });
+
+      // Committed: update caches.
+      this.outlierCache.delete(eventId);
+      if (snapshotRow) {
+        this.snapshotCache.set(snapshot, afterIds);
+        this.snapshotDepths.set(snapshot, snapshotRow.depth);
+      }
+      this.eventCache.set(eventId, { pdu: view, stream, snapshot, txnId: txnToken ? opts.txnId! : null, txnToken, gap: !!opts.gap });
+      if (newExtremities) this.extremityCache.set(roomId, newExtremities);
+      let newState = await this.currentState(roomId);
+      if (stateChanges.length) {
+        newState = new Map(newState);
+        for (const c of stateChanges) {
+          if (c.eventId === null) newState.delete(c.key);
+          else newState.set(c.key, changedPdus.get(c.eventId)!);
+        }
+        this.stateCache.set(roomId, newState);
+      }
+      if (redaction) this.commitRedaction(redaction, roomId);
+      this.invalidate({
+        rooms: newExtremities ? [roomId] : [],
+        events: [eventId, ...(redaction ? [redaction.targetId] : [])],
+        sharing: stateChanges.some((c) => c.key.startsWith("m.room.member\u0000")),
+      });
+
+      const memberChanges = stateChanges.filter((c) => c.key.startsWith("m.room.member\u0000"));
+      if (memberChanges.length) {
+        this.sharingCache.clear();
+        for (const c of memberChanges) {
+          const userId = splitStateKey(c.key)[1];
+          if (this.hs.isLocalUser(userId) || c.eventId === eventId) await this.hs.keys.markDeviceListChanged(userId, false);
+          // A remote user's cached device list is only trusted while continuously tracked.
+          if (!this.hs.isLocalUser(userId)) {
+            const m = changedPdus.get(c.eventId ?? "")?.content?.membership;
+            if (m === "join" && prevState?.content?.membership !== "join" && c.eventId === eventId)
+              await this.hs.keys.dropRemoteCache(userId);
+            else if (m !== "join" && !(await this.hs.keys.isTracked(userId))) await this.hs.keys.dropRemoteCache(userId);
+          }
+          // A local user joining a room shares their devices with the servers in it.
+          const joinedNow = changedPdus.get(c.eventId ?? "")?.content?.membership === "join";
+          const wasJoined = c.eventId === eventId && prevState?.content?.membership === "join";
+          if (this.hs.isLocalUser(userId) && joinedNow && !wasJoined) {
+            // Only the servers of this room, as far as its (possibly partial) state tells.
+            const to = this.hs.federation.serversInRoom(newState);
+            if (to.size) void this.hs.federation.onDeviceListChange(userId, undefined, to).catch(() => {});
+          }
         }
       }
-    }
 
-    if (!backfill) {
-      const storedEvent = this.eventCache.get(eventId)!;
-      try {
-        await this.hs.push.onEvent(storedEvent, newState, version);
-      } catch (err) {
-        this.hs.logger.error("Push processing failed for", eventId, err);
+      if (!backfill) {
+        const storedEvent = this.eventCache.get(eventId)!;
+        try {
+          await this.hs.push.onEvent(storedEvent, newState, version);
+        } catch (err) {
+          this.hs.logger.error("Push processing failed for", eventId, err);
+        }
+        if (opts.local && !opts.noFederate) this.hs.federation.onLocalEvent(view, newState);
+        if (this.hs.appservices.registrations.length)
+          await this.hs.appservices.onEvent(view, newState).catch((err) => this.hs.logger.warn("Appservice push failed", err));
+        if (isState) await this.hs.delayedEvents.onStateEvent(roomId, pdu.type, pdu.state_key!, sender).catch(() => {});
+        wake = async () => {
+          this.hs.notifier.notify(await this.interestedUsers(roomId));
+          this.hs.emit("event", toClientEvent(view));
+          // Admin room commands run in the background so the sender's request is not delayed.
+          if (this.hs.adminRoom) void this.hs.adminRoom.onEvent(view).catch((err) => this.hs.logger.error("Admin command failed", err));
+        };
       }
-      if (opts.local && !opts.noFederate) this.hs.federation.onLocalEvent(view, newState);
-      if (this.hs.appservices.registrations.length) await this.hs.appservices.onEvent(view, newState).catch((err) => this.hs.logger.warn("Appservice push failed", err));
-      if (isState) await this.hs.delayedEvents.onStateEvent(roomId, pdu.type, pdu.state_key!, sender).catch(() => {});
-      wake = async () => {
-        this.hs.notifier.notify(await this.interestedUsers(roomId));
-        this.hs.emit("event", toClientEvent(view));
-        // Admin room commands run in the background so the sender's request is not delayed.
-        if (this.hs.adminRoom) void this.hs.adminRoom.onEvent(view).catch((err) => this.hs.logger.error("Admin command failed", err));
-      };
-    }
     } finally {
       await lease?.done();
     }
@@ -905,7 +1065,12 @@ export class RoomService {
   }
 
   async joinedMembers(roomId: string): Promise<string[]> {
-    const rows = await this.hs.db.findMany("memberships", { where: [{ field: "room_id", value: roomId }, { field: "membership", value: "join" }] });
+    const rows = await this.hs.db.findMany("memberships", {
+      where: [
+        { field: "room_id", value: roomId },
+        { field: "membership", value: "join" },
+      ],
+    });
     return rows.map((r) => r.user_id);
   }
 
@@ -917,7 +1082,10 @@ export class RoomService {
 
   async roomsForUser(userId: string, membership = "join"): Promise<string[]> {
     const rows = await this.hs.db.findMany("memberships", {
-      where: [{ field: "user_id", value: userId }, { field: "membership", value: membership }],
+      where: [
+        { field: "user_id", value: userId },
+        { field: "membership", value: membership },
+      ],
     });
     return rows.map((r) => r.room_id);
   }
@@ -935,7 +1103,11 @@ export class RoomService {
     return new Set(out);
   }
 
-  private async prepareRedaction(targetId: string, redaction: PDU, version: string): Promise<{ targetId: string; target: StoredEvent; redacted: PDU } | null> {
+  private async prepareRedaction(
+    targetId: string,
+    redaction: PDU,
+    version: string,
+  ): Promise<{ targetId: string; target: StoredEvent; redacted: PDU } | null> {
     const target = await this.getEvent(targetId);
     if (!target || target.pdu.room_id !== redaction.room_id) return null;
     const state = await this.currentState(redaction.room_id);
@@ -974,7 +1146,15 @@ export class RoomService {
    * format, including the create event. Clients receive stripped versions.
    */
   strippedState(state: StateMap): Record<string, any>[] {
-    const types = ["m.room.create", "m.room.join_rules", "m.room.name", "m.room.avatar", "m.room.canonical_alias", "m.room.encryption", "m.room.topic"];
+    const types = [
+      "m.room.create",
+      "m.room.join_rules",
+      "m.room.name",
+      "m.room.avatar",
+      "m.room.canonical_alias",
+      "m.room.encryption",
+      "m.room.topic",
+    ];
     const create = getState(state, "m.room.create");
     const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
     const f = roomVersionFeatures(version);
@@ -1003,7 +1183,11 @@ export class RoomService {
       if (memberHistory) return memberHistory;
       if (!userId) return (memberHistory = []);
       const rows = await this.hs.db.findMany("events", {
-        where: [{ field: "room_id", value: roomId }, { field: "type", value: "m.room.member" }, { field: "state_key", value: userId }],
+        where: [
+          { field: "room_id", value: roomId },
+          { field: "type", value: "m.room.member" },
+          { field: "state_key", value: userId },
+        ],
       });
       memberHistory = rows.map((r) => ({ stream: r.stream, membership: r.json.content?.membership }));
       return memberHistory;
@@ -1014,22 +1198,37 @@ export class RoomService {
       let membership = "leave";
       if (userId) {
         const memId = ids[stateKey("m.room.member", userId)];
-        membership = memId ? (await this.getEvent(memId))?.pdu.content?.membership ?? "leave" : "leave";
+        membership = memId ? ((await this.getEvent(memId))?.pdu.content?.membership ?? "leave") : "leave";
       }
       const ev: StoredEvent = userId ? { ...raw, viewerMembership: membership } : raw;
-      if (userId && ev.pdu.type === "m.room.member" && ev.pdu.state_key === userId) { out.push(ev); continue; }
+      if (userId && ev.pdu.type === "m.room.member" && ev.pdu.state_key === userId) {
+        out.push(ev);
+        continue;
+      }
       const hvId = ids[stateKey("m.room.history_visibility", "")];
-      const hv = hvId ? (await this.getEvent(hvId))?.pdu.content?.history_visibility ?? "shared" : "shared";
-      if (hv === "world_readable") { out.push(ev); continue; }
+      const hv = hvId ? ((await this.getEvent(hvId))?.pdu.content?.history_visibility ?? "shared") : "shared";
+      if (hv === "world_readable") {
+        out.push(ev);
+        continue;
+      }
       if (!userId) continue;
-      if (membership === "join") { out.push(ev); continue; }
-      if (hv === "invited" && membership === "invite") { out.push(ev); continue; }
+      if (membership === "join") {
+        out.push(ev);
+        continue;
+      }
+      if (hv === "invited" && membership === "invite") {
+        out.push(ev);
+        continue;
+      }
       if (hv === "shared") {
         const history = await loadHistory();
         // Joined after the event, or joined now: the latter also covers events that arrive late from
         // a fork predating our join (their stream position is newer than the join).
         const latest = history.reduce<{ stream: number; membership: string } | null>((a, h) => (!a || h.stream > a.stream ? h : a), null);
-        if (latest?.membership === "join" || history.some((h) => h.stream >= ev.stream && h.membership === "join")) { out.push(ev); continue; }
+        if (latest?.membership === "join" || history.some((h) => h.stream >= ev.stream && h.membership === "join")) {
+          out.push(ev);
+          continue;
+        }
       }
     }
     return out;
@@ -1077,7 +1276,8 @@ export class RoomService {
     if (!["public_chat", "private_chat", "trusted_private_chat"].includes(preset)) throw errors.invalidParam("Unknown preset");
     if (body.creation_content !== undefined && !isObject(body.creation_content)) throw errors.badJson("creation_content must be an object");
     if (body.initial_state !== undefined && !Array.isArray(body.initial_state)) throw errors.badJson("initial_state must be an array");
-    if (body.invite !== undefined && (!Array.isArray(body.invite) || !body.invite.every(isValidUserId))) throw errors.invalidParam("invite must be a list of user IDs");
+    if (body.invite !== undefined && (!Array.isArray(body.invite) || !body.invite.every(isValidUserId)))
+      throw errors.invalidParam("invite must be a list of user IDs");
     if (body.name !== undefined && typeof body.name !== "string") throw errors.badJson("name must be a string");
     if (body.topic !== undefined && typeof body.topic !== "string") throw errors.badJson("topic must be a string");
     if (Array.isArray(body.invite_3pid) && body.invite_3pid.length > 0) throw errors.threepidDenied();
@@ -1091,7 +1291,7 @@ export class RoomService {
       if (await this.hs.db.findOne("room_aliases", [{ field: "alias", value: alias }])) throw errors.roomInUse();
     }
 
-    const createContent: Record<string, any> = { ...(body.creation_content ?? {}), room_version: version };
+    const createContent: Record<string, any> = { ...body.creation_content, room_version: version };
     if (!features.v11) createContent.creator = sender;
     else delete createContent.creator;
     const creators = new Set<string>();
@@ -1116,16 +1316,31 @@ export class RoomService {
     let prebuiltCreate: PDU | undefined;
     if (features.v12) {
       // The room ID is derived from the create event, which therefore has no room_id.
-      prebuiltCreate = finalisePdu({
-        sender, type: "m.room.create", state_key: "", content: createContent,
-        origin_server_ts: Date.now(), depth: 1, prev_events: [], auth_events: [],
-      } as unknown as PDU, version, this.hs.serverName, this.hs.signingKey);
+      prebuiltCreate = finalisePdu(
+        {
+          sender,
+          type: "m.room.create",
+          state_key: "",
+          content: createContent,
+          origin_server_ts: Date.now(),
+          depth: 1,
+          prev_events: [],
+          auth_events: [],
+        } as unknown as PDU,
+        version,
+        this.hs.serverName,
+        this.hs.signingKey,
+      );
       roomId = `!${prebuiltCreate.event_id!.slice(1)}`;
     } else {
       roomId = generateRoomId(this.hs.serverName);
     }
     await this.hs.db.create("rooms", {
-      room_id: roomId, room_version: version, creator: sender, is_public: visibility === "public", created_ts: Date.now(),
+      room_id: roomId,
+      room_version: version,
+      creator: sender,
+      is_public: visibility === "public",
+      created_ts: Date.now(),
     });
     this.versions.set(roomId, version);
 
@@ -1143,12 +1358,22 @@ export class RoomService {
       users: features.v12 ? {} : { [sender]: 100 },
       users_default: 0,
       events: {
-        "m.room.name": 50, "m.room.power_levels": 100, "m.room.history_visibility": 100,
-        "m.room.canonical_alias": 50, "m.room.avatar": 50, "m.room.tombstone": features.v12 ? 150 : 100,
-        "m.room.server_acl": 100, "m.room.encryption": 100,
+        "m.room.name": 50,
+        "m.room.power_levels": 100,
+        "m.room.history_visibility": 100,
+        "m.room.canonical_alias": 50,
+        "m.room.avatar": 50,
+        "m.room.tombstone": features.v12 ? 150 : 100,
+        "m.room.server_acl": 100,
+        "m.room.encryption": 100,
       },
       // Like Synapse: in public rooms only moderators invite; private presets let everyone invite.
-      events_default: 0, state_default: 50, ban: 50, kick: 50, redact: 50, invite: preset === "public_chat" ? 50 : 0,
+      events_default: 0,
+      state_default: 50,
+      ban: 50,
+      kick: 50,
+      redact: 50,
+      invite: preset === "public_chat" ? 50 : 0,
       notifications: { room: 50 },
     };
     if (preset === "trusted_private_chat" && !features.v12) for (const u of body.invite ?? []) pl.users[u] = 100;
@@ -1158,7 +1383,7 @@ export class RoomService {
     const initialPl = initialState.find((e) => e?.type === "m.room.power_levels" && (e.state_key ?? "") === "");
     const predecessor = createContent.predecessor?.room_id;
     if (typeof predecessor === "string") await copyRoomPushRules(this.hs, sender, predecessor, roomId);
-    const plContent = { ...pl, ...(override ?? {}), ...(initialPl?.content ?? {}) };
+    const plContent = { ...pl, ...override, ...initialPl?.content };
     validatePowerLevelContent(plContent, creators);
     await send({ type: "m.room.power_levels", state_key: "", content: plContent });
 
@@ -1183,7 +1408,11 @@ export class RoomService {
     }
     if (body.name !== undefined) await send({ type: "m.room.name", state_key: "", content: { name: body.name } });
     if (body.topic !== undefined) {
-      await send({ type: "m.room.topic", state_key: "", content: { topic: body.topic, "m.topic": { "m.text": [{ mimetype: "text/plain", body: body.topic }] } } });
+      await send({
+        type: "m.room.topic",
+        state_key: "",
+        content: { topic: body.topic, "m.topic": { "m.text": [{ mimetype: "text/plain", body: body.topic }] } },
+      });
     }
     for (const invitee of body.invite ?? []) {
       await this.invite(roomId, sender, invitee, { isDirect: !!body.is_direct });
@@ -1237,7 +1466,10 @@ export class RoomService {
   /** Servers that might help with a remote membership change for `userId` in `roomId`. */
   private async remoteServersFor(roomId: string, userId: string, extra: string[] = []): Promise<string[]> {
     const servers = [...extra];
-    const row = await this.hs.db.findOne("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: userId }]);
+    const row = await this.hs.db.findOne("memberships", [
+      { field: "room_id", value: roomId },
+      { field: "user_id", value: userId },
+    ]);
     const ev = row ? await this.getPdu(row.event_id) : null;
     if (ev && !this.hs.isLocalUser(ev.sender)) servers.push(ev.sender.slice(ev.sender.indexOf(":") + 1));
     // Servers the client named take precedence; otherwise fall back to the room's own server and known members.
@@ -1255,23 +1487,45 @@ export class RoomService {
    */
   async recordRemoteMembership(pdu: PDU, version: string): Promise<void> {
     void version;
-    await this.hs.db.upsert("outliers", { event_id: pdu.event_id, room_id: pdu.room_id, json: pdu, state_snapshot: null, rejected: null, soft_failed: false });
+    await this.hs.db.upsert("outliers", {
+      event_id: pdu.event_id,
+      room_id: pdu.room_id,
+      json: pdu,
+      state_snapshot: null,
+      rejected: null,
+      soft_failed: false,
+    });
     this.outlierCache.delete(pdu.event_id!);
     if (!(await this.serverIsJoined(pdu.room_id))) {
-      await this.hs.streams.write((stream) => this.hs.db.upsert("memberships", {
-        room_id: pdu.room_id, user_id: pdu.state_key, membership: pdu.content?.membership, event_id: pdu.event_id,
-        stream, forgotten: false,
-      }));
+      await this.hs.streams.write((stream) =>
+        this.hs.db.upsert("memberships", {
+          room_id: pdu.room_id,
+          user_id: pdu.state_key,
+          membership: pdu.content?.membership,
+          event_id: pdu.event_id,
+          stream,
+          forgotten: false,
+        }),
+      );
     }
     this.sharingCache.clear();
     this.invalidate({ events: [pdu.event_id!], sharing: true });
     this.hs.notifier.notify([pdu.state_key!]);
   }
 
-  async join(userId: string, roomId: string, extra: { reason?: string; content?: Record<string, any>; servers?: string[] } = {}): Promise<string> {
+  async join(
+    userId: string,
+    roomId: string,
+    extra: { reason?: string; content?: Record<string, any>; servers?: string[] } = {},
+  ): Promise<string> {
     const version = await this.roomVersion(roomId);
     // The client asked us to join via ourselves and we hold the room's state: decide locally.
-    if (version && !(await this.serverIsJoined(roomId)) && extra.servers?.includes(this.hs.serverName) && (await this.isLocallyHosted(roomId))) {
+    if (
+      version &&
+      !(await this.serverIsJoined(roomId)) &&
+      extra.servers?.includes(this.hs.serverName) &&
+      (await this.isLocallyHosted(roomId))
+    ) {
       return this.joinLocal(userId, roomId, version, extra);
     }
     if (!version || !(await this.serverIsJoined(roomId))) {
@@ -1285,7 +1539,7 @@ export class RoomService {
         }
         throw errors.notFound("Room not found");
       }
-      const content: Record<string, any> = { ...(extra.content ?? {}), membership: "join", ...(await this.hs.profile(userId)) };
+      const content: Record<string, any> = { ...extra.content, membership: "join", ...(await this.hs.profile(userId)) };
       if (extra.reason) content.reason = extra.reason;
       this.hs.logger.debug("Remote join", userId, roomId, "via", servers);
       await this.hs.federation.joinRemoteRoom(userId, roomId, servers, content);
@@ -1297,10 +1551,15 @@ export class RoomService {
     return this.joinLocal(userId, roomId, version, extra);
   }
 
-  private async joinLocal(userId: string, roomId: string, version: string, extra: { reason?: string; content?: Record<string, any> }): Promise<string> {
+  private async joinLocal(
+    userId: string,
+    roomId: string,
+    version: string,
+    extra: { reason?: string; content?: Record<string, any> },
+  ): Promise<string> {
     this.hs.logger.debug("Local join", userId, roomId);
     const state = await this.currentState(roomId);
-    const content: Record<string, any> = { ...(extra.content ?? {}), membership: "join", ...(await this.hs.profile(userId)) };
+    const content: Record<string, any> = { ...extra.content, membership: "join", ...(await this.hs.profile(userId)) };
     if (extra.reason) content.reason = extra.reason;
     const existing = getState(state, "m.room.member", userId);
     if (existing?.content?.membership === "join" && JSON.stringify(existing.content) === JSON.stringify(content)) return roomId;
@@ -1316,7 +1575,12 @@ export class RoomService {
         const servers = new Set<string>();
         for (const [k, ev] of state) {
           const [type, member] = splitStateKey(k);
-          if (type === "m.room.member" && ev.content?.membership === "join" && !this.hs.isLocalUser(member) && userLevel(pl, member) >= pl.invite) {
+          if (
+            type === "m.room.member" &&
+            ev.content?.membership === "join" &&
+            !this.hs.isLocalUser(member) &&
+            userLevel(pl, member) >= pl.invite
+          ) {
             servers.add(member.slice(member.indexOf(":") + 1));
           }
         }
@@ -1350,29 +1614,41 @@ export class RoomService {
     let permitted = false;
     for (const rule of allow) {
       if (rule?.type === "m.room_membership" && typeof rule.room_id === "string" && (await this.exists(rule.room_id))) {
-        if ((await this.membership(rule.room_id, userId)) === "join") { permitted = true; break; }
+        if ((await this.membership(rule.room_id, userId)) === "join") {
+          permitted = true;
+          break;
+        }
       }
     }
     if (!permitted) return null;
     const pl = powerLevels(state, version);
     for (const [k, ev] of state) {
       const [type, key] = splitStateKey(k);
-      if (type === "m.room.member" && ev.content?.membership === "join" && this.hs.isLocalUser(key) && userLevel(pl, key) >= pl.invite) return key;
+      if (type === "m.room.member" && ev.content?.membership === "join" && this.hs.isLocalUser(key) && userLevel(pl, key) >= pl.invite)
+        return key;
     }
     return null;
   }
 
   async invite(
-    roomId: string, sender: string, target: string,
+    roomId: string,
+    sender: string,
+    target: string,
     opts: { reason?: string; isDirect?: boolean; thirdPartyInvite?: { display_name: string; signed: Record<string, any> } } = {},
   ): Promise<void> {
     if (!isValidUserId(target)) throw errors.invalidParam("Invalid user ID");
     const local = this.hs.isLocalUser(target);
-    if (local && !(await this.hs.db.findOne("users", [{ field: "user_id", value: target }])) && !(await this.hs.appservices.queryUser(target))) {
+    if (
+      local &&
+      !(await this.hs.db.findOne("users", [{ field: "user_id", value: target }])) &&
+      !(await this.hs.appservices.queryUser(target))
+    ) {
       throw errors.notFound("Unknown user");
     }
     if (local && (await inviteDecision(this.hs, target, sender)) === "block") {
-      throw new MatrixError(403, "M_FORBIDDEN", "This user does not accept invites from you", { "org.matrix.msc4155.errcode": "M_INVITE_BLOCKED" });
+      throw new MatrixError(403, "M_FORBIDDEN", "This user does not accept invites from you", {
+        "org.matrix.msc4155.errcode": "M_INVITE_BLOCKED",
+      });
     }
     await this.requireJoined(roomId, sender);
     const state = await this.currentState(roomId);
@@ -1403,7 +1679,14 @@ export class RoomService {
     });
   }
 
-  async setMembership(roomId: string, sender: string, target: string, membership: "leave" | "ban" | "knock", reason?: string, via: string[] = []): Promise<void> {
+  async setMembership(
+    roomId: string,
+    sender: string,
+    target: string,
+    membership: "leave" | "ban" | "knock",
+    reason?: string,
+    via: string[] = [],
+  ): Promise<void> {
     // Rejecting invites / rescinding knocks / knocking on rooms we don't participate in goes over federation.
     // (A room we hold locally, e.g. an invite to an empty local room, is handled with a local event.)
     const remote = !(await this.serverIsJoined(roomId)) && (membership === "knock" || !(await this.isLocallyHosted(roomId)));
@@ -1421,8 +1704,17 @@ export class RoomService {
     await this.sendEvent(roomId, sender, { type: "m.room.member", state_key: target, content });
   }
 
-  private async remoteMembership(roomId: string, userId: string, membership: "leave" | "knock", reason?: string, via: string[] = []): Promise<void> {
-    const row = await this.hs.db.findOne("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: userId }]);
+  private async remoteMembership(
+    roomId: string,
+    userId: string,
+    membership: "leave" | "knock",
+    reason?: string,
+    via: string[] = [],
+  ): Promise<void> {
+    const row = await this.hs.db.findOne("memberships", [
+      { field: "room_id", value: roomId },
+      { field: "user_id", value: userId },
+    ]);
     if (membership === "leave" && (!row || row.membership === "leave" || row.membership === "ban")) {
       if (!(await this.exists(roomId))) throw errors.notFound("Room not found");
       if (row?.membership === "ban") throw errors.forbidden("You are banned from this room");
@@ -1444,10 +1736,22 @@ export class RoomService {
       this.hs.logger.debug("Remote leave failed, rejecting locally", err);
       const content: Record<string, any> = { membership: "leave" };
       if (reason) content.reason = reason;
-      leave = finalisePdu({
-        room_id: roomId, sender: userId, type: "m.room.member", state_key: userId, content, origin_server_ts: Date.now(),
-        depth: 1, prev_events: row ? [row.event_id] : [], auth_events: [],
-      } as PDU, DEFAULT_ROOM_VERSION, this.hs.serverName, this.hs.signingKey);
+      leave = finalisePdu(
+        {
+          room_id: roomId,
+          sender: userId,
+          type: "m.room.member",
+          state_key: userId,
+          content,
+          origin_server_ts: Date.now(),
+          depth: 1,
+          prev_events: row ? [row.event_id] : [],
+          auth_events: [],
+        } as PDU,
+        DEFAULT_ROOM_VERSION,
+        this.hs.serverName,
+        this.hs.signingKey,
+      );
     }
     await this.recordRemoteMembership(leave, "");
   }

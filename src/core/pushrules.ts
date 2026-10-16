@@ -12,7 +12,12 @@ export function defaultRules(userId: string): Ruleset {
   const sound = (s: string) => ({ set_tweak: "sound", value: s });
   const highlight = { set_tweak: "highlight" };
   const r = (rule_id: string, conditions: any[] | undefined, actions: any[], extra: Rule = {}) => ({
-    rule_id, default: true, enabled: true, actions, ...(conditions ? { conditions } : {}), ...extra,
+    rule_id,
+    default: true,
+    enabled: true,
+    actions,
+    ...(conditions ? { conditions } : {}),
+    ...extra,
   });
   const em = (key: string, pattern: string) => ({ kind: "event_match", key, pattern });
   const ep = (key: string, value: unknown) => ({ kind: "event_property_is", key, value });
@@ -20,35 +25,65 @@ export function defaultRules(userId: string): Ruleset {
     override: [
       r(".m.rule.master", [], [], { enabled: false }),
       r(".m.rule.suppress_notices", [em("content.msgtype", "m.notice")], []),
-      r(".m.rule.invite_for_me", [em("type", "m.room.member"), em("content.membership", "invite"), em("state_key", userId)], [...notify, sound("default")]),
+      r(
+        ".m.rule.invite_for_me",
+        [em("type", "m.room.member"), em("content.membership", "invite"), em("state_key", userId)],
+        [...notify, sound("default")],
+      ),
       r(".m.rule.member_event", [em("type", "m.room.member")], []),
-      r(".m.rule.is_user_mention", [{ kind: "event_property_contains", key: "content.m\\.mentions.user_ids", value: userId }], [...notify, sound("default"), highlight]),
+      r(
+        ".m.rule.is_user_mention",
+        [{ kind: "event_property_contains", key: "content.m\\.mentions.user_ids", value: userId }],
+        [...notify, sound("default"), highlight],
+      ),
       r(".m.rule.contains_display_name", [{ kind: "contains_display_name" }], [...notify, sound("default"), highlight]),
-      r(".m.rule.is_room_mention", [ep("content.m\\.mentions.room", true), { kind: "sender_notification_permission", key: "room" }], [...notify, highlight]),
-      r(".m.rule.roomnotif", [em("content.body", "@room"), { kind: "sender_notification_permission", key: "room" }], [...notify, highlight]),
+      r(
+        ".m.rule.is_room_mention",
+        [ep("content.m\\.mentions.room", true), { kind: "sender_notification_permission", key: "room" }],
+        [...notify, highlight],
+      ),
+      r(
+        ".m.rule.roomnotif",
+        [em("content.body", "@room"), { kind: "sender_notification_permission", key: "room" }],
+        [...notify, highlight],
+      ),
       r(".m.rule.tombstone", [em("type", "m.room.tombstone"), em("state_key", "")], [...notify, highlight]),
       r(".m.rule.reaction", [em("type", "m.reaction")], []),
       r(".m.rule.room.server_acl", [em("type", "m.room.server_acl"), em("state_key", "")], []),
       r(".m.rule.suppress_edits", [ep("content.m\\.relates_to.rel_type", "m.replace")], []),
       r(".org.matrix.msc3930.rule.poll_response", [em("type", "org.matrix.msc3381.poll.response")], []),
     ],
-    content: [
-      r(".m.rule.contains_user_name", undefined, [...notify, sound("default"), highlight], { pattern: localpart }),
-    ],
+    content: [r(".m.rule.contains_user_name", undefined, [...notify, sound("default"), highlight], { pattern: localpart })],
     // MSC4306: thread replies notify only in subscribed threads.
     postcontent: [
       r(".io.element.msc4306.rule.unsubscribed_thread", [{ kind: "io.element.msc4306.thread_subscription", subscribed: false }], []),
-      r(".io.element.msc4306.rule.subscribed_thread", [{ kind: "io.element.msc4306.thread_subscription", subscribed: true }], [...notify, sound("default")]),
+      r(
+        ".io.element.msc4306.rule.subscribed_thread",
+        [{ kind: "io.element.msc4306.thread_subscription", subscribed: true }],
+        [...notify, sound("default")],
+      ),
     ],
     room: [],
     sender: [],
     underride: [
       r(".m.rule.call", [em("type", "m.call.invite")], [...notify, sound("ring")]),
-      r(".m.rule.encrypted_room_one_to_one", [{ kind: "room_member_count", is: "2" }, em("type", "m.room.encrypted")], [...notify, sound("default")]),
+      r(
+        ".m.rule.encrypted_room_one_to_one",
+        [{ kind: "room_member_count", is: "2" }, em("type", "m.room.encrypted")],
+        [...notify, sound("default")],
+      ),
       r(".m.rule.room_one_to_one", [{ kind: "room_member_count", is: "2" }, em("type", "m.room.message")], [...notify, sound("default")]),
       r(".m.rule.message", [em("type", "m.room.message")], notify),
-      r(".org.matrix.msc3930.rule.poll_start_one_to_one", [{ kind: "room_member_count", is: "2" }, em("type", "org.matrix.msc3381.poll.start")], [...notify, sound("default")]),
-      r(".org.matrix.msc3930.rule.poll_end_one_to_one", [{ kind: "room_member_count", is: "2" }, em("type", "org.matrix.msc3381.poll.end")], [...notify, sound("default")]),
+      r(
+        ".org.matrix.msc3930.rule.poll_start_one_to_one",
+        [{ kind: "room_member_count", is: "2" }, em("type", "org.matrix.msc3381.poll.start")],
+        [...notify, sound("default")],
+      ),
+      r(
+        ".org.matrix.msc3930.rule.poll_end_one_to_one",
+        [{ kind: "room_member_count", is: "2" }, em("type", "org.matrix.msc3381.poll.end")],
+        [...notify, sound("default")],
+      ),
       r(".org.matrix.msc3930.rule.poll_start", [em("type", "org.matrix.msc3381.poll.start")], notify),
       r(".org.matrix.msc3930.rule.poll_end", [em("type", "org.matrix.msc3381.poll.end")], notify),
       r(".m.rule.encrypted", [em("type", "m.room.encrypted")], notify),
@@ -89,7 +124,11 @@ export async function loadRules(hs: Homeserver, userId: string): Promise<Ruleset
 }
 
 async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
-  const row = await hs.db.findOne("account_data", [{ field: "user_id", value: userId }, { field: "room_id", value: "" }, { field: "type", value: "m.push_rules" }]);
+  const row = await hs.db.findOne("account_data", [
+    { field: "user_id", value: userId },
+    { field: "room_id", value: "" },
+    { field: "type", value: "m.push_rules" },
+  ]);
   if (!isObject(row?.content?.global)) return defaultRules(userId);
   const rules: Ruleset = row!.content.global;
   // Rulesets saved before a kind existed gain that kind's default rules.
@@ -101,7 +140,9 @@ async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
 export async function saveRules(hs: Homeserver, userId: string, rules: Ruleset): Promise<void> {
   cacheFor(hs).set(userId, structuredClone(rules));
   void hs.cluster.publish("pushrules", { from: hs.instanceId, userId }).catch(() => {});
-  await hs.streams.write((stream) => hs.db.upsert("account_data", { user_id: userId, room_id: "", type: "m.push_rules", content: { global: rules }, stream }));
+  await hs.streams.write((stream) =>
+    hs.db.upsert("account_data", { user_id: userId, room_id: "", type: "m.push_rules", content: { global: rules }, stream }),
+  );
   hs.notifier.notify([userId]);
 }
 
@@ -111,7 +152,11 @@ export function copyRoomPushRules(hs: Homeserver, userId: string, oldRoomId: str
 }
 
 async function copyRules(hs: Homeserver, userId: string, oldRoomId: string, newRoomId: string): Promise<void> {
-  const row = await hs.db.findOne("account_data", [{ field: "user_id", value: userId }, { field: "room_id", value: "" }, { field: "type", value: "m.push_rules" }]);
+  const row = await hs.db.findOne("account_data", [
+    { field: "user_id", value: userId },
+    { field: "room_id", value: "" },
+    { field: "type", value: "m.push_rules" },
+  ]);
   if (!isObject(row?.content?.global)) return;
   const rules: Ruleset = row!.content.global;
   let changed = false;
@@ -125,11 +170,16 @@ async function copyRules(hs: Homeserver, userId: string, oldRoomId: string, newR
       } else if (Array.isArray(rule.conditions) && rule.conditions.some((c: any) => c?.key === "room_id" && c?.pattern === oldRoomId)) {
         const copy = structuredClone(rule);
         copy.rule_id = `${rule.rule_id}-${newRoomId}`;
-        copy.conditions = copy.conditions.map((c: any) => (c?.key === "room_id" && c?.pattern === oldRoomId ? { ...c, pattern: newRoomId } : c));
+        copy.conditions = copy.conditions.map((c: any) =>
+          c?.key === "room_id" && c?.pattern === oldRoomId ? { ...c, pattern: newRoomId } : c,
+        );
         if (!list.some((r) => r.rule_id === copy.rule_id)) additions.push(copy);
       }
     }
-    if (additions.length) { rules[kind] = [...additions, ...list]; changed = true; }
+    if (additions.length) {
+      rules[kind] = [...additions, ...list];
+      changed = true;
+    }
   }
   if (changed) await saveRules(hs, userId, rules);
 }

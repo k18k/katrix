@@ -2,12 +2,33 @@ import type { Homeserver } from "../homeserver.ts";
 
 /** Security-relevant actions recorded in the audit log. */
 export type AuditAction =
-  | "login" | "login_failed" | "logout" | "register" | "password_change" | "deactivate"
-  | "device_create" | "device_delete" | "token_refresh"
-  | "room_create" | "room_delete" | "member_kick" | "member_ban" | "member_unban"
-  | "admin_action" | "admin_command" | "registration_token_create" | "registration_token_delete"
-  | "registration_setting" | "event_report" | "user_report" | "sso_login" | "oauth_login"
-  | "user_lock" | "user_unlock" | "user_suspend" | "user_unsuspend";
+  | "login"
+  | "login_failed"
+  | "logout"
+  | "register"
+  | "password_change"
+  | "deactivate"
+  | "device_create"
+  | "device_delete"
+  | "token_refresh"
+  | "room_create"
+  | "room_delete"
+  | "member_kick"
+  | "member_ban"
+  | "member_unban"
+  | "admin_action"
+  | "admin_command"
+  | "registration_token_create"
+  | "registration_token_delete"
+  | "registration_setting"
+  | "event_report"
+  | "user_report"
+  | "sso_login"
+  | "oauth_login"
+  | "user_lock"
+  | "user_unlock"
+  | "user_suspend"
+  | "user_unsuspend";
 
 export interface AuditEntry {
   action: AuditAction;
@@ -56,8 +77,15 @@ export class AuditService {
       const id = await this.hs.cluster.nextId("audit_log");
       const ts = Date.now();
       const row = {
-        id, ts, action: entry.action, actor: entry.actor ?? null, target: entry.target ?? null, ip: entry.ip ?? null,
-        user_agent: entry.userAgent ?? null, outcome: entry.outcome ?? "success", details: entry.details ?? {},
+        id,
+        ts,
+        action: entry.action,
+        actor: entry.actor ?? null,
+        target: entry.target ?? null,
+        ip: entry.ip ?? null,
+        user_agent: entry.userAgent ?? null,
+        outcome: entry.outcome ?? "success",
+        details: entry.details ?? {},
       };
       if (this.options.database !== false) await this.hs.db.create("audit_log", row);
       await this.options.sink?.({ ...entry, outcome: row.outcome, id, ts });
@@ -73,7 +101,11 @@ export class AuditService {
     if (opts.action) where.push({ field: "action", value: opts.action });
     if (opts.since) where.push({ field: "ts", operator: "gte", value: opts.since });
     if (opts.before) where.push({ field: "id", operator: "lt", value: opts.before });
-    return this.hs.db.findMany("audit_log", { where, sortBy: { field: "id", direction: "desc" }, limit: Math.min(opts.limit ?? 100, 1000) });
+    return this.hs.db.findMany("audit_log", {
+      where,
+      sortBy: { field: "id", direction: "desc" },
+      limit: Math.min(opts.limit ?? 100, 1000),
+    });
   }
 
   async prune(): Promise<void> {

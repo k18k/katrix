@@ -26,7 +26,9 @@ const homeserver = createHomeserver({
   // Complement serves preview pages from the Docker host, which is a private address.
   urlPreviews: { allowPrivateAddresses: true },
   logger: {
-    debug: (...a) => { if (process.env.MATRIX_DEBUG) console.log("[debug]", ...a); },
+    debug: (...a) => {
+      if (process.env.MATRIX_DEBUG) console.log("[debug]", ...a);
+    },
     info: (...a) => console.log(...a),
     warn: (...a) => console.warn(...a),
     error: (...a) => console.error(...a),
@@ -39,8 +41,9 @@ createServer(handler).listen(8008, () => console.log(`[${serverName}] client API
 const cert = `${dataDir}/tls/server.crt`;
 const key = `${dataDir}/tls/server.key`;
 if (existsSync(cert) && existsSync(key)) {
-  createHttpsServer({ cert: readFileSync(cert), key: readFileSync(key) }, handler)
-    .listen(8448, () => console.log(`[${serverName}] federation port on :8448 (TLS)`));
+  createHttpsServer({ cert: readFileSync(cert), key: readFileSync(key) }, handler).listen(8448, () =>
+    console.log(`[${serverName}] federation port on :8448 (TLS)`),
+  );
 }
 
 // Complement restarts containers: shut down promptly instead of waiting to be killed.

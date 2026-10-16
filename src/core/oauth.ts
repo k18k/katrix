@@ -87,13 +87,25 @@ export class OAuthDelegation {
       user = await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]);
     }
     if (user!.deactivated) throw errors.userDeactivated();
-    const deviceWhere = [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }];
+    const deviceWhere = [
+      { field: "user_id", value: userId },
+      { field: "device_id", value: deviceId },
+    ];
     if (!(await this.hs.db.findOne("devices", deviceWhere))) {
-      await this.hs.db.create("devices", { user_id: userId, device_id: deviceId, display_name: null, last_seen_ts: Date.now(), last_seen_ip: null });
+      await this.hs.db.create("devices", {
+        user_id: userId,
+        device_id: deviceId,
+        display_name: null,
+        last_seen_ts: Date.now(),
+        last_seen_ip: null,
+      });
       await this.hs.keys.markDeviceListChanged(userId);
     }
     const session: Session = {
-      userId, deviceId, accessToken: token, isGuest: false,
+      userId,
+      deviceId,
+      accessToken: token,
+      isGuest: false,
       isAdmin: !!user!.is_admin || scopes.includes(this.options.adminScope ?? "urn:synapse:admin:*"),
     };
     const ttl = this.options.cacheTtlMs ?? 60_000;

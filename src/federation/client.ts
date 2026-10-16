@@ -64,7 +64,10 @@ export class FederationClient {
   /** Drop pooled connections to a destination (after errors, the peer may have restarted). */
   resetConnections(destination: string): void {
     const agent = this.agents.get(destination);
-    if (agent) { agent.destroy(); this.agents.delete(destination); }
+    if (agent) {
+      agent.destroy();
+      this.agents.delete(destination);
+    }
     this.resolved.delete(destination);
   }
 
@@ -109,7 +112,14 @@ export class FederationClient {
 
   private async wellKnown(host: string): Promise<string | null> {
     try {
-      const res = await this.raw({ host, port: 443, hostHeader: host, tlsName: host, expires: 0 }, "GET", "/.well-known/matrix/server", undefined, {}, 5000);
+      const res = await this.raw(
+        { host, port: 443, hostHeader: host, tlsName: host, expires: 0 },
+        "GET",
+        "/.well-known/matrix/server",
+        undefined,
+        {},
+        5000,
+      );
       if (res.status !== 200) return null;
       const body = JSON.parse(res.body.toString("utf8"));
       return typeof body["m.server"] === "string" && body["m.server"] ? body["m.server"] : null;
@@ -126,48 +136,70 @@ export class FederationClient {
           records.sort((a, b) => a.priority - b.priority || b.weight - a.weight);
           return { host: records[0].name, port: records[0].port };
         }
-      } catch { /* no record */ }
+      } catch {
+        /* no record */
+      }
     }
     return null;
   }
 
   private raw(
-    target: Resolved, method: string, pathWithQuery: string, body: Buffer | undefined,
-    headers: Record<string, string>, timeoutMs: number, poolKey = target.hostHeader,
+    target: Resolved,
+    method: string,
+    pathWithQuery: string,
+    body: Buffer | undefined,
+    headers: Record<string, string>,
+    timeoutMs: number,
+    poolKey = target.hostHeader,
   ): Promise<RawResponse> {
     return new Promise((resolve, reject) => {
       let connectTimer: ReturnType<typeof setTimeout> | null = null;
-      const req = httpsRequest({
-        host: target.host,
-        port: target.port,
-        method,
-        path: pathWithQuery,
-        servername: isIP(target.tlsName) ? undefined : target.tlsName,
-        agent: this.agentFor(poolKey),
-        headers: { host: target.hostHeader, ...headers, ...(body ? { "content-length": String(body.length) } : {}) },
-        timeout: timeoutMs,
-      }, (res) => {
-        const chunks: Buffer[] = [];
-        let size = 0;
-        res.on("data", (c: Buffer) => {
-          size += c.length;
-          if (size > 100 * 1024 * 1024) { req.destroy(new Error("Response too large")); return; }
-          chunks.push(c);
-        });
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }));
-        res.on("error", reject);
-      });
+      const req = httpsRequest(
+        {
+          host: target.host,
+          port: target.port,
+          method,
+          path: pathWithQuery,
+          servername: isIP(target.tlsName) ? undefined : target.tlsName,
+          agent: this.agentFor(poolKey),
+          headers: { host: target.hostHeader, ...headers, ...(body ? { "content-length": String(body.length) } : {}) },
+          timeout: timeoutMs,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          let size = 0;
+          res.on("data", (c: Buffer) => {
+            size += c.length;
+            if (size > 100 * 1024 * 1024) {
+              req.destroy(new Error("Response too large"));
+              return;
+            }
+            chunks.push(c);
+          });
+          res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }));
+          res.on("error", reject);
+        },
+      );
       req.on("socket", (socket) => {
         // Fail fast when the peer is unreachable, independently of the response timeout.
         if ((socket as any).connecting) {
           connectTimer = setTimeout(() => req.destroy(new Error("Connection timed out")), Math.min(5_000, timeoutMs));
-          socket.once("connect", () => { if (connectTimer) clearTimeout(connectTimer); });
-          socket.once("secureConnect", () => { if (connectTimer) clearTimeout(connectTimer); });
+          socket.once("connect", () => {
+            if (connectTimer) clearTimeout(connectTimer);
+          });
+          socket.once("secureConnect", () => {
+            if (connectTimer) clearTimeout(connectTimer);
+          });
         }
       });
       req.on("timeout", () => req.destroy(new Error("Federation request timed out")));
-      req.on("error", (err) => { if (connectTimer) clearTimeout(connectTimer); reject(err); });
-      req.on("close", () => { if (connectTimer) clearTimeout(connectTimer); });
+      req.on("error", (err) => {
+        if (connectTimer) clearTimeout(connectTimer);
+        reject(err);
+      });
+      req.on("close", () => {
+        if (connectTimer) clearTimeout(connectTimer);
+      });
       if (body) req.write(body);
       req.end();
     });
@@ -204,11 +236,17 @@ export class FederationClient {
   async request(destination: string, method: string, path: string, opts: FederationRequestOptions = {}): Promise<any> {
     const res = await this.requestRaw(destination, method, path, opts);
     let json: any = {};
-    try { json = res.body.length ? JSON.parse(res.body.toString("utf8")) : {}; } catch { /* non-JSON */ }
+    try {
+      json = res.body.length ? JSON.parse(res.body.toString("utf8")) : {};
+    } catch {
+      /* non-JSON */
+    }
     if (res.status < 200 || res.status >= 300) {
-      throw new MatrixError(res.status === 404 ? 404 : res.status >= 500 ? 502 : res.status,
+      throw new MatrixError(
+        res.status === 404 ? 404 : res.status >= 500 ? 502 : res.status,
         typeof json.errcode === "string" ? json.errcode : "M_UNKNOWN",
-        typeof json.error === "string" ? json.error : `Remote server returned ${res.status}`);
+        typeof json.error === "string" ? json.error : `Remote server returned ${res.status}`,
+      );
     }
     return json;
   }

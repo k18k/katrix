@@ -65,8 +65,18 @@ export const roomVersionFeatures = (version: string) => {
 };
 
 const KEEP_TOP_LEVEL = [
-  "event_id", "type", "room_id", "sender", "state_key", "content", "hashes",
-  "signatures", "depth", "prev_events", "auth_events", "origin_server_ts",
+  "event_id",
+  "type",
+  "room_id",
+  "sender",
+  "state_key",
+  "content",
+  "hashes",
+  "signatures",
+  "depth",
+  "prev_events",
+  "auth_events",
+  "origin_server_ts",
 ];
 const KEEP_TOP_LEVEL_LEGACY = ["prev_state", "origin", "membership"];
 
@@ -76,7 +86,8 @@ export function redact<T extends Record<string, any>>(event: T, roomVersion: str
   const keep = n >= 11 ? KEEP_TOP_LEVEL : [...KEEP_TOP_LEVEL, ...KEEP_TOP_LEVEL_LEGACY];
   const out: Record<string, any> = {};
   for (const k of keep) if (k in event) out[k] = event[k];
-  const keepRelation = roomVersion.startsWith("org.matrix.msc3389.") && isObject(event.content?.["m.relates_to"]) ? event.content["m.relates_to"] : undefined;
+  const keepRelation =
+    roomVersion.startsWith("org.matrix.msc3389.") && isObject(event.content?.["m.relates_to"]) ? event.content["m.relates_to"] : undefined;
   const content = isObject(event.content) ? event.content : {};
   const pick = (...keys: string[]) => {
     const c: Record<string, any> = {};
@@ -99,7 +110,17 @@ export function redact<T extends Record<string, any>>(event: T, roomVersion: str
       out.content = pick("join_rule", ...(n >= 8 ? ["allow"] : []));
       break;
     case "m.room.power_levels":
-      out.content = pick("ban", "events", "events_default", "kick", "redact", "state_default", "users", "users_default", ...(n >= 11 ? ["invite"] : []));
+      out.content = pick(
+        "ban",
+        "events",
+        "events_default",
+        "kick",
+        "redact",
+        "state_default",
+        "users",
+        "users_default",
+        ...(n >= 11 ? ["invite"] : []),
+      );
       break;
     case "m.room.history_visibility":
       out.content = pick("history_visibility");
@@ -169,7 +190,7 @@ export function toClientEvent(pdu: PDU, opts: { includeRoomId?: boolean } = {}):
   if (pdu.state_key !== undefined) ev.state_key = pdu.state_key;
   if (pdu.redacts !== undefined) ev.redacts = pdu.redacts;
   else if (pdu.type === "m.room.redaction" && typeof pdu.content?.redacts === "string") ev.redacts = pdu.content.redacts;
-  ev.unsigned = { ...(pdu.unsigned ?? {}), age: Math.max(0, Date.now() - pdu.origin_server_ts) };
+  ev.unsigned = { ...pdu.unsigned, age: Math.max(0, Date.now() - pdu.origin_server_ts) };
   return ev;
 }
 

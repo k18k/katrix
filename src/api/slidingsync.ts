@@ -1,6 +1,6 @@
 import { MatrixError } from "../core/errors.ts";
 import { getState } from "../core/authrules.ts";
-import { splitStateKey, stripState, toClientEvent, type PDU } from "../core/events.ts";
+import { splitStateKey, toClientEvent, type PDU } from "../core/events.ts";
 import { isObject } from "../core/json.ts";
 import type { Session } from "../core/auth.ts";
 import type { Homeserver } from "../homeserver.ts";
@@ -39,18 +39,31 @@ interface ConnectionState {
   toDeviceSince: number;
 }
 
-const BUMP_TYPES = new Set(["m.room.create", "m.room.message", "m.room.encrypted", "m.sticker", "m.call.invite", "m.poll.start", "m.beacon_info"]);
+const BUMP_TYPES = new Set([
+  "m.room.create",
+  "m.room.message",
+  "m.room.encrypted",
+  "m.sticker",
+  "m.call.invite",
+  "m.poll.start",
+  "m.beacon_info",
+]);
 
 async function loadConnection(hs: Homeserver, s: Session, connId: string) {
   return hs.db.findOne("sliding_sync_connections", [
-    { field: "user_id", value: s.userId }, { field: "device_id", value: s.deviceId }, { field: "conn_id", value: connId },
+    { field: "user_id", value: s.userId },
+    { field: "device_id", value: s.deviceId },
+    { field: "conn_id", value: connId },
   ]);
 }
 
 /** Stream position of the latest "interesting" event in a room. */
 async function bumpStamp(hs: Homeserver, roomId: string, upTo: number): Promise<number> {
   const rows = await hs.db.findMany("events", {
-    where: [{ field: "room_id", value: roomId }, { field: "stream", operator: "lte", value: upTo }],
+    where: [
+      { field: "room_id", value: roomId },
+      { field: "stream", operator: "lte", value: upTo },
+    ],
     sortBy: { field: "stream", direction: "desc" },
     limit: 50,
   });
@@ -105,8 +118,12 @@ async function slidingSync(ctx: RequestContext) {
     const remaining = deadline - Date.now();
     if (since === null || !empty || remaining <= 0) {
       await hs.db.upsert("sliding_sync_connections", {
-        user_id: s.userId, device_id: s.deviceId, conn_id: connId, pos: to,
-        state: { ...next, prevPos: since }, updated_ts: Date.now(),
+        user_id: s.userId,
+        device_id: s.deviceId,
+        conn_id: connId,
+        pos: to,
+        state: { ...next, prevPos: since },
+        updated_ts: Date.now(),
       });
       return { pos: String(to), ...response };
     }
@@ -117,18 +134,37 @@ async function slidingSync(ctx: RequestContext) {
 }
 
 async function buildResponse(
-  hs: Homeserver, s: Session, body: Record<string, any>, conn: ConnectionState, since: number | null, to: number,
+  hs: Homeserver,
+  s: Session,
+  body: Record<string, any>,
+  conn: ConnectionState,
+  since: number | null,
+  to: number,
 ): Promise<{ response: Record<string, any>; empty: boolean; next: ConnectionState }> {
   const userId = s.userId;
   const memberships = await hs.db.findMany("memberships", { where: [{ field: "user_id", value: userId }] });
-  const direct = await hs.db.findOne("account_data", [{ field: "user_id", value: userId }, { field: "room_id", value: "" }, { field: "type", value: "m.direct" }]);
-  const dmRooms = new Set<string>(Object.values(direct?.content ?? {}).flat().filter((x): x is string => typeof x === "string"));
+  const direct = await hs.db.findOne("account_data", [
+    { field: "user_id", value: userId },
+    { field: "room_id", value: "" },
+    { field: "type", value: "m.direct" },
+  ]);
+  const dmRooms = new Set<string>(
+    Object.values(direct?.content ?? {})
+      .flat()
+      .filter((x): x is string => typeof x === "string"),
+  );
 
   // Candidate rooms: current memberships, plus rooms left since the last request.
-  const candidates = memberships.filter((m) =>
-    m.stream <= to && (["join", "invite", "knock"].includes(m.membership) || (since !== null && m.stream > since && !m.forgotten)));
+  const candidates = memberships.filter(
+    (m) => m.stream <= to && (["join", "invite", "knock"].includes(m.membership) || (since !== null && m.stream > since && !m.forgotten)),
+  );
 
-  interface RoomInfo { roomId: string; membership: string; bump: number; state: Map<string, PDU> }
+  interface RoomInfo {
+    roomId: string;
+    membership: string;
+    bump: number;
+    state: Map<string, PDU>;
+  }
   const infos: RoomInfo[] = [];
   for (const m of candidates) {
     const state = await hs.rooms.currentState(m.room_id);
@@ -212,8 +248,13 @@ function mergeConfig(a: RoomConfig | undefined, b: RoomConfig): RoomConfig {
 }
 
 async function buildRoom(
-  hs: Homeserver, s: Session, info: { roomId: string; membership: string; bump: number; state: Map<string, PDU> },
-  config: RoomConfig, since: number | null, to: number, isDm: boolean,
+  hs: Homeserver,
+  s: Session,
+  info: { roomId: string; membership: string; bump: number; state: Map<string, PDU> },
+  config: RoomConfig,
+  since: number | null,
+  to: number,
+  isDm: boolean,
 ): Promise<Record<string, any>> {
   const { roomId, state } = info;
   const userId = s.userId;
@@ -229,18 +270,32 @@ async function buildRoom(
     const ev = own?.event_id ? await hs.rooms.getEvent(own.event_id) : null;
     if (ev) {
       const key = info.membership === "invite" ? "invite_room_state" : "knock_room_state";
-      room[info.membership === "invite" ? "invite_state" : "knock_state"] =
-        [...(ev.pdu.unsigned?.[key] ?? []), ev.pdu].map(toStripped);
+      room[info.membership === "invite" ? "invite_state" : "knock_state"] = [...(ev.pdu.unsigned?.[key] ?? []), ev.pdu].map(toStripped);
     }
     return room;
   }
 
   // Timeline (reuses /sync's visibility-aware pagination).
   const p: SyncParams = {
-    session: s, ignored: new Set(), since: since === null ? null : { pos: since, toDevice: 0 }, to,
-    filter: { room: { timeline: { limit: config.timeline_limit ?? 0 } } }, fullState: false,
+    session: s,
+    ignored: new Set(),
+    since: since === null ? null : { pos: since, toDevice: 0 },
+    to,
+    filter: { room: { timeline: { limit: config.timeline_limit ?? 0 } } },
+    fullState: false,
   };
-  const upTo = info.membership === "join" ? to : Math.min(to, (await hs.db.findOne("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: userId }]))?.stream ?? to);
+  const upTo =
+    info.membership === "join"
+      ? to
+      : Math.min(
+          to,
+          (
+            await hs.db.findOne("memberships", [
+              { field: "room_id", value: roomId },
+              { field: "user_id", value: userId },
+            ])
+          )?.stream ?? to,
+        );
   if ((config.timeline_limit ?? 0) > 0) {
     const { timeline, timelineEvents } = await roomTimeline(hs, p, roomId, since, upTo);
     room.timeline = timeline.events.map((e: any, i: number) => ({ ...e, room_id: undefined, __stream: timelineEvents[i].stream }));
@@ -285,20 +340,31 @@ async function buildRoom(
 }
 
 async function buildExtensions(
-  hs: Homeserver, s: Session, ext: Record<string, any>, since: number | null, to: number, roomIds: string[], next: ConnectionState,
+  hs: Homeserver,
+  s: Session,
+  ext: Record<string, any>,
+  since: number | null,
+  to: number,
+  roomIds: string[],
+  next: ConnectionState,
 ): Promise<Record<string, any>> {
   const out: Record<string, any> = {};
   const userId = s.userId;
 
   if (ext.to_device?.enabled) {
-    const where = [{ field: "user_id", value: userId }, { field: "device_id", value: s.deviceId }];
+    const where = [
+      { field: "user_id", value: userId },
+      { field: "device_id", value: s.deviceId },
+    ];
     const ackUpTo = Number(ext.to_device.since ?? next.toDeviceSince) || 0;
     if (ackUpTo) await hs.db.delete("to_device", [...where, { field: "stream", operator: "lte", value: ackUpTo }]);
-    const rows = (await hs.db.findMany("to_device", {
-      where: [...where, { field: "stream", operator: "gt", value: ackUpTo }],
-      sortBy: { field: "stream", direction: "asc" },
-      limit: Math.min(Number(ext.to_device.limit ?? 100) || 100, 1000),
-    })).filter((r) => r.stream <= to);
+    const rows = (
+      await hs.db.findMany("to_device", {
+        where: [...where, { field: "stream", operator: "gt", value: ackUpTo }],
+        sortBy: { field: "stream", direction: "asc" },
+        limit: Math.min(Number(ext.to_device.limit ?? 100) || 100, 1000),
+      })
+    ).filter((r) => r.stream <= to);
     const nextBatch = rows.length ? rows[rows.length - 1].stream : ackUpTo;
     next.toDeviceSince = nextBatch;
     out.to_device = { next_batch: String(nextBatch), events: rows.map((r) => ({ sender: r.sender, type: r.type, content: r.content })) };
@@ -333,10 +399,23 @@ async function buildExtensions(
 
   if (ext["io.element.msc4308.thread_subscriptions"]?.enabled) {
     const { threadSubscriptionsExtension } = await import("./threadsubs.ts");
-    out["io.element.msc4308.thread_subscriptions"] = await threadSubscriptionsExtension(hs, userId, ext["io.element.msc4308.thread_subscriptions"], since, to);
+    out["io.element.msc4308.thread_subscriptions"] = await threadSubscriptionsExtension(
+      hs,
+      userId,
+      ext["io.element.msc4308.thread_subscriptions"],
+      since,
+      to,
+    );
   }
   if (ext.receipts?.enabled || ext.typing?.enabled) {
-    const p: SyncParams = { session: s, ignored: new Set(), since: since === null ? null : { pos: since, toDevice: 0 }, to, filter: {}, fullState: false };
+    const p: SyncParams = {
+      session: s,
+      ignored: new Set(),
+      since: since === null ? null : { pos: since, toDevice: 0 },
+      to,
+      filter: {},
+      fullState: false,
+    };
     const receipts: Record<string, any> = {};
     const typing: Record<string, any> = {};
     const joined = new Set(await hs.rooms.roomsForUser(userId));
@@ -360,4 +439,3 @@ function isEmptyExtension(e: Record<string, any>): boolean {
   if (e.device_lists && (e.device_lists.changed.length || e.device_lists.left.length)) return false;
   return true;
 }
-

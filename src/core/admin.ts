@@ -52,7 +52,8 @@ export class AdminService {
   }
 
   async setAdmin(userId: string, admin: boolean): Promise<void> {
-    if (!(await this.hs.db.update("users", [{ field: "user_id", value: userId }], { is_admin: admin }))) throw errors.notFound("Unknown user");
+    if (!(await this.hs.db.update("users", [{ field: "user_id", value: userId }], { is_admin: admin })))
+      throw errors.notFound("Unknown user");
     await this.hs.auth.invalidateUser(userId);
     if (admin) await this.hs.adminRoom?.addAdmin(userId);
     else await this.hs.adminRoom?.removeAdmin(userId);
@@ -74,7 +75,8 @@ export class AdminService {
 
   async resetPassword(userId: string, password: string, logoutDevices = true): Promise<void> {
     const hash = await this.hs.userAuth.hashPassword(password);
-    if (!(await this.hs.db.update("users", [{ field: "user_id", value: userId }], { password_hash: hash }))) throw errors.notFound("Unknown user");
+    if (!(await this.hs.db.update("users", [{ field: "user_id", value: userId }], { password_hash: hash })))
+      throw errors.notFound("Unknown user");
     if (logoutDevices) await this.hs.auth.deleteAllDevices(userId);
   }
 
@@ -84,7 +86,11 @@ export class AdminService {
     if (!user) throw errors.notFound("Unknown user");
     for (const membership of ["join", "invite", "knock"]) {
       for (const roomId of await this.hs.rooms.roomsForUser(userId, membership)) {
-        try { await this.hs.rooms.setMembership(roomId, userId, userId, "leave"); } catch { /* best effort */ }
+        try {
+          await this.hs.rooms.setMembership(roomId, userId, userId, "leave");
+        } catch {
+          /* best effort */
+        }
       }
     }
     await this.hs.auth.deleteAllDevices(userId);
@@ -101,7 +107,8 @@ export class AdminService {
   async createRegistrationToken(opts: { token?: string; usesAllowed?: number | null; expiryTime?: number | null; length?: number } = {}) {
     const token = opts.token ?? randomString(opts.length ?? 16);
     if (!/^[A-Za-z0-9._~-]{1,64}$/.test(token)) throw errors.invalidParam("Invalid token");
-    if (await this.hs.db.findOne("registration_tokens", [{ field: "token", value: token }])) throw errors.invalidParam("Token already exists");
+    if (await this.hs.db.findOne("registration_tokens", [{ field: "token", value: token }]))
+      throw errors.invalidParam("Token already exists");
     const row = { token, uses_allowed: opts.usesAllowed ?? null, pending: 0, completed: 0, expiry_time: opts.expiryTime ?? null };
     await this.hs.db.create("registration_tokens", row);
     return row;
@@ -122,7 +129,12 @@ export class AdminService {
     const from = opts.from ?? 0;
     const page = rows.slice(from, from + (opts.limit ?? 100));
     return {
-      rooms: await Promise.all(page.map(async (r): Promise<Record<string, any>> => ({ ...r, joined_members: (await this.hs.rooms.joinedMembers(r.room_id)).length }))),
+      rooms: await Promise.all(
+        page.map(async (r): Promise<Record<string, any>> => ({
+          ...r,
+          joined_members: (await this.hs.rooms.joinedMembers(r.room_id)).length,
+        })),
+      ),
       total: rows.length,
     };
   }
@@ -132,7 +144,12 @@ export class AdminService {
     if (!(await this.hs.rooms.exists(roomId))) throw errors.notFound("Unknown room");
     const kicked: string[] = [];
     for (const membership of ["join", "invite", "knock"]) {
-      for (const row of await this.hs.db.findMany("memberships", { where: [{ field: "room_id", value: roomId }, { field: "membership", value: membership }] })) {
+      for (const row of await this.hs.db.findMany("memberships", {
+        where: [
+          { field: "room_id", value: roomId },
+          { field: "membership", value: membership },
+        ],
+      })) {
         if (!this.hs.isLocalUser(row.user_id)) continue;
         try {
           // Members leave on their own behalf, which is always allowed.
@@ -148,7 +165,16 @@ export class AdminService {
     if (opts.purge) {
       const where = [{ field: "room_id", value: roomId }];
       await this.hs.transaction(async (db) => {
-        for (const table of ["events", "state_snapshots", "current_state", "memberships", "receipts", "relations", "notifications", "rooms"]) {
+        for (const table of [
+          "events",
+          "state_snapshots",
+          "current_state",
+          "memberships",
+          "receipts",
+          "relations",
+          "notifications",
+          "rooms",
+        ]) {
           await db.delete(table, where);
         }
       });
@@ -210,7 +236,9 @@ export class AdminService {
     const rooms = await this.hs.db.findMany("rooms", { where: [{ field: "creator", value: noticeUser }] });
     for (const room of rooms) {
       const tag = await this.hs.db.findOne("account_data", [
-        { field: "user_id", value: userId }, { field: "room_id", value: room.room_id }, { field: "type", value: "m.tag" },
+        { field: "user_id", value: userId },
+        { field: "room_id", value: room.room_id },
+        { field: "type", value: "m.tag" },
       ]);
       if (tag?.content?.tags?.["m.server_notice"]) return room.room_id;
     }
@@ -219,9 +247,15 @@ export class AdminService {
       name: this.hs.config.serverNotices.roomName,
       power_level_content_override: { users: { [noticeUser]: 100 }, events_default: 100 },
     });
-    await this.hs.streams.write((stream) => this.hs.db.upsert("account_data", {
-      user_id: userId, room_id, type: "m.tag", content: { tags: { "m.server_notice": { order: 0.5 } } }, stream,
-    }));
+    await this.hs.streams.write((stream) =>
+      this.hs.db.upsert("account_data", {
+        user_id: userId,
+        room_id,
+        type: "m.tag",
+        content: { tags: { "m.server_notice": { order: 0.5 } } },
+        stream,
+      }),
+    );
     return room_id;
   }
 }

@@ -31,7 +31,11 @@ for (const file of inputs) {
   for (const line of readFileSync(file, "utf8").split("\n")) {
     if (!line.startsWith("{")) continue;
     let ev: { Action?: string; Test?: string; Package?: string };
-    try { ev = JSON.parse(line); } catch { continue; }
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      continue;
+    }
     if (!ev.Test || !["pass", "fail", "skip"].includes(ev.Action ?? "")) continue;
     ledger.tests[ev.Test] = { status: ev.Action!, pkg: (ev.Package ?? "").replace(/^.*\/tests\/?/, "") || "federation" };
   }
@@ -43,7 +47,11 @@ const passing = (list: typeof entries) => list.filter(([, r]) => r.status === "p
 const counted = (list: typeof entries) => list.filter(([, r]) => r.status !== "skip").length;
 if (inputs.length) {
   ledger.history.push({
-    note, top: passing(top), topTotal: counted(top), sub: passing(entries), subTotal: counted(entries),
+    note,
+    top: passing(top),
+    topTotal: counted(top),
+    sub: passing(entries),
+    subTotal: counted(entries),
   });
 }
 writeFileSync(LEDGER, JSON.stringify(ledger, null, 1) + "\n");
@@ -57,7 +65,10 @@ const bar = (a: number, b: number, width = 20) => {
 const pkgs = new Map<string, typeof entries>();
 for (const e of top) pkgs.set(e[1].pkg, [...(pkgs.get(e[1].pkg) ?? []), e]);
 
-const failing = top.filter(([, r]) => r.status === "fail").map(([n, r]) => `- \`${r.pkg}\` ${n}`).sort();
+const failing = top
+  .filter(([, r]) => r.status === "fail")
+  .map(([n, r]) => `- \`${r.pkg}\` ${n}`)
+  .sort();
 const last = ledger.history.slice(-15).reverse();
 const block = [
   START,
@@ -70,8 +81,9 @@ const block = [
   "",
   "| Area | Passing | |",
   "|---|---|---|",
-  ...[...pkgs].sort(([a], [b]) => a.localeCompare(b)).map(([pkg, list]) =>
-    `| ${pkg} | ${passing(list)} / ${counted(list)} | \`${bar(passing(list), counted(list), 10)}\` |`),
+  ...[...pkgs]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([pkg, list]) => `| ${pkg} | ${passing(list)} / ${counted(list)} | \`${bar(passing(list), counted(list), 10)}\` |`),
   "",
   "<details><summary>Progress history</summary>",
   "",
@@ -91,8 +103,9 @@ const block = [
 
 const readme = readFileSync(README, "utf8");
 const at = readme.indexOf(START);
-const updated = at >= 0
-  ? readme.slice(0, at) + block + readme.slice(readme.indexOf(END) + END.length)
-  : readme.replace(/(### Complement\n)/, `$1\n${block}\n`);
+const updated =
+  at >= 0
+    ? readme.slice(0, at) + block + readme.slice(readme.indexOf(END) + END.length)
+    : readme.replace(/(### Complement\n)/, `$1\n${block}\n`);
 writeFileSync(README, updated);
 console.log(`${passing(top)}/${counted(top)} top-level, ${passing(entries)}/${counted(entries)} subtests`);

@@ -20,7 +20,12 @@ const parseStreamToken = (raw: string | null, fallback: number): number => {
 };
 
 async function roomAccountData(hs: Homeserver, userId: string, roomId: string): Promise<Record<string, unknown>[]> {
-  const rows = await hs.db.findMany("account_data", { where: [{ field: "user_id", value: userId }, { field: "room_id", value: roomId }] });
+  const rows = await hs.db.findMany("account_data", {
+    where: [
+      { field: "user_id", value: userId },
+      { field: "room_id", value: roomId },
+    ],
+  });
   return rows.map((r) => ({ type: r.type, content: r.content }));
 }
 
@@ -28,7 +33,10 @@ async function roomAccountData(hs: Homeserver, userId: string, roomId: string): 
 async function roomInfo(hs: Homeserver, s: Session, roomId: string, limit: number): Promise<Record<string, unknown>> {
   const state = await visibleState(hs, roomId, s.userId);
   // Peekers who never were in the room have no membership.
-  const row = await hs.db.findOne("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: s.userId }]);
+  const row = await hs.db.findOne("memberships", [
+    { field: "room_id", value: roomId },
+    { field: "user_id", value: s.userId },
+  ]);
   const membership: string | undefined = row?.membership ?? undefined;
   const position = await hs.streams.position();
   const { events, end } = await paginate(hs, s.userId, roomId, { from: { depth: null, stream: position }, to: null, dir: "b", limit });
@@ -74,10 +82,19 @@ export function registerLegacyRoutes(r: Router): void {
           rooms.push({ room_id: roomId, membership, ...(invite ? { invite: hs.rooms.formatEvent(invite, viewerOf(s)) } : {}) });
           continue;
         }
-        try { rooms.push(await roomInfo(hs, s, roomId, limit)); } catch { /* not visible (e.g. forgotten) */ }
+        try {
+          rooms.push(await roomInfo(hs, s, roomId, limit));
+        } catch {
+          /* not visible (e.g. forgotten) */
+        }
       }
     }
-    const account = await hs.db.findMany("account_data", { where: [{ field: "user_id", value: s.userId }, { field: "room_id", value: "" }] });
+    const account = await hs.db.findMany("account_data", {
+      where: [
+        { field: "user_id", value: s.userId },
+        { field: "room_id", value: "" },
+      ],
+    });
     return {
       end: `s${await hs.streams.position()}`,
       rooms,

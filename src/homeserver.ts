@@ -149,9 +149,15 @@ const consoleLogger: Logger = {
 };
 
 const STREAM_TABLES: [string, string][] = [
-  ["events", "stream"], ["account_data", "stream"], ["receipts", "stream"], ["to_device", "stream"],
-  ["device_keys", "stream"], ["cross_signing_keys", "stream"], ["device_list_changes", "stream"],
-  ["presence", "stream"], ["memberships", "stream"],
+  ["events", "stream"],
+  ["account_data", "stream"],
+  ["receipts", "stream"],
+  ["to_device", "stream"],
+  ["device_keys", "stream"],
+  ["cross_signing_keys", "stream"],
+  ["device_list_changes", "stream"],
+  ["presence", "stream"],
+  ["memberships", "stream"],
 ];
 
 export class Homeserver extends EventEmitter {
@@ -204,9 +210,13 @@ export class Homeserver extends EventEmitter {
       serverName: options.homeserver,
       publicBaseUrl: options.publicBaseUrl ?? null,
       federationAddress: options.federationAddress ?? null,
-      support: options.support && (options.support.contacts?.length || options.support.supportPage)
-        ? { contacts: options.support.contacts ?? [], ...(options.support.supportPage ? { support_page: options.support.supportPage } : {}) }
-        : null,
+      support:
+        options.support && (options.support.contacts?.length || options.support.supportPage)
+          ? {
+              contacts: options.support.contacts ?? [],
+              ...(options.support.supportPage ? { support_page: options.support.supportPage } : {}),
+            }
+          : null,
       loginViaExistingSession: options.loginViaExistingSession ?? true,
       threepid: { ...options.threepid, identityServerProtocol: options.threepid?.identityServerProtocol ?? "https" },
       registrationSharedSecret: options.registrationSharedSecret ?? null,
@@ -260,9 +270,10 @@ export class Homeserver extends EventEmitter {
     this.adminRoom = adminRoom && adminRoom.enabled !== false ? new AdminRoomService(this, adminRoom) : null;
     this.sso = options.sso?.providers.length ? new SsoService(this, options.sso) : null;
     if (this.sso && !options.publicBaseUrl) throw new Error("`publicBaseUrl` is required when SSO is configured");
-    this.rateLimits = options.rateLimits === false
-      ? new RateLimits(null)
-      : new RateLimits(options.rateLimits?.limiter ?? memoryRateLimiter(), options.rateLimits?.rules);
+    this.rateLimits =
+      options.rateLimits === false
+        ? new RateLimits(null)
+        : new RateLimits(options.rateLimits?.limiter ?? memoryRateLimiter(), options.rateLimits?.rules);
     const cleanupEvery = options.cleanupIntervalMs ?? 10 * 60_000;
     if (cleanupEvery > 0) {
       this.cleanupTimer = setInterval(() => void this.cleanup().catch((err) => this.logger.warn("Cleanup failed", err)), cleanupEvery);
@@ -317,7 +328,12 @@ export class Homeserver extends EventEmitter {
     const now = Date.now();
     await this.db.delete("access_tokens", [{ field: "expires_ts", operator: "lt", value: now - 7 * 24 * 3600_000 }]);
     await this.db.delete("login_tokens", [{ field: "expires_ts", operator: "lt", value: now }]);
-    for (const m of await this.db.findMany("media", { where: [{ field: "pending", value: true }, { field: "created_ts", operator: "lt", value: now - 24 * 3600_000 }] })) {
+    for (const m of await this.db.findMany("media", {
+      where: [
+        { field: "pending", value: true },
+        { field: "created_ts", operator: "lt", value: now - 24 * 3600_000 },
+      ],
+    })) {
       await this.media.delete?.(m.media_id);
       await this.db.delete("media", [{ field: "media_id", value: m.media_id }]);
     }

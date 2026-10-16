@@ -30,7 +30,7 @@ export class TypingService {
     this.apply(msg);
     await this.hs.cluster.publish("typing", msg);
     this.hs.notifier.notify(await this.hs.rooms.joinedMembers(roomId));
-    if (this.hs.isLocalUser(userId) && typing !== wasTyping || (typing && this.hs.isLocalUser(userId))) {
+    if ((this.hs.isLocalUser(userId) && typing !== wasTyping) || (typing && this.hs.isLocalUser(userId))) {
       await this.hs.federation.onTyping(roomId, userId, typing).catch(() => {});
     }
   }
@@ -48,7 +48,10 @@ export class TypingService {
         if (r?.users.get(msg.userId) === timer) {
           r.users.delete(msg.userId);
           r.stream = Math.max(r.stream, msg.stream) + 0.5;
-          void this.hs.rooms.joinedMembers(msg.roomId).then((m) => this.hs.notifier.notify(m)).catch(() => {});
+          void this.hs.rooms
+            .joinedMembers(msg.roomId)
+            .then((m) => this.hs.notifier.notify(m))
+            .catch(() => {});
         }
       }, msg.timeoutMs);
       timer.unref?.();

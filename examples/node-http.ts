@@ -15,9 +15,15 @@ const homeserver = createHomeserver({
 });
 
 // Log failed requests (a 401 is also the normal first step of interactive authentication).
-homeserver.on("request", (r: { method: string; path: string; status: number; durationMs: number; error?: { errcode?: string; error?: string } }) => {
-  if (r.status >= 400) console.warn(`${r.method} ${r.path} -> ${r.status} ${r.error?.errcode ?? ""} ${r.error?.error ?? ""} (${Math.round(r.durationMs)} ms)`);
-});
+homeserver.on(
+  "request",
+  (r: { method: string; path: string; status: number; durationMs: number; error?: { errcode?: string; error?: string } }) => {
+    if (r.status >= 400)
+      console.warn(
+        `${r.method} ${r.path} -> ${r.status} ${r.error?.errcode ?? ""} ${r.error?.error ?? ""} (${Math.round(r.durationMs)} ms)`,
+      );
+  },
+);
 
 const server = createServer(getNodeHandler(homeserver));
 server.listen(Number(process.env.PORT ?? 8008), () => console.log("Matrix homeserver listening on", server.address()));

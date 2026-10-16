@@ -30,7 +30,11 @@ export interface S3MediaOptions {
 const sha256 = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex");
 const hmac = (key: string | Buffer, data: string) => createHmac("sha256", key).update(data).digest();
 // RFC 3986 encoding as SigV4 requires (keeping "/" in paths).
-const encodePath = (path: string) => path.split("/").map((s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)).join("/");
+const encodePath = (path: string) =>
+  path
+    .split("/")
+    .map((s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`))
+    .join("/");
 
 /**
  * Media stored in an S3 bucket (AWS S3 or any S3-compatible store). Requests are signed with
@@ -58,7 +62,10 @@ export function s3Media(options: S3MediaOptions): MediaAdapter {
 
   const send = async (method: string, url: URL, body?: Uint8Array, extra: Record<string, string> = {}): Promise<Response> => {
     const now = new Date();
-    const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    const amzDate = now
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\.\d{3}/, "");
     const day = amzDate.slice(0, 8);
     const payloadHash = sha256(body ?? "");
     const headers: Record<string, string> = {
@@ -84,7 +91,10 @@ export function s3Media(options: S3MediaOptions): MediaAdapter {
     const { host: _host, ...sent } = headers;
     return fetch(url, {
       method,
-      headers: { ...sent, authorization: `AWS4-HMAC-SHA256 Credential=${options.accessKeyId}/${scope}, SignedHeaders=${names.join(";")}, Signature=${signature}` },
+      headers: {
+        ...sent,
+        authorization: `AWS4-HMAC-SHA256 Credential=${options.accessKeyId}/${scope}, SignedHeaders=${names.join(";")}, Signature=${signature}`,
+      },
       body,
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -105,7 +115,10 @@ export function s3Media(options: S3MediaOptions): MediaAdapter {
     },
     async get(mediaId) {
       const res = await send("GET", objectUrl(mediaId));
-      if (res.status === 404) { await res.arrayBuffer(); return null; }
+      if (res.status === 404) {
+        await res.arrayBuffer();
+        return null;
+      }
       if (!res.ok) await fail("download", res);
       return new Uint8Array(await res.arrayBuffer());
     },

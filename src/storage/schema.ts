@@ -11,10 +11,18 @@ const j = { type: "json" } as const;
 export const schema: Schema = {
   users: {
     fields: {
-      user_id: s, localpart: s, password_hash: sn, displayname: sn, avatar_url: sn,
-      is_guest: b, is_admin: b, deactivated: b, created_ts: n,
+      user_id: s,
+      localpart: s,
+      password_hash: sn,
+      displayname: sn,
+      avatar_url: sn,
+      is_guest: b,
+      is_admin: b,
+      deactivated: b,
+      created_ts: n,
       // Account moderation (reversible): locked accounts cannot be used, suspended ones only in part.
-      locked: bn, suspended: bn,
+      locked: bn,
+      suspended: bn,
     },
     primaryKey: ["user_id"],
   },
@@ -33,8 +41,18 @@ export const schema: Schema = {
   },
   events: {
     fields: {
-      event_id: s, room_id: s, stream: n, depth: n, type: s, state_key: sn, sender: s,
-      json: j, state_snapshot: n, txn_id: sn, txn_token: sn, redacted_by: sn,
+      event_id: s,
+      room_id: s,
+      stream: n,
+      depth: n,
+      type: s,
+      state_key: sn,
+      sender: s,
+      json: j,
+      state_snapshot: n,
+      txn_id: sn,
+      txn_token: sn,
+      redacted_by: sn,
       /** Some prev_events were never fetched: clients must treat the timeline as limited here. */
       gap: { type: "boolean", required: false },
     },
@@ -54,7 +72,15 @@ export const schema: Schema = {
   partial_state_rooms: {
     // MSC3902: rooms joined with partial state; `completed_stream` is set once the full state is known.
     // `pending_device_users`: device list updates received for users we could not place yet.
-    fields: { room_id: s, join_event_id: s, origin: s, servers: j, created_ts: n, completed_stream: nn, pending_device_users: { type: "json", required: false } },
+    fields: {
+      room_id: s,
+      join_event_id: s,
+      origin: s,
+      servers: j,
+      created_ts: n,
+      completed_stream: nn,
+      pending_device_users: { type: "json", required: false },
+    },
     primaryKey: ["room_id"],
   },
   event_edges: {
@@ -80,7 +106,10 @@ export const schema: Schema = {
   notifications: {
     fields: { user_id: s, room_id: s, event_id: s, stream: n, highlight: b, thread_id: s, actions: j, ts: n },
     primaryKey: ["user_id", "event_id"],
-    indexes: [["user_id", "room_id"], ["user_id", "stream"]],
+    indexes: [
+      ["user_id", "room_id"],
+      ["user_id", "stream"],
+    ],
   },
   sso_identities: {
     fields: { idp_id: s, subject: s, user_id: s },
@@ -210,8 +239,17 @@ export const schema: Schema = {
   },
   delayed_events: {
     fields: {
-      delay_id: s, user_id: s, device_id: s, room_id: s, event_type: s, state_key: sn, content: j,
-      delay_ms: n, send_at: n, running_since: n, txn_key: sn,
+      delay_id: s,
+      user_id: s,
+      device_id: s,
+      room_id: s,
+      event_type: s,
+      state_key: sn,
+      content: j,
+      delay_ms: n,
+      send_at: n,
+      running_since: n,
+      txn_key: sn,
     },
     primaryKey: ["delay_id"],
     indexes: [["user_id"], ["send_at"], ["room_id"]],
@@ -224,8 +262,15 @@ export const schema: Schema = {
   // Third-party identifiers (email, phone) validated by this server and attached to accounts.
   threepid_sessions: {
     fields: {
-      sid: s, client_secret: s, medium: s, address: s, token: s, send_attempt: n,
-      next_link: sn, created_ts: n, validated_ts: nn,
+      sid: s,
+      client_secret: s,
+      medium: s,
+      address: s,
+      token: s,
+      send_attempt: n,
+      next_link: sn,
+      created_ts: n,
+      validated_ts: nn,
     },
     primaryKey: ["sid"],
     indexes: [["client_secret"]],

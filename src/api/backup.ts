@@ -7,8 +7,12 @@ import type { RequestContext, Router } from "../http/router.ts";
 
 async function latestVersion(hs: Homeserver, userId: string) {
   const rows = await hs.db.findMany("backup_versions", {
-    where: [{ field: "user_id", value: userId }, { field: "deleted", value: false }],
-    sortBy: { field: "version", direction: "desc" }, limit: 1,
+    where: [
+      { field: "user_id", value: userId },
+      { field: "deleted", value: false },
+    ],
+    sortBy: { field: "version", direction: "desc" },
+    limit: 1,
   });
   return rows[0] ?? null;
 }
@@ -17,18 +21,31 @@ async function getVersion(hs: Homeserver, userId: string, version: string | null
   if (version === null) return latestVersion(hs, userId);
   const n = Number(version);
   if (!Number.isInteger(n)) return null;
-  const row = await hs.db.findOne("backup_versions", [{ field: "user_id", value: userId }, { field: "version", value: n }]);
+  const row = await hs.db.findOne("backup_versions", [
+    { field: "user_id", value: userId },
+    { field: "version", value: n },
+  ]);
   return row && !row.deleted ? row : null;
 }
 
 async function countKeys(hs: Homeserver, userId: string, version: number): Promise<number> {
-  return (await hs.db.findMany("backup_keys", { where: [{ field: "user_id", value: userId }, { field: "version", value: version }] })).length;
+  return (
+    await hs.db.findMany("backup_keys", {
+      where: [
+        { field: "user_id", value: userId },
+        { field: "version", value: version },
+      ],
+    })
+  ).length;
 }
 
 async function describe(hs: Homeserver, row: Record<string, any>) {
   return {
-    algorithm: row.algorithm, auth_data: row.auth_data, version: String(row.version),
-    etag: String(row.etag), count: await countKeys(hs, row.user_id, row.version),
+    algorithm: row.algorithm,
+    auth_data: row.auth_data,
+    version: String(row.version),
+    etag: String(row.etag),
+    count: await countKeys(hs, row.user_id, row.version),
   };
 }
 
@@ -54,10 +71,17 @@ export function registerBackupRoutes(r: Router): void {
     const s = await ctx.auth();
     const body = await ctx.json();
     if (typeof body.algorithm !== "string" || !isObject(body.auth_data)) throw errors.badJson("algorithm and auth_data are required");
-    const max = (await ctx.hs.db.findMany("backup_versions", { where: [{ field: "user_id", value: s.userId }] }))
-      .reduce((m, v) => Math.max(m, v.version), 0);
+    const max = (await ctx.hs.db.findMany("backup_versions", { where: [{ field: "user_id", value: s.userId }] })).reduce(
+      (m, v) => Math.max(m, v.version),
+      0,
+    );
     await ctx.hs.db.create("backup_versions", {
-      user_id: s.userId, version: max + 1, algorithm: body.algorithm, auth_data: body.auth_data, etag: 0, deleted: false,
+      user_id: s.userId,
+      version: max + 1,
+      algorithm: body.algorithm,
+      auth_data: body.auth_data,
+      etag: 0,
+      deleted: false,
     });
     return { version: String(max + 1) };
   });
@@ -79,7 +103,14 @@ export function registerBackupRoutes(r: Router): void {
     if (body.version !== undefined && String(body.version) !== ctx.params.version) throw errors.invalidParam("Version mismatch");
     if (body.algorithm !== row.algorithm) throw errors.invalidParam("Algorithm cannot be changed");
     if (!isObject(body.auth_data)) throw errors.badJson("auth_data is required");
-    await ctx.hs.db.update("backup_versions", [{ field: "user_id", value: s.userId }, { field: "version", value: row.version }], { auth_data: body.auth_data });
+    await ctx.hs.db.update(
+      "backup_versions",
+      [
+        { field: "user_id", value: s.userId },
+        { field: "version", value: row.version },
+      ],
+      { auth_data: body.auth_data },
+    );
     return {};
   });
 
@@ -87,8 +118,18 @@ export function registerBackupRoutes(r: Router): void {
     const s = await ctx.auth();
     const row = await getVersion(ctx.hs, s.userId, ctx.params.version);
     if (!row) throw errors.notFound("Unknown backup version");
-    await ctx.hs.db.update("backup_versions", [{ field: "user_id", value: s.userId }, { field: "version", value: row.version }], { deleted: true });
-    await ctx.hs.db.delete("backup_keys", [{ field: "user_id", value: s.userId }, { field: "version", value: row.version }]);
+    await ctx.hs.db.update(
+      "backup_versions",
+      [
+        { field: "user_id", value: s.userId },
+        { field: "version", value: row.version },
+      ],
+      { deleted: true },
+    );
+    await ctx.hs.db.delete("backup_keys", [
+      { field: "user_id", value: s.userId },
+      { field: "version", value: row.version },
+    ]);
     return {};
   });
 
@@ -109,7 +150,12 @@ export function registerBackupRoutes(r: Router): void {
     for (const [roomId, room] of Object.entries(rooms)) {
       if (!isObject(room) || !isObject(room.sessions)) continue;
       for (const [sessionId, data] of Object.entries(room.sessions)) {
-        const where = [{ field: "user_id", value: s.userId }, { field: "version", value: row.version }, { field: "room_id", value: roomId }, { field: "session_id", value: sessionId }];
+        const where = [
+          { field: "user_id", value: s.userId },
+          { field: "version", value: row.version },
+          { field: "room_id", value: roomId },
+          { field: "session_id", value: sessionId },
+        ];
         const existing = await hs.db.findOne("backup_keys", where);
         if (!better(data as Record<string, any>, existing?.data ?? null)) continue;
         await hs.db.upsert("backup_keys", { user_id: s.userId, version: row.version, room_id: roomId, session_id: sessionId, data });
@@ -117,14 +163,25 @@ export function registerBackupRoutes(r: Router): void {
       }
     }
     const etag = changed ? row.etag + 1 : row.etag;
-    if (changed) await hs.db.update("backup_versions", [{ field: "user_id", value: s.userId }, { field: "version", value: row.version }], { etag });
+    if (changed)
+      await hs.db.update(
+        "backup_versions",
+        [
+          { field: "user_id", value: s.userId },
+          { field: "version", value: row.version },
+        ],
+        { etag },
+      );
     return { etag: String(etag), count: await countKeys(hs, s.userId, row.version) };
   };
 
   const getKeys = async (ctx: RequestContext) => {
     const s = await ctx.auth();
     const { row } = await requireCurrentVersion(ctx, s.userId);
-    const where: any[] = [{ field: "user_id", value: s.userId }, { field: "version", value: row.version }];
+    const where: any[] = [
+      { field: "user_id", value: s.userId },
+      { field: "version", value: row.version },
+    ];
     if (ctx.params.roomId) where.push({ field: "room_id", value: ctx.params.roomId });
     if (ctx.params.sessionId) where.push({ field: "session_id", value: ctx.params.sessionId });
     const keys = await ctx.hs.db.findMany("backup_keys", { where });
@@ -133,7 +190,7 @@ export function registerBackupRoutes(r: Router): void {
       return keys[0].data;
     }
     const rooms: Record<string, any> = {};
-    for (const k of keys) ((rooms[k.room_id] ??= { sessions: {} }).sessions[k.session_id] = k.data);
+    for (const k of keys) (rooms[k.room_id] ??= { sessions: {} }).sessions[k.session_id] = k.data;
     if (ctx.params.roomId) return rooms[ctx.params.roomId] ?? { sessions: {} };
     return { rooms };
   };
@@ -141,12 +198,22 @@ export function registerBackupRoutes(r: Router): void {
   const deleteKeys = async (ctx: RequestContext) => {
     const s = await ctx.auth();
     const { row } = await requireCurrentVersion(ctx, s.userId);
-    const where: any[] = [{ field: "user_id", value: s.userId }, { field: "version", value: row.version }];
+    const where: any[] = [
+      { field: "user_id", value: s.userId },
+      { field: "version", value: row.version },
+    ];
     if (ctx.params.roomId) where.push({ field: "room_id", value: ctx.params.roomId });
     if (ctx.params.sessionId) where.push({ field: "session_id", value: ctx.params.sessionId });
     await ctx.hs.db.delete("backup_keys", where);
     const etag = row.etag + 1;
-    await ctx.hs.db.update("backup_versions", [{ field: "user_id", value: s.userId }, { field: "version", value: row.version }], { etag });
+    await ctx.hs.db.update(
+      "backup_versions",
+      [
+        { field: "user_id", value: s.userId },
+        { field: "version", value: row.version },
+      ],
+      { etag },
+    );
     return { etag: String(etag), count: await countKeys(ctx.hs, s.userId, row.version) };
   };
 

@@ -6,8 +6,25 @@ import { canonicalJsonResponse } from "../http/handler.ts";
 import { wellKnown } from "./account.ts";
 
 export const SPEC_VERSIONS = [
-  "r0.0.1", "r0.1.0", "r0.2.0", "r0.3.0", "r0.4.0", "r0.5.0", "r0.6.0", "r0.6.1",
-  "v1.1", "v1.2", "v1.3", "v1.4", "v1.5", "v1.6", "v1.7", "v1.8", "v1.9", "v1.10", "v1.11",
+  "r0.0.1",
+  "r0.1.0",
+  "r0.2.0",
+  "r0.3.0",
+  "r0.4.0",
+  "r0.5.0",
+  "r0.6.0",
+  "r0.6.1",
+  "v1.1",
+  "v1.2",
+  "v1.3",
+  "v1.4",
+  "v1.5",
+  "v1.6",
+  "v1.7",
+  "v1.8",
+  "v1.9",
+  "v1.10",
+  "v1.11",
 ];
 
 export function registerMiscRoutes(r: Router): void {
@@ -60,12 +77,18 @@ export function registerMiscRoutes(r: Router): void {
   r.get("/_matrix/key/v2/server", (ctx) => {
     const hs = ctx.hs;
     const key = hs.signingKey;
-    return canonicalJsonResponse(signJson({
-      server_name: hs.serverName,
-      valid_until_ts: Date.now() + 24 * 3600_000,
-      verify_keys: { [`ed25519:${key.keyId}`]: { key: key.publicKeyBase64 } },
-      old_verify_keys: {},
-    }, hs.serverName, key));
+    return canonicalJsonResponse(
+      signJson(
+        {
+          server_name: hs.serverName,
+          valid_until_ts: Date.now() + 24 * 3600_000,
+          verify_keys: { [`ed25519:${key.keyId}`]: { key: key.publicKeyBase64 } },
+          old_verify_keys: {},
+        },
+        hs.serverName,
+        key,
+      ),
+    );
   });
 
   r.get("/_matrix/federation/v1/version", () => ({ server: { name: "matrix-nodejs-homeserver", version: "0.1.0" } }));

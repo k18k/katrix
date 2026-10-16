@@ -7,7 +7,12 @@ async function requireAdmin(ctx: RequestContext) {
   if (!s.isAdmin) throw errors.forbidden("You are not a server admin");
   // Every admin API call that changes something is audited.
   if (ctx.method !== "GET") {
-    await ctx.hs.audit.record({ action: "admin_action", actor: s.userId, ip: ctx.ip, details: { method: ctx.method, path: ctx.url.pathname } });
+    await ctx.hs.audit.record({
+      action: "admin_action",
+      actor: s.userId,
+      ip: ctx.ip,
+      details: { method: ctx.method, path: ctx.url.pathname },
+    });
   }
   return s;
 }
@@ -19,7 +24,8 @@ export function registerAdminRoutes(r: Router): void {
     const body = await ctx.json();
     if (typeof body.user_id !== "string" || !isObject(body.content)) throw errors.badJson("user_id and content are required");
     const eventId = await ctx.hs.admin.sendServerNotice(body.user_id, body.content, {
-      type: typeof body.type === "string" ? body.type : undefined, txnId: ctx.params.txnId,
+      type: typeof body.type === "string" ? body.type : undefined,
+      txnId: ctx.params.txnId,
     });
     return { event_id: eventId };
   };
@@ -46,7 +52,8 @@ export function registerAdminRoutes(r: Router): void {
       },
     };
   };
-  const lock = moderation("locked"), suspend = moderation("suspended");
+  const lock = moderation("locked"),
+    suspend = moderation("suspended");
   r.get("/_matrix/client/v1/admin/lock/:userId", lock.get);
   r.put("/_matrix/client/v1/admin/lock/:userId", lock.put);
   r.get("/_matrix/client/v1/admin/suspend/:userId", suspend.get);
@@ -59,8 +66,10 @@ export function registerAdminRoutes(r: Router): void {
     await requireAdmin(ctx);
     const from = Number(ctx.query.get("from") ?? 0) || 0;
     const res = await ctx.hs.admin.listUsers({
-      from, limit: Number(ctx.query.get("limit") ?? 100) || 100,
-      search: ctx.query.get("name") ?? undefined, includeDeactivated: ctx.query.get("deactivated") === "true",
+      from,
+      limit: Number(ctx.query.get("limit") ?? 100) || 100,
+      search: ctx.query.get("name") ?? undefined,
+      includeDeactivated: ctx.query.get("deactivated") === "true",
     });
     return { users: res.users, total: res.total, ...(res.next !== null ? { next_token: String(res.next) } : {}) };
   });
@@ -78,9 +87,14 @@ export function registerAdminRoutes(r: Router): void {
     const existing = await ctx.hs.admin.getUser(userId);
     if (!existing) {
       await ctx.hs.admin.createUser(userId.slice(1).split(":")[0], {
-        password: body.password, admin: body.admin === true, displayname: body.displayname,
+        password: body.password,
+        admin: body.admin === true,
+        displayname: body.displayname,
       });
-      return new Response(JSON.stringify(await ctx.hs.admin.getUser(userId)), { status: 201, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify(await ctx.hs.admin.getUser(userId)), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
     }
     if (typeof body.password === "string") await ctx.hs.admin.resetPassword(userId, body.password, body.logout_devices !== false);
     if (typeof body.admin === "boolean") await ctx.hs.admin.setAdmin(userId, body.admin);
@@ -113,7 +127,10 @@ export function registerAdminRoutes(r: Router): void {
     await requireAdmin(ctx);
     const body = await ctx.json();
     return ctx.hs.admin.createRegistrationToken({
-      token: body.token, usesAllowed: body.uses_allowed, expiryTime: body.expiry_time, length: body.length,
+      token: body.token,
+      usesAllowed: body.uses_allowed,
+      expiryTime: body.expiry_time,
+      length: body.length,
     });
   });
   r.delete("/_synapse/admin/v1/registration_tokens/:token", async (ctx) => {
@@ -126,8 +143,12 @@ export function registerAdminRoutes(r: Router): void {
     await requireAdmin(ctx);
     if (!ctx.hs.audit.enabled) throw errors.unrecognized("The audit log is disabled");
     const rows = await ctx.hs.audit.query({
-      actor: ctx.query.get("actor") ?? undefined, target: ctx.query.get("target") ?? undefined, action: ctx.query.get("action") ?? undefined,
-      since: Number(ctx.query.get("since")) || undefined, before: Number(ctx.query.get("from")) || undefined, limit: Number(ctx.query.get("limit")) || 100,
+      actor: ctx.query.get("actor") ?? undefined,
+      target: ctx.query.get("target") ?? undefined,
+      action: ctx.query.get("action") ?? undefined,
+      since: Number(ctx.query.get("since")) || undefined,
+      before: Number(ctx.query.get("from")) || undefined,
+      limit: Number(ctx.query.get("limit")) || 100,
     });
     const out: Record<string, any> = { entries: rows };
     if (rows.length) out.next_token = String(rows[rows.length - 1].id);
@@ -136,27 +157,47 @@ export function registerAdminRoutes(r: Router): void {
 
   r.get("/_synapse/admin/v1/event_reports", async (ctx) => {
     await requireAdmin(ctx);
-    const rows = await ctx.hs.db.findMany("event_reports", { sortBy: { field: "id", direction: "desc" }, limit: Number(ctx.query.get("limit")) || 100 });
+    const rows = await ctx.hs.db.findMany("event_reports", {
+      sortBy: { field: "id", direction: "desc" },
+      limit: Number(ctx.query.get("limit")) || 100,
+    });
     return {
-      event_reports: rows.map((r) => ({ id: r.id, received_ts: r.ts, room_id: r.room_id, event_id: r.event_id, user_id: r.reporter, reason: r.reason, score: r.score, resolved: r.resolved })),
+      event_reports: rows.map((r) => ({
+        id: r.id,
+        received_ts: r.ts,
+        room_id: r.room_id,
+        event_id: r.event_id,
+        user_id: r.reporter,
+        reason: r.reason,
+        score: r.score,
+        resolved: r.resolved,
+      })),
       total: rows.length,
     };
   });
   r.post("/_synapse/admin/v1/event_reports/:id/resolve", async (ctx) => {
     await requireAdmin(ctx);
-    if (!(await ctx.hs.db.update("event_reports", [{ field: "id", value: Number(ctx.params.id) }], { resolved: true }))) throw errors.notFound("Unknown report");
+    if (!(await ctx.hs.db.update("event_reports", [{ field: "id", value: Number(ctx.params.id) }], { resolved: true })))
+      throw errors.notFound("Unknown report");
     return {};
   });
 
   r.get("/_synapse/admin/v1/rooms", async (ctx) => {
     await requireAdmin(ctx);
-    const res = await ctx.hs.admin.listRooms({ from: Number(ctx.query.get("from") ?? 0) || 0, limit: Number(ctx.query.get("limit") ?? 100) || 100 });
+    const res = await ctx.hs.admin.listRooms({
+      from: Number(ctx.query.get("from") ?? 0) || 0,
+      limit: Number(ctx.query.get("limit") ?? 100) || 100,
+    });
     return { rooms: res.rooms, total_rooms: res.total };
   });
   r.delete("/_synapse/admin/v1/rooms/:roomId", async (ctx) => {
     const s = await requireAdmin(ctx);
     const body = await ctx.json();
-    const { kicked } = await ctx.hs.admin.deleteRoom(ctx.params.roomId, { actor: s.userId, reason: body.message, purge: body.purge !== false });
+    const { kicked } = await ctx.hs.admin.deleteRoom(ctx.params.roomId, {
+      actor: s.userId,
+      reason: body.message,
+      purge: body.purge !== false,
+    });
     return { kicked_users: kicked, failed_to_kick_users: [], local_aliases: [], new_room_id: null };
   });
 

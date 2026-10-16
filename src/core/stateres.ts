@@ -1,5 +1,5 @@
-import { authEventKeys, checkAuth, getState, powerLevels, userLevel, type StateMap } from "./authrules.ts";
-import { eventIdOf, roomVersionFeatures, splitStateKey, stateKey, type PDU } from "./events.ts";
+import { authEventKeys, checkAuth, powerLevels, userLevel, type StateMap } from "./authrules.ts";
+import { eventIdOf, roomVersionFeatures, stateKey, type PDU } from "./events.ts";
 
 /** Event lookup used by state resolution (timeline events and outliers). */
 export type EventSource = (eventIds: string[]) => Promise<Map<string, PDU>>;
@@ -18,14 +18,18 @@ const authIds = (ev: PDU) => (ev.auth_events ?? []).map(eventIdOf);
 class EventCache {
   private events = new Map<string, PDU>();
   private source: EventSource;
-  constructor(source: EventSource) { this.source = source; }
+  constructor(source: EventSource) {
+    this.source = source;
+  }
 
   async load(ids: Iterable<string>): Promise<void> {
     const missing = [...ids].filter((id) => !this.events.has(id));
     if (!missing.length) return;
     for (const [id, ev] of await this.source(missing)) this.events.set(id, ev);
   }
-  get(id: string): PDU | undefined { return this.events.get(id); }
+  get(id: string): PDU | undefined {
+    return this.events.get(id);
+  }
 
   /** All auth ancestors of the given events (not including them). */
   async authChain(ids: Iterable<string>): Promise<Set<string>> {
@@ -37,7 +41,11 @@ class EventCache {
       for (const id of frontier) {
         const ev = this.get(id);
         if (!ev) continue;
-        for (const a of authIds(ev)) if (!chain.has(a)) { chain.add(a); next.push(a); }
+        for (const a of authIds(ev))
+          if (!chain.has(a)) {
+            chain.add(a);
+            next.push(a);
+          }
       }
       frontier = next;
     }
@@ -49,9 +57,7 @@ class EventCache {
  * State resolution v2 (and v2.1 for room version 12).
  * `createEvent` is required for v12, where the create event is not in auth_events.
  */
-export async function resolveState(
-  stateSets: StateIds[], roomVersion: string, source: EventSource, createEvent?: PDU,
-): Promise<StateIds> {
+export async function resolveState(stateSets: StateIds[], roomVersion: string, source: EventSource, createEvent?: PDU): Promise<StateIds> {
   if (stateSets.length === 0) return {};
   if (stateSets.length === 1) return { ...stateSets[0] };
   const v21 = roomVersionFeatures(roomVersion).v12;
@@ -75,6 +81,7 @@ export async function resolveState(
   const full = new Set<string>([...conflicted, ...authDifference]);
   if (v21) for (const id of await conflictedSubgraph(cache, conflicted)) full.add(id);
   await cache.load(full);
+  // oxlint-disable-next-line unicorn/no-useless-spread -- copy on purpose: the loop removes entries
   for (const id of [...full]) if (!cache.get(id)) full.delete(id);
 
   // 3. Control events, in reverse topological power ordering.
@@ -135,9 +142,7 @@ async function senderPowerLevel(cache: EventCache, ev: PDU, roomVersion: string,
   return Number.isFinite(level) ? level : Number.MAX_SAFE_INTEGER;
 }
 
-async function reverseTopologicalPowerSort(
-  cache: EventCache, ids: Set<string>, roomVersion: string, createEvent?: PDU,
-): Promise<string[]> {
+async function reverseTopologicalPowerSort(cache: EventCache, ids: Set<string>, roomVersion: string, createEvent?: PDU): Promise<string[]> {
   const levels = new Map<string, number>();
   for (const id of ids) levels.set(id, await senderPowerLevel(cache, cache.get(id)!, roomVersion, createEvent));
   // Kahn's algorithm on the auth DAG restricted to `ids`: an event is ready once all its auth events are output.
@@ -171,7 +176,11 @@ async function reverseTopologicalPowerSort(
 }
 
 async function iterativeAuthChecks(
-  cache: EventCache, ids: string[], base: StateIds, roomVersion: string, createEvent?: PDU,
+  cache: EventCache,
+  ids: string[],
+  base: StateIds,
+  roomVersion: string,
+  createEvent?: PDU,
 ): Promise<StateIds> {
   const state: StateIds = { ...base };
   for (const id of ids) {

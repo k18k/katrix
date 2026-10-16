@@ -5,13 +5,27 @@ export function matches(row: Row, where: WhereClause[] = []): boolean {
     const v = row[w.field] ?? null;
     const target = w.value ?? null;
     switch (w.operator ?? "eq") {
-      case "eq": if (v !== target) return false; break;
-      case "ne": if (v === target) return false; break;
-      case "lt": if (!(v < (target as any))) return false; break;
-      case "lte": if (!(v <= (target as any))) return false; break;
-      case "gt": if (!(v > (target as any))) return false; break;
-      case "gte": if (!(v >= (target as any))) return false; break;
-      case "in": if (!(target as unknown[]).includes(v)) return false; break;
+      case "eq":
+        if (v !== target) return false;
+        break;
+      case "ne":
+        if (v === target) return false;
+        break;
+      case "lt":
+        if (!(v < (target as any))) return false;
+        break;
+      case "lte":
+        if (!(v <= (target as any))) return false;
+        break;
+      case "gt":
+        if (!(v > (target as any))) return false;
+        break;
+      case "gte":
+        if (!(v >= (target as any))) return false;
+        break;
+      case "in":
+        if (!(target as unknown[]).includes(v)) return false;
+        break;
     }
   }
   return true;
@@ -27,8 +41,7 @@ export function memoryAdapter(): DatabaseAdapter {
     if (!t) tables.set(model, (t = new Map()));
     return t;
   };
-  const keyOf = (model: string, row: Row) =>
-    JSON.stringify((pks.get(model) ?? Object.keys(row)).map((k) => row[k]));
+  const keyOf = (model: string, row: Row) => JSON.stringify((pks.get(model) ?? Object.keys(row)).map((k) => row[k]));
 
   /** Undo log entries: restore `row` (or delete when undefined) at `key`. */
   type Journal = { model: string; key: string; row: Row | undefined }[];
@@ -68,6 +81,7 @@ export function memoryAdapter(): DatabaseAdapter {
       },
       async update(model, where, data) {
         let count = 0;
+        // oxlint-disable-next-line unicorn/no-useless-spread -- copy on purpose: the loop removes entries
         for (const [key, row] of [...table(model).entries()]) {
           if (!matches(row, where)) continue;
           const updated = { ...row, ...structuredClone(data) };
@@ -79,8 +93,12 @@ export function memoryAdapter(): DatabaseAdapter {
       },
       async delete(model, where) {
         let count = 0;
+        // oxlint-disable-next-line unicorn/no-useless-spread -- copy on purpose: the loop removes entries
         for (const [key, row] of [...table(model).entries()]) {
-          if (matches(row, where)) { set(model, key, undefined); count++; }
+          if (matches(row, where)) {
+            set(model, key, undefined);
+            count++;
+          }
         }
         return count;
       },

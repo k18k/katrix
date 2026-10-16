@@ -37,7 +37,8 @@ export function registerThreepidRoutes(r: Router): void {
     }
     if (nextLink && status === 200) return Response.redirect(nextLink, 302);
     return new Response(`<!doctype html><meta charset="utf-8"><title>${ctx.hs.serverName}</title><p>${message}</p>`, {
-      status, headers: { "content-type": "text/html; charset=utf-8" },
+      status,
+      headers: { "content-type": "text/html; charset=utf-8" },
     });
   });
   r.post(submitPath, async (ctx) => {
@@ -74,7 +75,12 @@ export function registerThreepidRoutes(r: Router): void {
     const res = await ctx.hs.identityServers.bind(body.id_server, body.id_access_token, body.sid, body.client_secret, s.userId);
     // Remember the binding so that it can be removed when the address or account goes away.
     if (res && isMedium(res.medium) && typeof res.address === "string") {
-      await ctx.hs.db.upsert("threepid_bindings", { user_id: s.userId, medium: res.medium, address: res.address, id_server: body.id_server });
+      await ctx.hs.db.upsert("threepid_bindings", {
+        user_id: s.userId,
+        medium: res.medium,
+        address: res.address,
+        id_server: body.id_server,
+      });
     }
     return {};
   });

@@ -36,7 +36,10 @@ export function localCluster(): ClusterAdapter {
   const live = (key: string) => {
     const e = kv.get(key);
     if (!e) return undefined;
-    if (e.expires && e.expires < Date.now()) { kv.delete(key); return undefined; }
+    if (e.expires && e.expires < Date.now()) {
+      kv.delete(key);
+      return undefined;
+    }
     return e;
   };
   return {
@@ -45,8 +48,12 @@ export function localCluster(): ClusterAdapter {
       sequences.set(seq, v);
       return v;
     },
-    async currentId(seq) { return sequences.get(seq) ?? 0; },
-    async advance(seq, value) { if (value > (sequences.get(seq) ?? 0)) sequences.set(seq, value); },
+    async currentId(seq) {
+      return sequences.get(seq) ?? 0;
+    },
+    async advance(seq, value) {
+      if (value > (sequences.get(seq) ?? 0)) sequences.set(seq, value);
+    },
     async lock(key, fn) {
       const prev = locks.get(key) ?? Promise.resolve();
       const run = prev.then(fn, fn);
@@ -66,18 +73,32 @@ export function localCluster(): ClusterAdapter {
       if (!set) handlers.set(channel, (set = new Set()));
       set.add(handler);
     },
-    async get(key) { return (live(key)?.value ?? null) as any; },
-    async set(key, value, ttlMs) { kv.set(key, { value, expires: ttlMs ? Date.now() + ttlMs : 0 }); },
+    async get(key) {
+      return (live(key)?.value ?? null) as any;
+    },
+    async set(key, value, ttlMs) {
+      kv.set(key, { value, expires: ttlMs ? Date.now() + ttlMs : 0 });
+    },
     async setIfAbsent(key, value, ttlMs) {
       if (live(key)) return false;
       kv.set(key, { value, expires: ttlMs ? Date.now() + ttlMs : 0 });
-      if (kv.size > 200_000) for (const k of kv.keys()) { if (!live(k)) kv.delete(k); }
+      if (kv.size > 200_000)
+        for (const k of kv.keys()) {
+          if (!live(k)) kv.delete(k);
+        }
       return true;
     },
-    async delete(key) { kv.delete(key); },
+    async delete(key) {
+      kv.delete(key);
+    },
     async entries(prefix) {
       const out: [string, any][] = [];
-      for (const k of [...kv.keys()]) if (k.startsWith(prefix)) { const e = live(k); if (e) out.push([k, e.value]); }
+      // oxlint-disable-next-line unicorn/no-useless-spread -- copy on purpose: the loop removes entries
+      for (const k of [...kv.keys()])
+        if (k.startsWith(prefix)) {
+          const e = live(k);
+          if (e) out.push([k, e.value]);
+        }
       return out;
     },
   };
@@ -115,7 +136,9 @@ export class StreamManager {
     this.heartbeat.unref?.();
   }
 
-  private key() { return `writer:${this.instanceId}`; }
+  private key() {
+    return `writer:${this.instanceId}`;
+  }
 
   private async publishState(): Promise<void> {
     await this.cluster.set(this.key(), this.published, WRITER_TTL_MS);

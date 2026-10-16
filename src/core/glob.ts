@@ -12,9 +12,11 @@ export function globMatch(pattern: string, value: string, opts: { caseInsensitiv
   const p = opts.caseInsensitive ? pattern.toLowerCase() : pattern;
   const v = opts.caseInsensitive ? value.toLowerCase() : value;
   const anyOne = opts.questionMark ?? true;
-  let pi = 0, vi = 0;
+  let pi = 0,
+    vi = 0;
   // Position after the last `*` seen, and the value position it is currently matched up to.
-  let star = -1, mark = 0;
+  let star = -1,
+    mark = 0;
   while (vi < v.length) {
     if (pi < p.length && (p[pi] === v[vi] || (anyOne && p[pi] === "?"))) {
       pi++;

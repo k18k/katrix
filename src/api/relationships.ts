@@ -43,7 +43,9 @@ function parseRequest(body: unknown): WalkRequest {
 
 export function relationshipOf(pdu: PDU): { event_id: string; rel_type: string } | null {
   const rel = pdu.content?.["m.relationship"];
-  return isObject(rel) && typeof rel.event_id === "string" && typeof rel.rel_type === "string" ? { event_id: rel.event_id, rel_type: rel.rel_type } : null;
+  return isObject(rel) && typeof rel.event_id === "string" && typeof rel.rel_type === "string"
+    ? { event_id: rel.event_id, rel_type: rel.rel_type }
+    : null;
 }
 
 /** Index an event's `m.relationship` edge (idempotent). */
@@ -51,7 +53,12 @@ export async function recordEdge(hs: Homeserver, pdu: PDU): Promise<void> {
   const rel = relationshipOf(pdu);
   if (!rel || !pdu.event_id) return;
   await hs.db.upsert("event_edges", {
-    event_id: pdu.event_id, room_id: pdu.room_id, parent_id: rel.event_id, rel_type: rel.rel_type, ts: pdu.origin_server_ts ?? 0, depth: pdu.depth ?? 0,
+    event_id: pdu.event_id,
+    room_id: pdu.room_id,
+    parent_id: rel.event_id,
+    rel_type: rel.rel_type,
+    ts: pdu.origin_server_ts ?? 0,
+    depth: pdu.depth ?? 0,
   });
 }
 
@@ -78,15 +85,24 @@ async function walk(hs: Homeserver, req: WalkRequest, canSee: (pdu: PDU) => Prom
     if (seen.has(id)) return false;
     seen.add(id);
     const pdu = await hs.rooms.getPdu(id);
-    if (!pdu) { missing.add(id); return false; }
+    if (!pdu) {
+      missing.add(id);
+      return false;
+    }
     if (!(await canSee(pdu))) return false;
-    if (out.length >= req.limit) { limited = true; return false; }
+    if (out.length >= req.limit) {
+      limited = true;
+      return false;
+    }
     out.push(pdu);
     return true;
   };
 
   const root = await hs.rooms.getPdu(req.event_id);
-  if (!root) { missing.add(req.event_id); return { events: out, limited, root: null }; }
+  if (!root) {
+    missing.add(req.event_id);
+    return { events: out, limited, root: null };
+  }
   if (!(await canSee(root))) throw errors.forbidden("You cannot see this event");
   await push(req.event_id);
   const parentId = relationshipOf(root)?.event_id;
@@ -113,14 +129,15 @@ async function walk(hs: Homeserver, req: WalkRequest, canSee: (pdu: PDU) => Prom
         if (seen.has(kid.event_id)) continue;
         if (await push(kid.event_id)) next.push({ id: kid.event_id, depth: depth + 1 });
       }
-      if (req.depth_first) queue.push(...next.reverse()); else queue.push(...next);
+      if (req.depth_first) queue.push(...next.reverse());
+      else queue.push(...next);
     }
   }
   return { events: out, limited, root };
 }
 
 async function withChildren(hs: Homeserver, pdu: PDU): Promise<PDU> {
-  return { ...pdu, unsigned: { ...(pdu.unsigned ?? {}), ...(await childrenSummary(hs, pdu.event_id!)) } };
+  return { ...pdu, unsigned: { ...pdu.unsigned, ...(await childrenSummary(hs, pdu.event_id!)) } };
 }
 
 /** Ask the room's other servers for part of the tree and store what they return. */
@@ -131,7 +148,9 @@ async function fetchRemote(hs: Homeserver, roomId: string, req: WalkRequest, rem
   for (const server of servers) {
     let res: any;
     try {
-      res = await hs.federation.client.request(server, "POST", "/_matrix/federation/unstable/event_relationships", { body: { ...req, room_id: roomId } });
+      res = await hs.federation.client.request(server, "POST", "/_matrix/federation/unstable/event_relationships", {
+        body: { ...req, room_id: roomId },
+      });
     } catch (err) {
       hs.logger.debug("event_relationships fetch failed", server, err);
       continue;
@@ -203,7 +222,12 @@ export function registerRelationshipRoutes(r: Router): void {
 }
 
 /** Server side of `/_matrix/federation/unstable/event_relationships`. */
-export async function relationshipsForServer(hs: Homeserver, origin: string, body: unknown, authChainOf: (ids: string[]) => Promise<PDU[]>) {
+export async function relationshipsForServer(
+  hs: Homeserver,
+  origin: string,
+  body: unknown,
+  authChainOf: (ids: string[]) => Promise<PDU[]>,
+) {
   const req = parseRequest(body);
   const root = await hs.rooms.getPdu(req.event_id);
   if (!root) throw errors.notFound("Event not found");
@@ -214,7 +238,7 @@ export async function relationshipsForServer(hs: Homeserver, origin: string, bod
   const events = [];
   for (const pdu of result.events) {
     const wire: Record<string, any> = hs.federation.toFederationPdu(pdu, version);
-    wire.unsigned = { ...(wire.unsigned ?? {}), ...(await childrenSummary(hs, pdu.event_id!)) };
+    wire.unsigned = { ...wire.unsigned, ...(await childrenSummary(hs, pdu.event_id!)) };
     events.push(wire);
   }
   const chain = await authChainOf(result.events.map((p) => p.event_id!));

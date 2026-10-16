@@ -9,7 +9,6 @@ import { assertNotSuspended, type Session } from "../core/auth.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { RequestContext, Router } from "../http/router.ts";
 import { matchesFilter, parseRoomEventFilter, type EventFilter } from "./filters.ts";
-import { copyRoomPushRules } from "../core/pushrules.ts";
 
 export const parseToken = (token: string | null): number | null => {
   if (token === null || token === "") return null;
@@ -35,7 +34,10 @@ export async function visibleState(hs: Homeserver, roomId: string, userId: strin
   await requireRoom(hs, roomId);
   const { joined, worldReadable, membership } = await hs.rooms.canPeek(roomId, userId);
   if (joined || worldReadable) return hs.rooms.currentState(roomId);
-  const row = await hs.db.findOne("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: userId }]);
+  const row = await hs.db.findOne("memberships", [
+    { field: "room_id", value: roomId },
+    { field: "user_id", value: userId },
+  ]);
   if (row?.forgotten) throw errors.forbidden("You have forgotten this room");
   if (membership === "leave" || membership === "ban") {
     const ev = await hs.rooms.membershipEvent(roomId, userId);
@@ -53,7 +55,13 @@ async function findGapBefore(hs: Homeserver, roomId: string, events: StoredEvent
   const inPage = events.find((e) => e.gap);
   if (inPage) return inPage;
   if (end !== null) return null;
-  const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }, { field: "gap", value: true }], limit: 1 });
+  const rows = await hs.db.findMany("events", {
+    where: [
+      { field: "room_id", value: roomId },
+      { field: "gap", value: true },
+    ],
+    limit: 1,
+  });
   return rows[0] ? hs.rooms.rowToStored(rows[0]) : null;
 }
 
@@ -68,7 +76,11 @@ async function backfillGap(hs: Homeserver, roomId: string, gapEvent: StoredEvent
 /** Backfill from other servers when our oldest event has unknown predecessors. Returns whether anything was fetched. */
 async function backfillIfNeeded(hs: Homeserver, roomId: string): Promise<boolean> {
   if (!hs.federation.enabled) return false;
-  const oldest = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }], sortBy: { field: "stream", direction: "asc" }, limit: 1 });
+  const oldest = await hs.db.findMany("events", {
+    where: [{ field: "room_id", value: roomId }],
+    sortBy: { field: "stream", direction: "asc" },
+    limit: 1,
+  });
   const first = oldest[0];
   if (!first || first.type === "m.room.create") return false;
   const prevs = ((first.json.prev_events ?? []) as unknown[]).map((p) => (Array.isArray(p) ? p[0] : p) as string);
@@ -115,7 +127,8 @@ export async function paginate(
   const back = opts.dir === "b";
   const out: StoredEvent[] = [];
   // Position of the last examined event (exclusive bound for the next batch).
-  let cursor: { depth: number; stream: number } | null = opts.from && opts.from.depth !== null ? { depth: opts.from.depth, stream: opts.from.stream } : null;
+  let cursor: { depth: number; stream: number } | null =
+    opts.from && opts.from.depth !== null ? { depth: opts.from.depth, stream: opts.from.stream } : null;
   const streamBound = opts.from && opts.from.depth === null ? opts.from.stream : null;
   const batch = Math.max(opts.limit * 2, 50);
   const beyond = (pos: { depth: number; stream: number }) => {
@@ -142,7 +155,11 @@ export async function paginate(
       .filter(({ pos }) => !cursor || (back ? cmp(pos, cursor) < 0 : cmp(pos, cursor) > 0))
       .sort((a, b) => (back ? cmp(b.pos, a.pos) : cmp(a.pos, b.pos)));
     if (stored.length === 0) return { events: out, end: null };
-    const visible = await hs.rooms.filterVisible(userId, roomId, stored.map((x) => x.ev));
+    const visible = await hs.rooms.filterVisible(
+      userId,
+      roomId,
+      stored.map((x) => x.ev),
+    );
     const visibleById = new Map(visible.map((v) => [v.pdu.event_id, v]));
     for (const { ev: raw, pos } of stored) {
       if (beyond(pos)) return { events: out, end: null };
@@ -178,7 +195,10 @@ async function inviteByThreepid(ctx: RequestContext, s: Session, body: Record<st
   const profile = await hs.profile(s.userId);
   const create = getState(state, "m.room.create", "");
   const invite: Record<string, unknown> = {
-    medium: body.medium, address: body.address, room_id: roomId, sender: s.userId,
+    medium: body.medium,
+    address: body.address,
+    room_id: roomId,
+    sender: s.userId,
     room_alias: getState(state, "m.room.canonical_alias", "")?.content?.alias,
     room_avatar_url: getState(state, "m.room.avatar", "")?.content?.url,
     room_join_rules: getState(state, "m.room.join_rules", "")?.content?.join_rule,
@@ -217,9 +237,12 @@ async function sendMembership(ctx: RequestContext, membership: "leave" | "ban" |
   const reason = typeof body.reason === "string" ? body.reason : undefined;
   if (membership === "leave") {
     // For rooms this server is not in (remote invites/knocks), the membership row is authoritative.
-    const row = await hs.db.findOne("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: s.userId }]);
+    const row = await hs.db.findOne("memberships", [
+      { field: "room_id", value: roomId },
+      { field: "user_id", value: s.userId },
+    ]);
     if (!(await hs.rooms.exists(roomId)) && !row) throw errors.notFound("Room not found");
-    const current = (await hs.rooms.serverIsJoined(roomId)) ? await hs.rooms.membership(roomId, s.userId) : row?.membership ?? "leave";
+    const current = (await hs.rooms.serverIsJoined(roomId)) ? await hs.rooms.membership(roomId, s.userId) : (row?.membership ?? "leave");
     if (current === "leave") return {};
     if (current === "ban") throw errors.forbidden("You are banned from this room");
     if (current === "invite" && (await hs.admin.isNoticeRoom(roomId))) {
@@ -240,13 +263,29 @@ async function sendMembership(ctx: RequestContext, membership: "leave" | "ban" |
   } else {
     await hs.rooms.setMembership(roomId, s.userId, body.user_id, "ban", reason);
   }
-  await hs.audit.record({ action: membership === "kick" ? "member_kick" : membership === "ban" ? "member_ban" : "member_unban", actor: s.userId, target: body.user_id, ip: ctx.ip, details: { room_id: roomId, reason } });
+  await hs.audit.record({
+    action: membership === "kick" ? "member_kick" : membership === "ban" ? "member_ban" : "member_unban",
+    actor: s.userId,
+    target: body.user_id,
+    ip: ctx.ip,
+    details: { room_id: roomId, reason },
+  });
   return {};
 }
 
-async function validateStateEvent(hs: Homeserver, roomId: string, type: string, content: Record<string, any>, stateKeyValue = ""): Promise<void> {
+async function validateStateEvent(
+  hs: Homeserver,
+  roomId: string,
+  type: string,
+  content: Record<string, any>,
+  stateKeyValue = "",
+): Promise<void> {
   if (type === "m.room.create") throw errors.badJson("The create event cannot be sent");
-  if (stateKeyValue.startsWith("@") && roomVersionFeatures((await hs.rooms.roomVersion(roomId))!).ownedState && !ownerOfStateKey(stateKeyValue)) {
+  if (
+    stateKeyValue.startsWith("@") &&
+    roomVersionFeatures((await hs.rooms.roomVersion(roomId))!).ownedState &&
+    !ownerOfStateKey(stateKeyValue)
+  ) {
     throw errors.badJson("Malformed user-owned state key");
   }
   if (type === "m.room.power_levels") {
@@ -254,8 +293,11 @@ async function validateStateEvent(hs: Homeserver, roomId: string, type: string, 
     validatePowerLevelContent(content, roomCreators(await hs.rooms.currentState(roomId), version));
   }
   if (type === "m.room.canonical_alias") {
-    const aliases = [content.alias, ...(Array.isArray(content.alt_aliases) ? content.alt_aliases : [])].filter((a) => a !== undefined && a !== null);
-    if (content.alt_aliases !== undefined && !Array.isArray(content.alt_aliases)) throw new MatrixError(400, "M_INVALID_PARAM", "alt_aliases must be a list");
+    const aliases = [content.alias, ...(Array.isArray(content.alt_aliases) ? content.alt_aliases : [])].filter(
+      (a) => a !== undefined && a !== null,
+    );
+    if (content.alt_aliases !== undefined && !Array.isArray(content.alt_aliases))
+      throw new MatrixError(400, "M_INVALID_PARAM", "alt_aliases must be a list");
     for (const alias of aliases) {
       if (!isValidAlias(alias)) throw new MatrixError(400, "M_INVALID_PARAM", "Invalid alias");
       const row = await hs.db.findOne("room_aliases", [{ field: "alias", value: alias }]);
@@ -288,11 +330,18 @@ async function publicRooms(ctx: RequestContext, body: Record<string, any>) {
   const limit = Number(body.limit ?? ctx.query.get("limit") ?? 0) || undefined;
   const since = body.since ?? ctx.query.get("since");
   const offset = since ? Number.parseInt(String(since).replace(/^o/, ""), 10) || 0 : 0;
-  const term = isObject(body.filter) && typeof body.filter.generic_search_term === "string" ? body.filter.generic_search_term.toLowerCase() : null;
+  const term =
+    isObject(body.filter) && typeof body.filter.generic_search_term === "string" ? body.filter.generic_search_term.toLowerCase() : null;
   const roomTypes = isObject(body.filter) && Array.isArray(body.filter.room_types) ? body.filter.room_types : null;
-  const rooms = await hs.db.findMany("rooms", { where: [{ field: "is_public", value: true }], sortBy: { field: "created_ts", direction: "asc" } });
+  const rooms = await hs.db.findMany("rooms", {
+    where: [{ field: "is_public", value: true }],
+    sortBy: { field: "created_ts", direction: "asc" },
+  });
   let chunks = await Promise.all(rooms.map((r) => publicRoomChunk(hs, r.room_id)));
-  if (term) chunks = chunks.filter((c) => [c.name, c.topic, c.canonical_alias].some((v) => typeof v === "string" && v.toLowerCase().includes(term)));
+  if (term)
+    chunks = chunks.filter((c) =>
+      [c.name, c.topic, c.canonical_alias].some((v) => typeof v === "string" && v.toLowerCase().includes(term)),
+    );
   if (roomTypes) chunks = chunks.filter((c) => roomTypes.includes(c.room_type ?? null));
   chunks.sort((a, b) => b.num_joined_members - a.num_joined_members);
   const page = limit ? chunks.slice(offset, offset + limit) : chunks.slice(offset);
@@ -329,12 +378,27 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
     creationContent.predecessor = { room_id: roomId };
     if (additionalCreators !== undefined) creationContent.additional_creators = additionalCreators;
   } else {
-    const lastEvent = (await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }], sortBy: { field: "stream", direction: "desc" }, limit: 1 }))[0];
+    const lastEvent = (
+      await hs.db.findMany("events", {
+        where: [{ field: "room_id", value: roomId }],
+        sortBy: { field: "stream", direction: "desc" },
+        limit: 1,
+      })
+    )[0];
     creationContent.predecessor = { room_id: roomId, event_id: lastEvent.event_id };
   }
 
-  const copyTypes = ["m.room.server_acl", "m.room.encryption", "m.room.name", "m.room.avatar", "m.room.topic",
-    "m.room.guest_access", "m.room.history_visibility", "m.room.join_rules", "m.room.power_levels"];
+  const copyTypes = [
+    "m.room.server_acl",
+    "m.room.encryption",
+    "m.room.name",
+    "m.room.avatar",
+    "m.room.topic",
+    "m.room.guest_access",
+    "m.room.history_visibility",
+    "m.room.join_rules",
+    "m.room.power_levels",
+  ];
   const initialState: any[] = [];
   for (const t of copyTypes) {
     const ev = getState(state, t);
@@ -346,13 +410,13 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   if (toV12) {
     // Creators of the new room have unlimited power and must not appear in `users`.
     const creators = new Set([s.userId, ...(Array.isArray(additionalCreators) ? additionalCreators : [])]);
-    const users = { ...(oldPl.users ?? {}) };
+    const users = { ...oldPl.users };
     for (const u of creators) delete users[u];
     oldPl = { ...oldPl, users };
     override = oldPl;
   } else {
     const level = userLevel(pl, s.userId);
-    override = { ...oldPl, users: { ...(oldPl.users ?? {}), [s.userId]: Number.isFinite(level) ? Math.max(level, 100) : 100 } };
+    override = { ...oldPl, users: { ...oldPl.users, [s.userId]: Number.isFinite(level) ? Math.max(level, 100) : 100 } };
   }
   const { room_id: newRoomId } = await hs.rooms.createRoom(s.userId, {
     room_version: newVersion,
@@ -364,7 +428,11 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   });
   // Restore the original power levels exactly (the creator boost was only needed for setup).
   if (getState(state, "m.room.power_levels") && !toV12) {
-    try { await hs.rooms.sendEvent(newRoomId, s.userId, { type: "m.room.power_levels", state_key: "", content: oldPl }); } catch { /* keep boosted */ }
+    try {
+      await hs.rooms.sendEvent(newRoomId, s.userId, { type: "m.room.power_levels", state_key: "", content: oldPl });
+    } catch {
+      /* keep boosted */
+    }
   }
 
   // Move local aliases to the new room.
@@ -373,14 +441,18 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   const canonical = getState(state, "m.room.canonical_alias");
   if (canonical && Object.keys(canonical.content).length) {
     await hs.rooms.sendEvent(roomId, s.userId, { type: "m.room.canonical_alias", state_key: "", content: {} }).catch(() => {});
-    await hs.rooms.sendEvent(newRoomId, s.userId, { type: "m.room.canonical_alias", state_key: "", content: canonical.content }).catch(() => {});
+    await hs.rooms
+      .sendEvent(newRoomId, s.userId, { type: "m.room.canonical_alias", state_key: "", content: canonical.content })
+      .catch(() => {});
   }
   if (isPublic) {
     await hs.db.update("rooms", [{ field: "room_id", value: roomId }], { is_public: false });
   }
 
   await hs.rooms.sendEvent(roomId, s.userId, {
-    type: "m.room.tombstone", state_key: "", content: { body: "This room has been replaced", replacement_room: newRoomId },
+    type: "m.room.tombstone",
+    state_key: "",
+    content: { body: "This room has been replaced", replacement_room: newRoomId },
   });
   // Restrict the old room so people move over.
   const restricted = { ...oldPl, events_default: Math.max(50, oldPl.events_default ?? 0), invite: Math.max(50, oldPl.invite ?? 0) };
@@ -415,18 +487,32 @@ export function registerRoomRoutes(r: Router): void {
     // Joining with an identity server's proof first turns the pending third-party invite into an invite.
     if (isObject(third_party_signed)) {
       const signed = third_party_signed as Record<string, any>;
-      if (typeof signed.sender !== "string" || signed.mxid !== s.userId || typeof signed.token !== "string") throw errors.badJson("Invalid third_party_signed");
+      if (typeof signed.sender !== "string" || signed.mxid !== s.userId || typeof signed.token !== "string")
+        throw errors.badJson("Invalid third_party_signed");
       // The identity server's signature covers the whole object (sender included): pass it on unchanged.
       const sender: string = signed.sender;
       const proof = signed;
       if ((await ctx.hs.rooms.membership(roomId, s.userId)) !== "invite") {
-        const event = { type: "m.room.member", room_id: roomId, sender, state_key: s.userId, content: { membership: "invite", third_party_invite: { signed: proof } } };
+        const event = {
+          type: "m.room.member",
+          room_id: roomId,
+          sender,
+          state_key: s.userId,
+          content: { membership: "invite", third_party_invite: { signed: proof } },
+        };
         if (ctx.hs.isLocalUser(sender)) {
           const pending = getState(await ctx.hs.rooms.currentState(roomId), "m.room.third_party_invite", signed.token);
           if (!pending || pending.sender !== sender) throw errors.forbidden("No such third-party invite");
-          await ctx.hs.rooms.invite(roomId, sender, s.userId, { thirdPartyInvite: { display_name: pending.content?.display_name ?? "", signed: proof } });
+          await ctx.hs.rooms.invite(roomId, sender, s.userId, {
+            thirdPartyInvite: { display_name: pending.content?.display_name ?? "", signed: proof },
+          });
         } else {
-          await ctx.hs.federation.client.request(sender.slice(sender.indexOf(":") + 1), "PUT", `/_matrix/federation/v1/exchange_third_party_invite/${encodeURIComponent(roomId)}`, { body: event });
+          await ctx.hs.federation.client.request(
+            sender.slice(sender.indexOf(":") + 1),
+            "PUT",
+            `/_matrix/federation/v1/exchange_third_party_invite/${encodeURIComponent(roomId)}`,
+            { body: event },
+          );
         }
       }
     }
@@ -457,7 +543,9 @@ export function registerRoomRoutes(r: Router): void {
     const current = await ctx.hs.rooms.membership(ctx.params.roomId, body.user_id);
     if (current === "ban") throw errors.forbidden("User is banned");
     if (current === "join") throw errors.forbidden("User is already joined");
-    await ctx.hs.rooms.invite(ctx.params.roomId, s.userId, body.user_id, { reason: typeof body.reason === "string" ? body.reason : undefined });
+    await ctx.hs.rooms.invite(ctx.params.roomId, s.userId, body.user_id, {
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+    });
     return {};
   });
 
@@ -469,12 +557,22 @@ export function registerRoomRoutes(r: Router): void {
   r.client("POST", "/rooms/:roomId/forget", async (ctx) => {
     const s = await ctx.auth();
     const hs = ctx.hs;
-    const row = await hs.db.findOne("memberships", [{ field: "room_id", value: ctx.params.roomId }, { field: "user_id", value: s.userId }]);
+    const row = await hs.db.findOne("memberships", [
+      { field: "room_id", value: ctx.params.roomId },
+      { field: "user_id", value: s.userId },
+    ]);
     if (!row) throw errors.notFound("Not a member of this room");
     if (row.membership === "join" || row.membership === "invite" || row.membership === "knock") {
       throw errors.unknown("You must leave the room before forgetting it");
     }
-    await hs.db.update("memberships", [{ field: "room_id", value: ctx.params.roomId }, { field: "user_id", value: s.userId }], { forgotten: true });
+    await hs.db.update(
+      "memberships",
+      [
+        { field: "room_id", value: ctx.params.roomId },
+        { field: "user_id", value: s.userId },
+      ],
+      { forgotten: true },
+    );
     return {};
   });
 
@@ -484,18 +582,30 @@ export function registerRoomRoutes(r: Router): void {
     const content = await ctx.json();
     await requireRoom(ctx.hs, ctx.params.roomId);
     // Redactions sent through /send follow the same rule as /redact: own events only while suspended.
-    if (!(s.suspended && ctx.params.eventType === "m.room.redaction" && await ownEvent(ctx.hs, s.userId, content?.redacts))) {
+    if (!(s.suspended && ctx.params.eventType === "m.room.redaction" && (await ownEvent(ctx.hs, s.userId, content?.redacts)))) {
       await assertNotSuspended(ctx.hs, s, ctx.params.roomId);
     }
     const delay = ctx.query.get("org.matrix.msc4140.delay");
     if (delay !== null) {
-      return { delay_id: await ctx.hs.delayedEvents.schedule({
-        userId: s.userId, deviceId: s.deviceId, roomId: ctx.params.roomId, type: ctx.params.eventType, content,
-        delayMs: Number(delay), txnId: ctx.params.txnId,
-      }) };
+      return {
+        delay_id: await ctx.hs.delayedEvents.schedule({
+          userId: s.userId,
+          deviceId: s.deviceId,
+          roomId: ctx.params.roomId,
+          type: ctx.params.eventType,
+          content,
+          delayMs: Number(delay),
+          txnId: ctx.params.txnId,
+        }),
+      };
     }
     const ts = s.appservice && ctx.query.get("ts") ? Number(ctx.query.get("ts")) : undefined;
-    const eventId = await ctx.hs.rooms.sendEvent(ctx.params.roomId, s.userId, { type: ctx.params.eventType, content }, { txnId: ctx.params.txnId, deviceId: s.deviceId || undefined, ts });
+    const eventId = await ctx.hs.rooms.sendEvent(
+      ctx.params.roomId,
+      s.userId,
+      { type: ctx.params.eventType, content },
+      { txnId: ctx.params.txnId, deviceId: s.deviceId || undefined, ts },
+    );
     return { event_id: eventId };
   });
 
@@ -510,9 +620,17 @@ export function registerRoomRoutes(r: Router): void {
     await validateStateEvent(ctx.hs, roomId, type, content, key);
     const delay = ctx.query.get("org.matrix.msc4140.delay");
     if (delay !== null) {
-      return { delay_id: await ctx.hs.delayedEvents.schedule({
-        userId: s.userId, deviceId: s.deviceId, roomId, type, stateKey: key, content, delayMs: Number(delay),
-      }) };
+      return {
+        delay_id: await ctx.hs.delayedEvents.schedule({
+          userId: s.userId,
+          deviceId: s.deviceId,
+          roomId,
+          type,
+          stateKey: key,
+          content,
+          delayMs: Number(delay),
+        }),
+      };
     }
     // Sending identical state again is a no-op that returns the existing event.
     const current = getState(await ctx.hs.rooms.currentState(roomId), type, key);
@@ -531,7 +649,8 @@ export function registerRoomRoutes(r: Router): void {
     const state = await visibleState(ctx.hs, ctx.params.roomId, s.userId);
     const ev = getState(state, ctx.params.eventType, ctx.params.stateKey ?? "");
     if (!ev) throw errors.notFound("State event not found");
-    if (ctx.query.get("format") === "event") return ctx.hs.rooms.formatEvent({ pdu: ev, stream: 0, snapshot: 0, txnId: null, txnToken: null });
+    if (ctx.query.get("format") === "event")
+      return ctx.hs.rooms.formatEvent({ pdu: ev, stream: 0, snapshot: 0, txnId: null, txnToken: null });
     return ev.content;
   };
   r.client("GET", "/rooms/:roomId/state/:eventType", getStateEvent);
@@ -552,14 +671,22 @@ export function registerRoomRoutes(r: Router): void {
     const at = parseToken(ctx.query.get("at"));
     if (at !== null) {
       const rows = await hs.db.findMany("events", {
-        where: [{ field: "room_id", value: ctx.params.roomId }, { field: "stream", operator: "lte", value: at }],
-        sortBy: { field: "stream", direction: "desc" }, limit: 1,
+        where: [
+          { field: "room_id", value: ctx.params.roomId },
+          { field: "stream", operator: "lte", value: at },
+        ],
+        sortBy: { field: "stream", direction: "desc" },
+        limit: 1,
       });
       if (rows[0]) {
         state = await hs.rooms.stateAtSnapshot(rows[0].state_snapshot);
       } else {
         // Tokens from before the room existed resolve to the room's initial state (creator joined).
-        const first = await hs.db.findMany("events", { where: [{ field: "room_id", value: ctx.params.roomId }], sortBy: { field: "stream", direction: "asc" }, limit: 2 });
+        const first = await hs.db.findMany("events", {
+          where: [{ field: "room_id", value: ctx.params.roomId }],
+          sortBy: { field: "stream", direction: "asc" },
+          limit: 2,
+        });
         if (first.length) state = await hs.rooms.stateAtSnapshot(first[first.length - 1].state_snapshot);
       }
     }
@@ -623,7 +750,10 @@ export function registerRoomRoutes(r: Router): void {
     if (filter?.lazy_load_members) {
       const current = await hs.rooms.currentState(roomId);
       const senders = new Set(events.map((e) => e.pdu.sender));
-      out.state = [...senders].map((u) => getState(current, "m.room.member", u)).filter(Boolean).map((e) => toClientEvent(e!));
+      out.state = [...senders]
+        .map((u) => getState(current, "m.room.member", u))
+        .filter(Boolean)
+        .map((e) => toClientEvent(e!));
     }
     return out;
   });
@@ -651,7 +781,13 @@ export function registerRoomRoutes(r: Router): void {
     const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 0), 100);
     const filter = parseRoomEventFilter(ctx);
     const here = { depth: ev.pdu.depth, stream: ev.stream };
-    const before = await paginate(hs, s.userId, roomId, { from: here, to: null, dir: "b", limit: Math.floor(limit / 2) || (limit ? 1 : 0), filter });
+    const before = await paginate(hs, s.userId, roomId, {
+      from: here,
+      to: null,
+      dir: "b",
+      limit: Math.floor(limit / 2) || (limit ? 1 : 0),
+      filter,
+    });
     const after = await paginate(hs, s.userId, roomId, { from: here, to: null, dir: "f", limit: Math.ceil(limit / 2), filter });
     const beforeEvents = limit ? before.events : [];
     const afterEvents = limit ? after.events : [];
@@ -675,7 +811,12 @@ export function registerRoomRoutes(r: Router): void {
     await ctx.hs.rooms.checkRedactionAllowed(roomId, s.userId, ctx.params.eventId);
     const content: Record<string, any> = {};
     if (typeof body.reason === "string") content.reason = body.reason;
-    const eventId = await ctx.hs.rooms.sendEvent(roomId, s.userId, { type: "m.room.redaction", content, redacts: ctx.params.eventId }, { txnId: ctx.params.txnId, deviceId: s.deviceId });
+    const eventId = await ctx.hs.rooms.sendEvent(
+      roomId,
+      s.userId,
+      { type: "m.room.redaction", content, redacts: ctx.params.eventId },
+      { txnId: ctx.params.txnId, deviceId: s.deviceId },
+    );
     return { event_id: eventId };
   });
 
@@ -692,15 +833,25 @@ export function registerRoomRoutes(r: Router): void {
   const RECEIPT_TYPES = ["m.read", "m.read.private", "m.fully_read"];
   const setReceipt = async (hs: Homeserver, s: Session, roomId: string, type: string, eventId: string, threadId?: string) => {
     if (type === "m.fully_read") {
-      await hs.streams.write((stream) => hs.db.upsert("account_data", { user_id: s.userId, room_id: roomId, type: "m.fully_read", content: { event_id: eventId }, stream }));
+      await hs.streams.write((stream) =>
+        hs.db.upsert("account_data", { user_id: s.userId, room_id: roomId, type: "m.fully_read", content: { event_id: eventId }, stream }),
+      );
       hs.notifier.notify([s.userId]);
       return;
     }
     const ev = await hs.rooms.getEvent(eventId);
     if (!ev || ev.pdu.room_id !== roomId) throw errors.notFound("Event not found");
-    await hs.streams.write((stream) => hs.db.upsert("receipts", {
-      room_id: roomId, user_id: s.userId, receipt_type: type, thread_id: threadId ?? "", event_id: eventId, ts: Date.now(), stream,
-    }));
+    await hs.streams.write((stream) =>
+      hs.db.upsert("receipts", {
+        room_id: roomId,
+        user_id: s.userId,
+        receipt_type: type,
+        thread_id: threadId ?? "",
+        event_id: eventId,
+        ts: Date.now(),
+        stream,
+      }),
+    );
     hs.notifier.notify(type === "m.read.private" ? [s.userId] : await hs.rooms.joinedMembers(roomId));
     await hs.federation.onReceipt(roomId, s.userId, type, eventId, Date.now(), threadId ?? "").catch(() => {});
   };
@@ -709,7 +860,8 @@ export function registerRoomRoutes(r: Router): void {
     const s = await ctx.auth();
     const body = await ctx.json();
     if (!RECEIPT_TYPES.includes(ctx.params.receiptType)) throw errors.invalidParam("Unknown receipt type");
-    if (body.thread_id !== undefined && (typeof body.thread_id !== "string" || body.thread_id === "")) throw errors.invalidParam("Invalid thread_id");
+    if (body.thread_id !== undefined && (typeof body.thread_id !== "string" || body.thread_id === ""))
+      throw errors.invalidParam("Invalid thread_id");
     await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
     await setReceipt(ctx.hs, s, ctx.params.roomId, ctx.params.receiptType, ctx.params.eventId, body.thread_id);
     return {};
@@ -730,7 +882,9 @@ export function registerRoomRoutes(r: Router): void {
   r.client("GET", "/directory/room/:alias", async (ctx) => {
     if (!isValidAlias(ctx.params.alias)) throw errors.invalidParam("Invalid alias");
     const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.alias);
-    const inRoom = (await ctx.hs.rooms.exists(roomId)) ? [...(await ctx.hs.federation.roomDestinations(roomId, await ctx.hs.rooms.currentState(roomId)))] : [];
+    const inRoom = (await ctx.hs.rooms.exists(roomId))
+      ? [...(await ctx.hs.federation.roomDestinations(roomId, await ctx.hs.rooms.currentState(roomId)))]
+      : [];
     return { room_id: roomId, servers: [...new Set([...servers, ...inRoom])] };
   });
 
@@ -762,7 +916,10 @@ export function registerRoomRoutes(r: Router): void {
     if (canonical) {
       const content = { ...canonical.content };
       let changed = false;
-      if (content.alias === ctx.params.alias) { delete content.alias; changed = true; }
+      if (content.alias === ctx.params.alias) {
+        delete content.alias;
+        changed = true;
+      }
       if (Array.isArray(content.alt_aliases) && content.alt_aliases.includes(ctx.params.alias)) {
         content.alt_aliases = content.alt_aliases.filter((a: string) => a !== ctx.params.alias);
         changed = true;
@@ -813,7 +970,10 @@ export function registerRoomRoutes(r: Router): void {
     return publicRooms(ctx, body);
   };
   r.client("GET", "/publicRooms", (ctx) => remoteOrLocal(ctx, {}));
-  r.client("POST", "/publicRooms", async (ctx) => { await ctx.auth(); return remoteOrLocal(ctx, await ctx.json()); });
+  r.client("POST", "/publicRooms", async (ctx) => {
+    await ctx.auth();
+    return remoteOrLocal(ctx, await ctx.json());
+  });
 
   r.client("POST", "/rooms/:roomId/upgrade", async (ctx) => {
     const s = await ctx.auth();
@@ -832,20 +992,35 @@ export function registerRoomRoutes(r: Router): void {
     if (ctx.params.eventId) {
       const ev = await hs.rooms.getEvent(ctx.params.eventId);
       // Reporters must be able to see the event; otherwise pretend it does not exist.
-      if (!ev || ev.pdu.room_id !== roomId || !(await hs.rooms.filterVisible(s.userId, roomId, [ev])).length) throw errors.notFound("Event not found");
+      if (!ev || ev.pdu.room_id !== roomId || !(await hs.rooms.filterVisible(s.userId, roomId, [ev])).length)
+        throw errors.notFound("Event not found");
     } else if ((await hs.rooms.membership(roomId, s.userId)) !== "join") {
       throw errors.notFound("Room not found");
     }
-    if (body.score !== undefined && (!Number.isInteger(body.score) || body.score < -100 || body.score > 0)) throw errors.invalidParam("score must be between -100 and 0");
+    if (body.score !== undefined && (!Number.isInteger(body.score) || body.score < -100 || body.score > 0))
+      throw errors.invalidParam("score must be between -100 and 0");
     if (body.reason !== undefined && typeof body.reason !== "string") throw errors.badJson("reason must be a string");
     const id = await hs.cluster.nextId("event_reports");
     await hs.db.create("event_reports", {
-      id, ts: Date.now(), room_id: roomId, event_id: ctx.params.eventId ?? null, reporter: s.userId,
-      reason: body.reason ?? null, score: body.score ?? null, resolved: false,
+      id,
+      ts: Date.now(),
+      room_id: roomId,
+      event_id: ctx.params.eventId ?? null,
+      reporter: s.userId,
+      reason: body.reason ?? null,
+      score: body.score ?? null,
+      resolved: false,
     });
-    await hs.audit.record({ action: "event_report", actor: s.userId, target: ctx.params.eventId ?? roomId, details: { room_id: roomId, report_id: id } });
+    await hs.audit.record({
+      action: "event_report",
+      actor: s.userId,
+      target: ctx.params.eventId ?? roomId,
+      details: { room_id: roomId, report_id: id },
+    });
     if (hs.adminRoom) {
-      void hs.adminRoom.say(`New report #${id} from ${s.userId} about ${ctx.params.eventId ?? "room"} in ${roomId}: ${body.reason ?? "(no reason)"}`).catch(() => {});
+      void hs.adminRoom
+        .say(`New report #${id} from ${s.userId} about ${ctx.params.eventId ?? "room"} in ${roomId}: ${body.reason ?? "(no reason)"}`)
+        .catch(() => {});
     }
     return {};
   };
@@ -857,31 +1032,38 @@ export function registerRoomRoutes(r: Router): void {
     const userId = ctx.params.userId;
     if (!isValidUserId(userId)) throw errors.invalidParam("Invalid user ID");
     // Only local accounts can be checked; reports about remote users are kept as they are.
-    if (hs.isLocalUser(userId) && !(await hs.db.findOne("users", [{ field: "user_id", value: userId }]))) throw errors.notFound("Unknown user");
+    if (hs.isLocalUser(userId) && !(await hs.db.findOne("users", [{ field: "user_id", value: userId }])))
+      throw errors.notFound("Unknown user");
     const id = await hs.cluster.nextId("user_reports");
     await hs.db.create("user_reports", { id, ts: Date.now(), user_id: userId, reporter: s.userId, reason: body.reason, resolved: false });
     await hs.audit.record({ action: "user_report", actor: s.userId, target: userId, details: { report_id: id } });
-    if (hs.adminRoom) void hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch(() => {});
+    if (hs.adminRoom)
+      void hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch(() => {});
     return {};
   });
 
-  r.client("GET", "/mutual_rooms", async (ctx) => {
-    const s = await ctx.auth();
-    const other = ctx.query.get("user_id");
-    if (other === null) throw errors.missingParam("Missing user_id");
-    if (!isValidUserId(other)) throw errors.invalidParam("Invalid user_id");
-    if (other === s.userId) throw errors.invalidParam("user_id must not be your own");
-    const theirs = new Set(await ctx.hs.rooms.roomsForUser(other));
-    const joined = (await ctx.hs.rooms.roomsForUser(s.userId)).filter((r) => theirs.has(r)).sort();
-    // Paginated by room ID: `from` is the last room ID of the previous batch.
-    const from = ctx.query.get("from");
-    const start = from === null ? 0 : joined.findIndex((r) => r > from);
-    if (from !== null && !isValidRoomId(from)) throw errors.invalidParam("Invalid from token");
-    const page = start < 0 ? [] : joined.slice(start, start + 100);
-    const out: Record<string, unknown> = { joined: page, count: joined.length };
-    if (start >= 0 && start + 100 < joined.length) out.next_batch = page[page.length - 1];
-    return out;
-  }, ["v1"]);
+  r.client(
+    "GET",
+    "/mutual_rooms",
+    async (ctx) => {
+      const s = await ctx.auth();
+      const other = ctx.query.get("user_id");
+      if (other === null) throw errors.missingParam("Missing user_id");
+      if (!isValidUserId(other)) throw errors.invalidParam("Invalid user_id");
+      if (other === s.userId) throw errors.invalidParam("user_id must not be your own");
+      const theirs = new Set(await ctx.hs.rooms.roomsForUser(other));
+      const joined = (await ctx.hs.rooms.roomsForUser(s.userId)).filter((r) => theirs.has(r)).sort();
+      // Paginated by room ID: `from` is the last room ID of the previous batch.
+      const from = ctx.query.get("from");
+      const start = from === null ? 0 : joined.findIndex((r) => r > from);
+      if (from !== null && !isValidRoomId(from)) throw errors.invalidParam("Invalid from token");
+      const page = start < 0 ? [] : joined.slice(start, start + 100);
+      const out: Record<string, unknown> = { joined: page, count: joined.length };
+      if (start >= 0 && start + 100 < joined.length) out.next_batch = page[page.length - 1];
+      return out;
+    },
+    ["v1"],
+  );
 
   r.client("POST", "/rooms/:roomId/report/:eventId", report);
   r.client("POST", "/rooms/:roomId/report", report);
@@ -916,45 +1098,63 @@ export function registerRoomRoutes(r: Router): void {
   r.client("GET", "/rooms/:roomId/relations/:eventId/:relType/:eventType", relations, relVersions);
   r.client("GET", "/rooms/:roomId/threads", threads, ["v1"]);
 
-  r.client("GET", "/rooms/:roomId/timestamp_to_event", async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    const roomId = ctx.params.roomId;
-    await visibleState(hs, roomId, s.userId);
-    const ts = Number(ctx.query.get("ts"));
-    const dir = ctx.query.get("dir");
-    if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
-    let local: { event_id: string; origin_server_ts: number } | null = null;
-    const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }] });
-    // Equal timestamps: the topologically nearest event in the search direction wins.
-    rows.sort((a, b) => dir === "f"
-      ? a.json.origin_server_ts - b.json.origin_server_ts || a.depth - b.depth || a.stream - b.stream
-      : b.json.origin_server_ts - a.json.origin_server_ts || b.depth - a.depth || b.stream - a.stream);
-    for (const row of rows) {
-      const t = row.json.origin_server_ts;
-      if (!(dir === "f" ? t >= ts : t <= ts)) continue;
-      const visible = await hs.rooms.filterVisible(s.userId, roomId, [hs.rooms.rowToStored(row)]);
-      if (visible.length) { local = { event_id: row.event_id, origin_server_ts: t }; break; }
-    }
-    // A closer event may exist on another server (e.g. history we never backfilled).
-    if (hs.federation.enabled) {
-      for (const server of hs.federation.serversInRoom(await hs.rooms.currentState(roomId))) {
-        try {
-          const remote = await hs.federation.client.request(server, "GET", `/_matrix/federation/v1/timestamp_to_event/${encodeURIComponent(roomId)}`, { query: { ts: String(ts), dir }, timeoutMs: 10_000 });
-          if (typeof remote.event_id !== "string" || typeof remote.origin_server_ts !== "number") continue;
-          const closer = !local || (dir === "f" ? remote.origin_server_ts < local.origin_server_ts : remote.origin_server_ts > local.origin_server_ts);
-          if (closer) {
-            // Make sure we have the event locally so clients can paginate from it.
-            if (!(await hs.rooms.getEvent(remote.event_id))) await hs.federation.backfill(roomId, [remote.event_id], 1).catch(() => 0);
-            local = { event_id: remote.event_id, origin_server_ts: remote.origin_server_ts };
-          }
+  r.client(
+    "GET",
+    "/rooms/:roomId/timestamp_to_event",
+    async (ctx) => {
+      const s = await ctx.auth();
+      const hs = ctx.hs;
+      const roomId = ctx.params.roomId;
+      await visibleState(hs, roomId, s.userId);
+      const ts = Number(ctx.query.get("ts"));
+      const dir = ctx.query.get("dir");
+      if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
+      let local: { event_id: string; origin_server_ts: number } | null = null;
+      const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }] });
+      // Equal timestamps: the topologically nearest event in the search direction wins.
+      rows.sort((a, b) =>
+        dir === "f"
+          ? a.json.origin_server_ts - b.json.origin_server_ts || a.depth - b.depth || a.stream - b.stream
+          : b.json.origin_server_ts - a.json.origin_server_ts || b.depth - a.depth || b.stream - a.stream,
+      );
+      for (const row of rows) {
+        const t = row.json.origin_server_ts;
+        if (!(dir === "f" ? t >= ts : t <= ts)) continue;
+        const visible = await hs.rooms.filterVisible(s.userId, roomId, [hs.rooms.rowToStored(row)]);
+        if (visible.length) {
+          local = { event_id: row.event_id, origin_server_ts: t };
           break;
-        } catch { /* try the next server */ }
+        }
       }
-    }
-    if (!local) throw errors.notFound("No event found");
-    return local;
-  }, ["v1", "v3"]);
+      // A closer event may exist on another server (e.g. history we never backfilled).
+      if (hs.federation.enabled) {
+        for (const server of hs.federation.serversInRoom(await hs.rooms.currentState(roomId))) {
+          try {
+            const remote = await hs.federation.client.request(
+              server,
+              "GET",
+              `/_matrix/federation/v1/timestamp_to_event/${encodeURIComponent(roomId)}`,
+              { query: { ts: String(ts), dir }, timeoutMs: 10_000 },
+            );
+            if (typeof remote.event_id !== "string" || typeof remote.origin_server_ts !== "number") continue;
+            const closer =
+              !local || (dir === "f" ? remote.origin_server_ts < local.origin_server_ts : remote.origin_server_ts > local.origin_server_ts);
+            if (closer) {
+              // Make sure we have the event locally so clients can paginate from it.
+              if (!(await hs.rooms.getEvent(remote.event_id))) await hs.federation.backfill(roomId, [remote.event_id], 1).catch(() => 0);
+              local = { event_id: remote.event_id, origin_server_ts: remote.origin_server_ts };
+            }
+            break;
+          } catch {
+            /* try the next server */
+          }
+        }
+      }
+      if (!local) throw errors.notFound("No event found");
+      return local;
+    },
+    ["v1", "v3"],
+  );
 }
 
 async function relations(ctx: RequestContext) {
@@ -968,7 +1168,10 @@ async function relations(ctx: RequestContext) {
   const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "50", 10) || 50, 1), 1000);
   const from = parseToken(ctx.query.get("from"));
   const rows = await hs.db.findMany("events", {
-    where: [{ field: "room_id", value: roomId }, ...(from !== null ? [{ field: "stream", operator: dir === "b" ? "lte" : "gt", value: from } as const] : [])],
+    where: [
+      { field: "room_id", value: roomId },
+      ...(from !== null ? [{ field: "stream", operator: dir === "b" ? "lte" : "gt", value: from } as const] : []),
+    ],
     sortBy: { field: "stream", direction: dir === "b" ? "desc" : "asc" },
   });
   const matches: StoredEvent[] = [];
@@ -980,14 +1183,16 @@ async function relations(ctx: RequestContext) {
     if (ctx.params.eventType && row.type !== ctx.params.eventType) continue;
     const stored = hs.rooms.rowToStored(row);
     if ((await hs.rooms.filterVisible(s.userId, roomId, [stored])).length === 0) continue;
-    if (matches.length >= limit) { next = dir === "b" ? matches[matches.length - 1].stream - 1 : matches[matches.length - 1].stream; break; }
+    if (matches.length >= limit) {
+      next = dir === "b" ? matches[matches.length - 1].stream - 1 : matches[matches.length - 1].stream;
+      break;
+    }
     matches.push(stored);
   }
   const out: Record<string, any> = { chunk: matches.map((e) => hs.rooms.formatEvent(e, { userId: s.userId, deviceId: s.deviceId })) };
   if (next !== null) out.next_batch = `s${next}`;
   return out;
 }
-
 
 /** `GET /rooms/{roomId}/threads`: thread roots, most recently active first. */
 async function threads(ctx: RequestContext) {
@@ -998,7 +1203,10 @@ async function threads(ctx: RequestContext) {
   const include = ctx.query.get("include") === "participated" ? "participated" : "all";
   const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "50", 10) || 50, 1), 1000);
   const from = parseToken(ctx.query.get("from"));
-  const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }], sortBy: { field: "stream", direction: "desc" } });
+  const rows = await hs.db.findMany("events", {
+    where: [{ field: "room_id", value: roomId }],
+    sortBy: { field: "stream", direction: "desc" },
+  });
   // Latest activity per thread root.
   const latest = new Map<string, { stream: number; latestId: string; count: number; participants: Set<string> }>();
   for (const row of rows) {
@@ -1022,23 +1230,25 @@ async function threads(ctx: RequestContext) {
   const chunk = page.slice(0, limit);
   const viewer = { userId: s.userId, deviceId: s.deviceId };
   const out: Record<string, any> = {
-    chunk: await Promise.all(chunk.map(async (r) => {
-      const ev = hs.rooms.formatEvent(r.ev, viewer);
-      const info = latest.get(r.ev.pdu.event_id!)!;
-      const latestEv = await hs.rooms.getEvent(info.latestId);
-      ev.unsigned = {
-        ...ev.unsigned,
-        "m.relations": {
-          ...(ev.unsigned?.["m.relations"] ?? {}),
-          "m.thread": {
-            latest_event: latestEv ? hs.rooms.formatEvent(latestEv, viewer) : undefined,
-            count: info.count,
-            current_user_participated: r.ev.pdu.sender === s.userId || info.participants.has(s.userId),
+    chunk: await Promise.all(
+      chunk.map(async (r) => {
+        const ev = hs.rooms.formatEvent(r.ev, viewer);
+        const info = latest.get(r.ev.pdu.event_id!)!;
+        const latestEv = await hs.rooms.getEvent(info.latestId);
+        ev.unsigned = {
+          ...ev.unsigned,
+          "m.relations": {
+            ...ev.unsigned?.["m.relations"],
+            "m.thread": {
+              latest_event: latestEv ? hs.rooms.formatEvent(latestEv, viewer) : undefined,
+              count: info.count,
+              current_user_participated: r.ev.pdu.sender === s.userId || info.participants.has(s.userId),
+            },
           },
-        },
-      };
-      return ev;
-    })),
+        };
+        return ev;
+      }),
+    ),
   };
   if (page.length > limit) out.next_batch = `s${page[limit].stream}`;
   return out;

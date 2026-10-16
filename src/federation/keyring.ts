@@ -30,7 +30,10 @@ export class KeyRing {
     const cached = this.cache.get(serverName)?.get(keyId);
     if (cached && cached.validUntil >= minValidUntil) return cached.key;
     if (!cached) {
-      const row = await this.hs.db.findOne("remote_server_keys", [{ field: "server_name", value: serverName }, { field: "key_id", value: keyId }]);
+      const row = await this.hs.db.findOne("remote_server_keys", [
+        { field: "server_name", value: serverName },
+        { field: "key_id", value: keyId },
+      ]);
       if (row) {
         this.remember(serverName, keyId, row.key, row.valid_until_ts);
         if (row.valid_until_ts >= minValidUntil) return this.cache.get(serverName)!.get(keyId)!.key;
@@ -71,7 +74,8 @@ export class KeyRing {
     if (body.server_name !== serverName || !isObject(body.verify_keys)) return;
     const validUntil = Number(body.valid_until_ts) || 0;
     const entries: [string, string, number][] = [];
-    for (const [keyId, v] of Object.entries(body.verify_keys)) if (typeof (v as any)?.key === "string") entries.push([keyId, (v as any).key, validUntil]);
+    for (const [keyId, v] of Object.entries(body.verify_keys))
+      if (typeof (v as any)?.key === "string") entries.push([keyId, (v as any).key, validUntil]);
     for (const [keyId, v] of Object.entries(isObject(body.old_verify_keys) ? body.old_verify_keys : {})) {
       if (typeof (v as any)?.key === "string") entries.push([keyId, (v as any).key, Number((v as any).expired_ts) || 0]);
     }

@@ -95,7 +95,10 @@ export class ThreepidService {
   }
 
   async userFor(medium: Medium, address: string): Promise<string | null> {
-    const row = await this.hs.db.findOne("user_threepids", [{ field: "medium", value: medium }, { field: "address", value: address }]);
+    const row = await this.hs.db.findOne("user_threepids", [
+      { field: "medium", value: medium },
+      { field: "address", value: address },
+    ]);
     return row?.user_id ?? null;
   }
 
@@ -108,12 +111,22 @@ export class ThreepidService {
     const owner = await this.userFor(threepid.medium, threepid.address);
     if (owner && owner !== userId) throw new MatrixError(400, "M_THREEPID_IN_USE", "This address is already in use");
     await this.hs.db.upsert("user_threepids", {
-      user_id: userId, medium: threepid.medium, address: threepid.address, validated_ts: threepid.validatedTs, added_ts: Date.now(),
+      user_id: userId,
+      medium: threepid.medium,
+      address: threepid.address,
+      validated_ts: threepid.validatedTs,
+      added_ts: Date.now(),
     });
   }
 
   async remove(userId: string, medium: Medium, address: string): Promise<boolean> {
-    return (await this.hs.db.delete("user_threepids", [{ field: "user_id", value: userId }, { field: "medium", value: medium }, { field: "address", value: address }])) > 0;
+    return (
+      (await this.hs.db.delete("user_threepids", [
+        { field: "user_id", value: userId },
+        { field: "medium", value: medium },
+        { field: "address", value: address },
+      ])) > 0
+    );
   }
 
   /**
@@ -121,13 +134,21 @@ export class ThreepidService {
    * Returns "success" if every unbind succeeded, "no-support" otherwise.
    */
   async unbindAll(userId: string, medium: string, address: string, idServer?: string): Promise<"success" | "no-support"> {
-    const where = [{ field: "user_id", value: userId }, { field: "medium", value: medium }, { field: "address", value: address }];
+    const where = [
+      { field: "user_id", value: userId },
+      { field: "medium", value: medium },
+      { field: "address", value: address },
+    ];
     const servers = idServer ? [idServer] : (await this.hs.db.findMany("threepid_bindings", { where })).map((b) => b.id_server);
     if (servers.length === 0) return "no-support";
     let result: "success" | "no-support" = "success";
     for (const server of servers) {
       let ok = false;
-      try { ok = await this.hs.identityServers.unbind(server, userId, medium, address); } catch (err) { this.hs.logger.warn("Unbind from", server, "failed", err); }
+      try {
+        ok = await this.hs.identityServers.unbind(server, userId, medium, address);
+      } catch (err) {
+        this.hs.logger.warn("Unbind from", server, "failed", err);
+      }
       if (ok) await this.hs.db.delete("threepid_bindings", [...where, { field: "id_server", value: server }]);
       else result = "no-support";
     }
@@ -149,8 +170,14 @@ export class ThreepidService {
    */
   async requestToken(purpose: ThreepidPurpose, medium: Medium, body: Record<string, any>): Promise<Record<string, unknown>> {
     if (!this.enabled) throw errors.threepidDenied();
-    if (!this.canValidate(medium)) throw new MatrixError(400, "M_THREEPID_MEDIUM_NOT_SUPPORTED", `This server cannot validate ${medium === "email" ? "email addresses" : "phone numbers"}`);
-    if (typeof body.client_secret !== "string" || !CLIENT_SECRET_RE.test(body.client_secret)) throw errors.invalidParam("Invalid client_secret");
+    if (!this.canValidate(medium))
+      throw new MatrixError(
+        400,
+        "M_THREEPID_MEDIUM_NOT_SUPPORTED",
+        `This server cannot validate ${medium === "email" ? "email addresses" : "phone numbers"}`,
+      );
+    if (typeof body.client_secret !== "string" || !CLIENT_SECRET_RE.test(body.client_secret))
+      throw errors.invalidParam("Invalid client_secret");
     if (!Number.isInteger(body.send_attempt)) throw errors.invalidParam("send_attempt must be an integer");
     let address: string | null;
     if (medium === "email") {
@@ -158,7 +185,8 @@ export class ThreepidService {
       address = canonicalAddress("email", body.email);
       if (!address) throw errors.invalidParam("Invalid email address");
     } else {
-      if (typeof body.country !== "string" || typeof body.phone_number !== "string") throw errors.missingParam("Missing country or phone_number");
+      if (typeof body.country !== "string" || typeof body.phone_number !== "string")
+        throw errors.missingParam("Missing country or phone_number");
       address = toMsisdn(body.country, body.phone_number);
       if (!address) throw errors.invalidParam("Invalid phone number");
     }
@@ -168,16 +196,27 @@ export class ThreepidService {
     const nextLink = typeof body.next_link === "string" ? body.next_link : null;
     if (nextLink && !/^https?:\/\//i.test(nextLink)) throw errors.invalidParam("next_link must be an http(s) URL");
 
-    const existing = (await this.hs.db.findMany("threepid_sessions", { where: [{ field: "client_secret", value: body.client_secret }] }))
-      .find((s) => s.medium === medium && s.address === address && !this.expired(s));
+    const existing = (
+      await this.hs.db.findMany("threepid_sessions", { where: [{ field: "client_secret", value: body.client_secret }] })
+    ).find((s) => s.medium === medium && s.address === address && !this.expired(s));
     let session = existing;
     if (existing && body.send_attempt <= existing.send_attempt) return this.tokenResponse(existing);
     if (existing) {
-      await this.hs.db.update("threepid_sessions", [{ field: "sid", value: existing.sid }], { send_attempt: body.send_attempt, next_link: nextLink });
+      await this.hs.db.update("threepid_sessions", [{ field: "sid", value: existing.sid }], {
+        send_attempt: body.send_attempt,
+        next_link: nextLink,
+      });
     } else {
       session = {
-        sid: randomString(24), client_secret: body.client_secret, medium, address, send_attempt: body.send_attempt, next_link: nextLink,
-        token: medium === "email" ? randomString(32) : String(randomInt(0, 1_000_000)).padStart(6, "0"), created_ts: Date.now(), validated_ts: null,
+        sid: randomString(24),
+        client_secret: body.client_secret,
+        medium,
+        address,
+        send_attempt: body.send_attempt,
+        next_link: nextLink,
+        token: medium === "email" ? randomString(32) : String(randomInt(0, 1_000_000)).padStart(6, "0"),
+        created_ts: Date.now(),
+        validated_ts: null,
       };
       await this.hs.db.create("threepid_sessions", session);
     }
@@ -199,14 +238,19 @@ export class ThreepidService {
         const base = this.hs.config.publicBaseUrl?.replace(/\/$/, "") ?? "";
         const link = `${base}${SUBMIT_PATH}?${new URLSearchParams({ sid: session.sid, client_secret: session.client_secret, token: session.token })}`;
         await this.options.sendEmail!({
-          to: session.address, purpose, token: session.token, link,
+          to: session.address,
+          purpose,
+          token: session.token,
+          link,
           subject: `Confirm your email address for ${this.hs.serverName}`,
           text: `To ${what} on ${this.hs.serverName}, open this link:\n\n${link}\n\nIf you did not request this, ignore this message.`,
           html: `<p>To ${what} on ${escapeHtml(this.hs.serverName)}, <a href="${escapeHtml(link)}">confirm your email address</a>.</p><p>If you did not request this, ignore this message.</p>`,
         });
       } else {
         await this.options.sendSms!({
-          to: session.address, purpose, token: session.token,
+          to: session.address,
+          purpose,
+          token: session.token,
           text: `Your ${this.hs.serverName} code to ${what}: ${session.token}`,
         });
       }
@@ -223,9 +267,11 @@ export class ThreepidService {
   /** Validate a session with the token the user received. Returns the session's `next_link`. */
   async submitToken(sid: string, clientSecret: string, token: string): Promise<string | null> {
     const session = await this.hs.db.findOne("threepid_sessions", [{ field: "sid", value: sid }]);
-    if (!session || session.client_secret !== clientSecret || this.expired(session)) throw new MatrixError(400, "M_NO_VALID_SESSION", "Unknown or expired session");
+    if (!session || session.client_secret !== clientSecret || this.expired(session))
+      throw new MatrixError(400, "M_NO_VALID_SESSION", "Unknown or expired session");
     if (session.token !== token.trim()) throw new MatrixError(400, "M_INVALID_PARAM", "Invalid token");
-    if (session.validated_ts === null) await this.hs.db.update("threepid_sessions", [{ field: "sid", value: sid }], { validated_ts: Date.now() });
+    if (session.validated_ts === null)
+      await this.hs.db.update("threepid_sessions", [{ field: "sid", value: sid }], { validated_ts: Date.now() });
     return session.next_link;
   }
 

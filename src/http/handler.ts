@@ -39,10 +39,18 @@ export async function handleRequest(hs: Homeserver, request: Request, options: H
   const url = new URL(request.url);
   const started = performance.now();
   const response = await dispatch(hs, request, url, options);
-  const info: Record<string, unknown> = { method: request.method, path: url.pathname, status: response.status, durationMs: performance.now() - started };
+  const info: Record<string, unknown> = {
+    method: request.method,
+    path: url.pathname,
+    status: response.status,
+    durationMs: performance.now() - started,
+  };
   // Error responses carry their Matrix error (errcode and message) for logging.
   if (response.status >= 400 && response.headers.get("content-type") === "application/json" && hs.listenerCount("request") > 0) {
-    info.error = await response.clone().json().catch(() => undefined);
+    info.error = await response
+      .clone()
+      .json()
+      .catch(() => undefined);
   }
   hs.emit("request", info);
   return response;
@@ -74,7 +82,11 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
         const bytes = await readBytes();
         if (bytes.length === 0) return {};
         let parsed: unknown;
-        try { parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { throw errors.notJson(); }
+        try {
+          parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+        } catch {
+          throw errors.notJson();
+        }
         if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw errors.badJson("Body must be a JSON object");
         return parsed as any;
       },
@@ -88,7 +100,13 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
           if (reg) {
             const userId = await hs.appservices.masquerade(reg, url.searchParams.get("user_id"));
             const deviceId = url.searchParams.get("device_id") ?? url.searchParams.get("org.matrix.msc3202.device_id");
-            if (deviceId && !(await hs.db.findOne("devices", [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }]))) {
+            if (
+              deviceId &&
+              !(await hs.db.findOne("devices", [
+                { field: "user_id", value: userId },
+                { field: "device_id", value: deviceId },
+              ]))
+            ) {
               throw errors.forbidden("Unknown device for this user");
             }
             const user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
@@ -124,7 +142,21 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
   }
 }
 
-const NETWORK_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT", "EPIPE", "ERR_TLS_CERT_ALTNAME_INVALID", "DEPTH_ZERO_SELF_SIGNED_CERT", "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "CERT_HAS_EXPIRED"]);
+const NETWORK_CODES = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+  "EPIPE",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "CERT_HAS_EXPIRED",
+]);
 
 function isNetworkError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;

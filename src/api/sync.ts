@@ -1,6 +1,6 @@
 import { errors } from "../core/errors.ts";
 import { getState } from "../core/authrules.ts";
-import { eventIdOf, splitStateKey, stateKey, stripState, toClientEvent, type PDU } from "../core/events.ts";
+import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "../core/events.ts";
 import type { StoredEvent } from "../core/rooms.ts";
 import type { Session } from "../core/auth.ts";
 import type { Homeserver } from "../homeserver.ts";
@@ -28,10 +28,17 @@ async function loadFilter(hs: Homeserver, userId: string, raw: string | null): P
   if (!raw) return {};
   if (raw.trim().startsWith("{")) {
     let parsed: unknown;
-    try { parsed = JSON.parse(raw); } catch { throw errors.badJson("Invalid filter JSON"); }
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw errors.badJson("Invalid filter JSON");
+    }
     return validateSyncFilter(parsed);
   }
-  const row = await hs.db.findOne("filters", [{ field: "user_id", value: userId }, { field: "filter_id", value: raw }]);
+  const row = await hs.db.findOne("filters", [
+    { field: "user_id", value: userId },
+    { field: "filter_id", value: raw },
+  ]);
   if (!row) throw errors.notFound("Unknown filter");
   return row.filter as SyncFilter;
 }
@@ -62,13 +69,15 @@ export interface SyncParams {
 /** State snapshot ID in effect at stream position `pos` in a room (0 = empty). */
 async function snapshotAt(hs: Homeserver, roomId: string, pos: number): Promise<number> {
   const rows = await hs.db.findMany("events", {
-    where: [{ field: "room_id", value: roomId }, { field: "stream", operator: "lte", value: pos }],
+    where: [
+      { field: "room_id", value: roomId },
+      { field: "stream", operator: "lte", value: pos },
+    ],
     sortBy: { field: "stream", direction: "desc" },
     limit: 1,
   });
   return rows[0]?.state_snapshot ?? 0;
 }
-
 
 /** Build the timeline + state section of a room. */
 export async function roomTimeline(
@@ -80,7 +89,10 @@ export async function roomTimeline(
 ): Promise<{ timeline: Record<string, any>; state: PDU[]; stateAfter: PDU[]; timelineEvents: StoredEvent[] }> {
   const tf = p.filter.room?.timeline;
   const limit = tf?.limit ?? 10;
-  const where: any[] = [{ field: "room_id", value: roomId }, { field: "stream", operator: "lte", value: upTo }];
+  const where: any[] = [
+    { field: "room_id", value: roomId },
+    { field: "stream", operator: "lte", value: upTo },
+  ];
   if (since !== null) where.push({ field: "stream", operator: "gt", value: since });
   const events: StoredEvent[] = [];
   let limited = false;
@@ -101,7 +113,11 @@ export async function roomTimeline(
       if (!ev || !matchesFilter(tf, ev.pdu) || p.ignored.has(ev.pdu.sender)) continue;
       // Initial syncs order the timeline topologically (as Synapse does), so gather some slack
       // beyond `limit` from the stream to choose the topologically latest events from.
-      if (events.length >= (since === null ? limit * 2 : limit)) { limited = true; full = true; break; }
+      if (events.length >= (since === null ? limit * 2 : limit)) {
+        limited = true;
+        full = true;
+        break;
+      }
       events.push(ev);
     }
     if (full || rows.length < batchSize) break;
@@ -120,7 +136,9 @@ export async function roomTimeline(
   // A gap (unfetched predecessors) inside the timeline: start the timeline at the newest
   // gap event and mark it limited, so the client paginates across the gap.
   let lastGap = -1;
-  events.forEach((e, i) => { if (e.gap) lastGap = i; });
+  events.forEach((e, i) => {
+    if (e.gap) lastGap = i;
+  });
   if (lastGap >= 0) {
     events.splice(0, lastGap);
     limited = true;
@@ -208,7 +226,8 @@ export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: strin
     content[r.event_id] ??= {};
     content[r.event_id][r.receipt_type] ??= {};
     // MSC4102: when receipts clash on one event, the unthreaded one wins.
-    if (r.thread_id && content[r.event_id][r.receipt_type][r.user_id] && !content[r.event_id][r.receipt_type][r.user_id].thread_id) continue;
+    if (r.thread_id && content[r.event_id][r.receipt_type][r.user_id] && !content[r.event_id][r.receipt_type][r.user_id].thread_id)
+      continue;
     content[r.event_id][r.receipt_type][r.user_id] = { ts: r.ts, ...(r.thread_id ? { thread_id: r.thread_id } : {}) };
   }
   if (Object.keys(content).length) out.push({ type: "m.receipt", content });
@@ -216,12 +235,18 @@ export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: strin
 }
 
 async function accountData(hs: Homeserver, p: SyncParams, roomId: string): Promise<{ type: string; content: any }[]> {
-  const where: any[] = [{ field: "user_id", value: p.session.userId }, { field: "room_id", value: roomId }];
+  const where: any[] = [
+    { field: "user_id", value: p.session.userId },
+    { field: "room_id", value: roomId },
+  ];
   if (p.since && !p.fullState) where.push({ field: "stream", operator: "gt", value: p.since.pos });
   const rows = await hs.db.findMany("account_data", { where });
   const filter = roomId ? p.filter.room?.account_data : p.filter.account_data;
   // Account data "deleted" by setting empty content is omitted from initial syncs.
-  return rows.filter((r) => r.stream <= p.to && (p.since || Object.keys(r.content ?? {}).length > 0)).map((r) => ({ type: r.type as string, content: r.content })).filter((e) => matchesFilter(filter, e));
+  return rows
+    .filter((r) => r.stream <= p.to && (p.since || Object.keys(r.content ?? {}).length > 0))
+    .map((r) => ({ type: r.type as string, content: r.content }))
+    .filter((e) => matchesFilter(filter, e));
 }
 
 export async function roomSummary(hs: Homeserver, roomId: string, userId: string): Promise<Record<string, any>> {
@@ -264,11 +289,20 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       // and then sent as if newly joined.
       if (!p.filter.room?.state?.lazy_load_members && (await hs.partialState.isPartial(roomId))) continue;
       const completedAt = await hs.partialState.completedAt(roomId);
-      const initial = since === null || p.fullState || m.stream > since || (completedAt !== null && completedAt > since && completedAt <= p.to);
+      const initial =
+        since === null || p.fullState || m.stream > since || (completedAt !== null && completedAt > since && completedAt <= p.to);
       const { timeline, state, stateAfter, timelineEvents } = await roomTimeline(hs, p, roomId, initial ? null : since, p.to);
       const ephemeral = await roomEphemeral(hs, p, roomId);
       const roomAccountData = await accountData(hs, p, roomId);
-      if (!initial && timelineEvents.length === 0 && state.length === 0 && stateAfter.length === 0 && ephemeral.length === 0 && roomAccountData.length === 0) continue;
+      if (
+        !initial &&
+        timelineEvents.length === 0 &&
+        state.length === 0 &&
+        stateAfter.length === 0 &&
+        ephemeral.length === 0 &&
+        roomAccountData.length === 0
+      )
+        continue;
       const stateSection = p.useStateAfter
         ? { [p.stateAfterKey ?? "state_after"]: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } }
         : { state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) } };
@@ -337,7 +371,10 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   if (globalAccountData.length) empty = false;
 
   // To-device: acknowledge everything up to the previous token, then deliver new messages.
-  const deviceWhere = [{ field: "user_id", value: userId }, { field: "device_id", value: p.session.deviceId }];
+  const deviceWhere = [
+    { field: "user_id", value: userId },
+    { field: "device_id", value: p.session.deviceId },
+  ];
   if (p.since) await hs.db.delete("to_device", [...deviceWhere, { field: "stream", operator: "lte", value: p.since.toDevice }]);
   const toDeviceRows = await hs.db.findMany("to_device", {
     where: [...deviceWhere, { field: "stream", operator: "gt", value: p.since?.toDevice ?? 0 }],
@@ -345,7 +382,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     limit: 100,
   });
   const toDevice = toDeviceRows.filter((r) => r.stream <= p.to);
-  const nextToDevice = toDevice.length ? toDevice[toDevice.length - 1].stream : p.since?.toDevice ?? 0;
+  const nextToDevice = toDevice.length ? toDevice[toDevice.length - 1].stream : (p.since?.toDevice ?? 0);
   if (toDevice.length) empty = false;
 
   // Presence for users sharing rooms.
@@ -411,7 +448,11 @@ async function sync(ctx: RequestContext) {
   const deadline = Date.now() + timeout;
   for (;;) {
     const to = await hs.streams.position();
-    const ignoredRow = await hs.db.findOne("account_data", [{ field: "user_id", value: session.userId }, { field: "room_id", value: "" }, { field: "type", value: "m.ignored_user_list" }]);
+    const ignoredRow = await hs.db.findOne("account_data", [
+      { field: "user_id", value: session.userId },
+      { field: "room_id", value: "" },
+      { field: "type", value: "m.ignored_user_list" },
+    ]);
     const ignored = new Set(Object.keys(ignoredRow?.content?.ignored_users ?? {}));
     const stable = ctx.query.get("use_state_after") === "true";
     const unstable = ctx.query.get("org.matrix.msc4222.use_state_after") === "true";
@@ -434,7 +475,9 @@ async function touchPresence(hs: Homeserver, userId: string, presence: string): 
     await hs.db.update("presence", [{ field: "user_id", value: userId }], { last_active_ts: Date.now() });
     return;
   }
-  await hs.streams.write((stream) => hs.db.upsert("presence", { user_id: userId, presence: state, status_msg: row?.status_msg ?? null, last_active_ts: Date.now(), stream }));
+  await hs.streams.write((stream) =>
+    hs.db.upsert("presence", { user_id: userId, presence: state, status_msg: row?.status_msg ?? null, last_active_ts: Date.now(), stream }),
+  );
   await hs.federation.onPresence(userId, state, row?.status_msg ?? null).catch(() => {});
 }
 
@@ -454,7 +497,10 @@ export function registerSyncRoutes(r: Router): void {
   r.client("GET", "/user/:userId/filter/:filterId", async (ctx) => {
     const s = await ctx.auth();
     if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot read filters of other users");
-    const row = await ctx.hs.db.findOne("filters", [{ field: "user_id", value: s.userId }, { field: "filter_id", value: ctx.params.filterId }]);
+    const row = await ctx.hs.db.findOne("filters", [
+      { field: "user_id", value: s.userId },
+      { field: "filter_id", value: ctx.params.filterId },
+    ]);
     if (!row) throw errors.notFound("Unknown filter");
     return row.filter;
   });
@@ -472,7 +518,7 @@ async function profileUpdatesFor(hs: Homeserver, p: SyncParams, memberships: Rec
   const sharing = await hs.rooms.usersSharingRooms(p.session.userId);
   const out: Record<string, any> = {};
   const add = (userId: string, field: string, value: unknown) => {
-    ((out[userId] ??= { profile_updates: {} }).profile_updates)[field] = value ?? null;
+    (out[userId] ??= { profile_updates: {} }).profile_updates[field] = value ?? null;
   };
   // Users whose profile we must send in full: everyone on initial sync, newly shared users otherwise.
   const full = new Set<string>(since === null ? sharing : []);
@@ -485,8 +531,8 @@ async function profileUpdatesFor(hs: Homeserver, p: SyncParams, memberships: Rec
         // Profile changes re-send the join; only an actual new join counts as newly shared.
         const ev = await hs.rooms.getEvent(c.event_id);
         if (ev?.pdu.unsigned?.prev_content?.membership !== "join") full.add(c.user_id);
-      }
-      else if (!sharing.has(c.user_id) && (myRooms.has(c.room_id) || memberships.some((m) => m.room_id === c.room_id))) out[c.user_id] = { profile_updates: null };
+      } else if (!sharing.has(c.user_id) && (myRooms.has(c.room_id) || memberships.some((m) => m.room_id === c.room_id)))
+        out[c.user_id] = { profile_updates: null };
     }
     const rows = await hs.db.findMany("profile_fields", { where: [{ field: "stream", operator: "gt", value: since }] });
     for (const row of rows) {

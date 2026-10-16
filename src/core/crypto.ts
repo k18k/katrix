@@ -82,8 +82,8 @@ export function loadSigningKey(keyId: string, seed?: string): SigningKey {
 export function signJson<T extends Record<string, any>>(obj: T, serverName: string, key: SigningKey): T {
   const { signatures, unsigned, ...rest } = obj;
   const sig = unpaddedBase64(sign(null, Buffer.from(canonicalJson(rest)), key.privateKey));
-  const merged = { ...(signatures ?? {}) };
-  merged[serverName] = { ...(merged[serverName] ?? {}), [`ed25519:${key.keyId}`]: sig };
+  const merged = { ...signatures };
+  merged[serverName] = { ...merged[serverName], [`ed25519:${key.keyId}`]: sig };
   (obj as any).signatures = merged;
   return obj;
 }

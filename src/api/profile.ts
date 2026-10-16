@@ -86,23 +86,37 @@ export function registerProfileRoutes(r: Router): void {
     // A room is public here if anyone may join it or read its history (published or not).
     for (const room of await ctx.hs.db.findMany("rooms", {})) {
       const state = await ctx.hs.rooms.currentState(room.room_id);
-      const isPublic = room.is_public || getState(state, "m.room.join_rules")?.content?.join_rule === "public"
-        || getState(state, "m.room.history_visibility")?.content?.history_visibility === "world_readable";
+      const isPublic =
+        room.is_public ||
+        getState(state, "m.room.join_rules")?.content?.join_rule === "public" ||
+        getState(state, "m.room.history_visibility")?.content?.history_visibility === "world_readable";
       if (isPublic) for (const u of await ctx.hs.rooms.joinedMembers(room.room_id)) visible.add(u);
     }
-    const users = await ctx.hs.db.findMany("users", { where: [{ field: "user_id", operator: "in", value: [...visible].filter((u) => ctx.hs.isLocalUser(u)) }] });
+    const users = await ctx.hs.db.findMany("users", {
+      where: [{ field: "user_id", operator: "in", value: [...visible].filter((u) => ctx.hs.isLocalUser(u)) }],
+    });
     const candidates: { user_id: string; displayname?: string | null; avatar_url?: string | null }[] = users
       .filter((u) => !u.deactivated)
       .map((u) => ({ user_id: u.user_id, displayname: u.displayname, avatar_url: u.avatar_url }));
     // Remote users are known through their membership events.
     for (const userId of visible) {
       if (ctx.hs.isLocalUser(userId)) continue;
-      const row = (await ctx.hs.db.findMany("memberships", { where: [{ field: "user_id", value: userId }, { field: "membership", value: "join" }], limit: 1 }))[0];
+      const row = (
+        await ctx.hs.db.findMany("memberships", {
+          where: [
+            { field: "user_id", value: userId },
+            { field: "membership", value: "join" },
+          ],
+          limit: 1,
+        })
+      )[0];
       const member = row ? await ctx.hs.rooms.getPdu(row.event_id) : null;
       candidates.push({ user_id: userId, displayname: member?.content?.displayname, avatar_url: member?.content?.avatar_url });
     }
     const results = candidates
-      .filter((u) => u.user_id.toLowerCase().includes(term) || (typeof u.displayname === "string" && u.displayname.toLowerCase().includes(term)))
+      .filter(
+        (u) => u.user_id.toLowerCase().includes(term) || (typeof u.displayname === "string" && u.displayname.toLowerCase().includes(term)),
+      )
       .map((u) => ({ user_id: u.user_id, display_name: u.displayname ?? undefined, avatar_url: u.avatar_url ?? undefined }));
     return { results: results.slice(0, limit), limited: results.length > limit };
   });
@@ -125,11 +139,18 @@ export function registerProfileRoutes(r: Router): void {
     if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot set another user's presence");
     const body = await ctx.json();
     if (!["online", "offline", "unavailable"].includes(body.presence)) throw errors.invalidParam("Invalid presence");
-    await ctx.hs.streams.write((stream) => ctx.hs.db.upsert("presence", {
-      user_id: s.userId, presence: body.presence, status_msg: typeof body.status_msg === "string" ? body.status_msg : null,
-      last_active_ts: Date.now(), stream,
-    }));
-    await ctx.hs.federation.onPresence(s.userId, body.presence, typeof body.status_msg === "string" ? body.status_msg : null).catch(() => {});
+    await ctx.hs.streams.write((stream) =>
+      ctx.hs.db.upsert("presence", {
+        user_id: s.userId,
+        presence: body.presence,
+        status_msg: typeof body.status_msg === "string" ? body.status_msg : null,
+        last_active_ts: Date.now(),
+        stream,
+      }),
+    );
+    await ctx.hs.federation
+      .onPresence(s.userId, body.presence, typeof body.status_msg === "string" ? body.status_msg : null)
+      .catch(() => {});
     ctx.hs.notifier.notify(await ctx.hs.rooms.usersSharingRooms(s.userId));
     return {};
   });

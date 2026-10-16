@@ -21,11 +21,16 @@ export class IdentityServers {
   }
 
   private base(idServer: string): string {
-    if (!/^[A-Za-z0-9.\-]+(:\d+)?$/.test(idServer)) throw new MatrixError(400, "M_INVALID_PARAM", "Invalid id_server");
+    if (!/^[A-Za-z0-9.-]+(:\d+)?$/.test(idServer)) throw new MatrixError(400, "M_INVALID_PARAM", "Invalid id_server");
     return `${this.hs.config.threepid.identityServerProtocol}://${idServer}`;
   }
 
-  private async call(idServer: string, method: string, path: string, opts: { token?: string; body?: unknown; signed?: boolean } = {}): Promise<any> {
+  private async call(
+    idServer: string,
+    method: string,
+    path: string,
+    opts: { token?: string; body?: unknown; signed?: boolean } = {},
+  ): Promise<any> {
     const headers: Record<string, string> = { accept: "application/json" };
     if (opts.body !== undefined) headers["content-type"] = "application/json";
     if (opts.token) headers.authorization = `Bearer ${opts.token}`;
@@ -34,15 +39,21 @@ export class IdentityServers {
     let res: Response;
     try {
       res = await this.hs.fetch(`${this.base(idServer)}${path}`, {
-        method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), signal: AbortSignal.timeout(15_000),
+        method,
+        headers,
+        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        signal: AbortSignal.timeout(15_000),
       });
     } catch (err) {
       throw new MatrixError(502, "M_UNKNOWN", `Identity server ${idServer} unreachable: ${(err as Error).message}`);
     }
     const json: any = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new MatrixError(res.status >= 500 ? 502 : res.status, typeof json.errcode === "string" ? json.errcode : "M_UNKNOWN",
-        typeof json.error === "string" ? json.error : `Identity server returned ${res.status}`);
+      throw new MatrixError(
+        res.status >= 500 ? 502 : res.status,
+        typeof json.errcode === "string" ? json.errcode : "M_UNKNOWN",
+        typeof json.error === "string" ? json.error : `Identity server returned ${res.status}`,
+      );
     }
     return json;
   }
@@ -62,7 +73,8 @@ export class IdentityServers {
       throw new MatrixError(400, "M_UNKNOWN", "The identity server supports no known lookup algorithm");
     }
     const res = await this.call(idServer, "POST", "/_matrix/identity/v2/lookup", {
-      token, body: { addresses: [query], algorithm, pepper: details.lookup_pepper ?? "" },
+      token,
+      body: { addresses: [query], algorithm, pepper: details.lookup_pepper ?? "" },
     });
     const mxid = res.mappings?.[query];
     return typeof mxid === "string" ? mxid : null;
@@ -70,7 +82,8 @@ export class IdentityServers {
 
   async storeInvite(idServer: string, token: string, invite: Record<string, unknown>): Promise<StoredInvite> {
     const res = await this.call(idServer, "POST", "/_matrix/identity/v2/store-invite", { token, body: invite });
-    if (typeof res.token !== "string" || !Array.isArray(res.public_keys)) throw new MatrixError(502, "M_UNKNOWN", "Invalid store-invite response");
+    if (typeof res.token !== "string" || !Array.isArray(res.public_keys))
+      throw new MatrixError(502, "M_UNKNOWN", "Invalid store-invite response");
     return res;
   }
 
@@ -82,7 +95,10 @@ export class IdentityServers {
   /** Remove a binding; resolves false when the identity server does not support unbinding. */
   async unbind(idServer: string, mxid: string, medium: string, address: string): Promise<boolean> {
     try {
-      await this.call(idServer, "POST", "/_matrix/identity/v2/3pid/unbind", { signed: true, body: { mxid, threepid: { medium, address } } });
+      await this.call(idServer, "POST", "/_matrix/identity/v2/3pid/unbind", {
+        signed: true,
+        body: { mxid, threepid: { medium, address } },
+      });
       return true;
     } catch (err) {
       if (err instanceof MatrixError && (err.status === 404 || err.status === 501 || err.errcode === "M_UNRECOGNIZED")) return false;

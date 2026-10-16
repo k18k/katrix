@@ -32,9 +32,19 @@ export class PolicyServers {
     const ed25519 = content?.public_keys?.ed25519;
     if (typeof via !== "string" || typeof ed25519 !== "string") return null;
     let key: KeyObject;
-    try { key = publicKeyFromBase64(ed25519); } catch { return null; }
+    try {
+      key = publicKeyFromBase64(ed25519);
+    } catch {
+      return null;
+    }
     for (const ev of state.values()) {
-      if (ev.type === "m.room.member" && ev.content?.membership === "join" && typeof ev.state_key === "string" && domainOf(ev.state_key) === via) return { via, key };
+      if (
+        ev.type === "m.room.member" &&
+        ev.content?.membership === "join" &&
+        typeof ev.state_key === "string" &&
+        domainOf(ev.state_key) === via
+      )
+        return { via, key };
     }
     return null;
   }

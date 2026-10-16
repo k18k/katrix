@@ -34,7 +34,10 @@ export type Thumbnailer = (
 ) => Promise<{ data: Uint8Array; contentType: string } | null>;
 
 /** Minimal structural type of the `sharp` image library. */
-type SharpLike = (input: Uint8Array, options?: { animated?: boolean }) => {
+type SharpLike = (
+  input: Uint8Array,
+  options?: { animated?: boolean },
+) => {
   resize(opts: { width: number; height: number; fit: "cover" | "inside"; withoutEnlargement?: boolean }): {
     toFormat(format: "webp" | "png" | "jpeg"): { toBuffer(): Promise<Uint8Array> };
   };
@@ -57,9 +60,15 @@ export function sharpThumbnailer(sharp: SharpLike): Thumbnailer {
 export function memoryMedia(): MediaAdapter {
   const store = new Map<string, Uint8Array>();
   return {
-    async put(id, data) { store.set(id, data); },
-    async get(id) { return store.get(id) ?? null; },
-    async delete(id) { store.delete(id); },
+    async put(id, data) {
+      store.set(id, data);
+    },
+    async get(id) {
+      return store.get(id) ?? null;
+    },
+    async delete(id) {
+      store.delete(id);
+    },
   };
 }
 
@@ -74,8 +83,14 @@ export function filesystemMedia(directory: string): MediaAdapter {
       await writeFile(path(id), data);
     },
     async get(id) {
-      try { return await readFile(path(id)); } catch { return null; }
+      try {
+        return await readFile(path(id));
+      } catch {
+        return null;
+      }
     },
-    async delete(id) { await rm(path(id), { force: true }); },
+    async delete(id) {
+      await rm(path(id), { force: true });
+    },
   };
 }

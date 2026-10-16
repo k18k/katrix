@@ -48,7 +48,10 @@ function globMatch(pattern: string, value: string): boolean {
   return matchGlob(pattern, value, { questionMark: false });
 }
 
-export function matchesFilter(filter: EventFilter | undefined, ev: { type: string; sender?: string; room_id?: string; content?: any }): boolean {
+export function matchesFilter(
+  filter: EventFilter | undefined,
+  ev: { type: string; sender?: string; room_id?: string; content?: any },
+): boolean {
   if (!filter) return true;
   if (filter.not_types?.some((t) => globMatch(t, ev.type))) return false;
   if (filter.types && !filter.types.some((t) => globMatch(t, ev.type))) return false;
@@ -96,7 +99,8 @@ function validateEventFilter(f: unknown, name: string): void {
   if (f.senders?.some((u: string) => !u.startsWith("@")) || f.not_senders?.some((u: string) => !u.startsWith("@"))) {
     throw errors.badJson(`${name}: senders must be user IDs`);
   }
-  if (f.limit !== undefined && (!Number.isInteger(f.limit) || f.limit < 0)) throw errors.badJson(`${name}.limit must be a non-negative integer`);
+  if (f.limit !== undefined && (!Number.isInteger(f.limit) || f.limit < 0))
+    throw errors.badJson(`${name}.limit must be a non-negative integer`);
 }
 
 export function validateSyncFilter(f: unknown): SyncFilter {
@@ -116,7 +120,11 @@ export function parseRoomEventFilter(ctx: RequestContext): EventFilter | undefin
   const raw = ctx.query.get("filter");
   if (!raw) return undefined;
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch { throw errors.badJson("Invalid filter JSON"); }
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw errors.badJson("Invalid filter JSON");
+  }
   validateEventFilter(parsed, "filter");
   return parsed as EventFilter;
 }

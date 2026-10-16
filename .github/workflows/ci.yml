@@ -18,6 +18,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
       # The published package must build (tsdown → dist/, .js and .d.ts per module).
       - run: npm pack --dry-run
 

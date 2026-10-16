@@ -176,7 +176,11 @@ export class AdminRoomService {
     } catch (err) {
       reply = `Error: ${err instanceof MatrixError ? err.message : err instanceof Error ? err.message : String(err)}`;
     }
-    await this.hs.audit.record({ action: "admin_command", actor: event.sender, details: { command: line.split(/\s+/).slice(0, 2).join(" ") } });
+    await this.hs.audit.record({
+      action: "admin_command",
+      actor: event.sender,
+      details: { command: line.split(/\s+/).slice(0, 2).join(" ") },
+    });
     await this.say(reply, event.event_id);
   }
 
@@ -216,20 +220,29 @@ export class AdminRoomService {
           case "info": {
             const user = await hs.admin.getUser(this.resolveUser(a1));
             if (!user) return "No such user";
-            return Object.entries(user).map(([k, v]) => `${k}: ${k.endsWith("_ts") ? time(v as number) : v}`).join("\n");
+            return Object.entries(user)
+              .map(([k, v]) => `${k}: ${k.endsWith("_ts") ? time(v as number) : v}`)
+              .join("\n");
           }
           case "whois": {
             const userId = this.resolveUser(a1);
             const devices = await hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
             if (!devices.length) return `${userId} has no devices`;
-            return devices.map((d) => `${d.device_id} ${d.display_name ?? ""}\n  last seen ${time(d.last_seen_ts)} from ${d.last_seen_ip ?? "unknown"}`).join("\n");
+            return devices
+              .map((d) => `${d.device_id} ${d.display_name ?? ""}\n  last seen ${time(d.last_seen_ts)} from ${d.last_seen_ip ?? "unknown"}`)
+              .join("\n");
           }
           case "create": {
             if (!a1) return "Usage: users create <localpart> [password] [--admin]";
             const password = a2 ?? randomString(16);
             const userId = await hs.admin.createUser(a1, { password, admin: flags.has("--admin") });
             if (flags.has("--admin")) await this.addAdmin(userId);
-            await hs.audit.record({ action: "admin_action", actor, target: userId, details: { op: "create_user", admin: flags.has("--admin") } });
+            await hs.audit.record({
+              action: "admin_action",
+              actor,
+              target: userId,
+              details: { op: "create_user", admin: flags.has("--admin") },
+            });
             return `Created ${userId}${a2 ? "" : ` with password: ${password}`}`;
           }
           case "reset-password": {
@@ -282,7 +295,10 @@ export class AdminRoomService {
           case "create": {
             const uses = a1 ? Number(a1) : null;
             const days = a2 ? Number(a2) : null;
-            const t = await hs.admin.createRegistrationToken({ usesAllowed: uses, expiryTime: days ? Date.now() + days * 86_400_000 : null });
+            const t = await hs.admin.createRegistrationToken({
+              usesAllowed: uses,
+              expiryTime: days ? Date.now() + days * 86_400_000 : null,
+            });
             await hs.audit.record({ action: "registration_token_create", actor, target: t.token });
             return `Registration token: ${t.token}${uses ? ` (${uses} uses)` : ""}${days ? ` (expires in ${days} days)` : ""}`;
           }
@@ -309,10 +325,12 @@ export class AdminRoomService {
         switch (sub) {
           case "list": {
             const { rooms, total } = await hs.admin.listRooms({ limit: 200 });
-            const lines = await Promise.all(rooms.map(async (r) => {
-              const name = (await hs.rooms.currentState(r.room_id)).get("m.room.name\u0000")?.content?.name;
-              return `${r.room_id}  ${r.joined_members} member(s)${name ? `  "${name}"` : ""}${r.is_public ? " [public]" : ""}`;
-            }));
+            const lines = await Promise.all(
+              rooms.map(async (r) => {
+                const name = (await hs.rooms.currentState(r.room_id)).get("m.room.name\u0000")?.content?.name;
+                return `${r.room_id}  ${r.joined_members} member(s)${name ? `  "${name}"` : ""}${r.is_public ? " [public]" : ""}`;
+              }),
+            );
             return `${total} room(s):\n${lines.join("\n")}`;
           }
           case "info": {
@@ -330,7 +348,11 @@ export class AdminRoomService {
           case "delete": {
             const roomId = await this.resolveRoom(a1);
             if (roomId === (await this.roomId())) return "Refusing to delete the admin room";
-            const { kicked } = await hs.admin.deleteRoom(roomId, { actor, purge: flags.has("--purge"), reason: "Room deleted by a server admin" });
+            const { kicked } = await hs.admin.deleteRoom(roomId, {
+              actor,
+              purge: flags.has("--purge"),
+              reason: "Room deleted by a server admin",
+            });
             await hs.audit.record({ action: "room_delete", actor, target: roomId, details: { purge: flags.has("--purge") } });
             return `Deleted ${roomId}; removed ${kicked.length} local member(s)${flags.has("--purge") ? " and purged its history" : ""}`;
           }
@@ -371,7 +393,12 @@ export class AdminRoomService {
         const limit = Number(user ? a1 : sub) || 20;
         const rows = await hs.audit.query({ actor: user, limit });
         if (!rows.length) return "No audit entries";
-        return rows.map((r) => `${time(r.ts)} ${r.action}${r.outcome === "failure" ? " (failed)" : ""} by ${r.actor ?? "-"}${r.target ? ` → ${r.target}` : ""}${r.ip ? ` from ${r.ip}` : ""}`).join("\n");
+        return rows
+          .map(
+            (r) =>
+              `${time(r.ts)} ${r.action}${r.outcome === "failure" ? " (failed)" : ""} by ${r.actor ?? "-"}${r.target ? ` → ${r.target}` : ""}${r.ip ? ` from ${r.ip}` : ""}`,
+          )
+          .join("\n");
       }
 
       case "reports": {
@@ -379,9 +406,18 @@ export class AdminRoomService {
           if (!(await hs.db.update("event_reports", [{ field: "id", value: Number(a1) }], { resolved: true }))) return "No such report";
           return `Report ${a1} resolved`;
         }
-        const rows = await hs.db.findMany("event_reports", { where: [{ field: "resolved", value: false }], sortBy: { field: "id", direction: "desc" }, limit: 50 });
+        const rows = await hs.db.findMany("event_reports", {
+          where: [{ field: "resolved", value: false }],
+          sortBy: { field: "id", direction: "desc" },
+          limit: 50,
+        });
         if (!rows.length) return "No open reports";
-        return rows.map((r) => `#${r.id} ${time(r.ts)} ${r.reporter} reported ${r.event_id ?? "the room"} in ${r.room_id}: ${r.reason ?? "(no reason)"}`).join("\n");
+        return rows
+          .map(
+            (r) =>
+              `#${r.id} ${time(r.ts)} ${r.reporter} reported ${r.event_id ?? "the room"} in ${r.room_id}: ${r.reason ?? "(no reason)"}`,
+          )
+          .join("\n");
       }
 
       case "server": {

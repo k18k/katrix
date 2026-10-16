@@ -5,11 +5,7 @@ import { handleRequest } from "./handler.ts";
 
 /** Paths this library serves. Framework adapters forward only these. */
 export function isMatrixPath(pathname: string): boolean {
-  return (
-    pathname.startsWith("/_matrix/") ||
-    pathname.startsWith("/.well-known/matrix/") ||
-    pathname.startsWith("/_synapse/")
-  );
+  return pathname.startsWith("/_matrix/") || pathname.startsWith("/.well-known/matrix/") || pathname.startsWith("/_synapse/");
 }
 
 /** A web-standard fetch handler: `(Request) => Promise<Response>`. Works with Hono, Bun, Deno, workers… */
@@ -36,7 +32,8 @@ async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Pro
     if (pre !== undefined && pre !== null && (req as any).readableEnded !== false) {
       // A framework body-parser already consumed the stream.
       if (pre instanceof Uint8Array || typeof pre === "string") body = pre as any;
-      else if (typeof pre === "object" && Object.keys(pre as object).length === 0 && headers.get("content-length") === null) body = undefined;
+      else if (typeof pre === "object" && Object.keys(pre as object).length === 0 && headers.get("content-length") === null)
+        body = undefined;
       else body = JSON.stringify(pre);
       headers.delete("content-length");
     } else {
@@ -51,7 +48,10 @@ async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Pro
 async function writeWebResponse(res: ServerResponse, response: Response): Promise<void> {
   res.statusCode = response.status;
   response.headers.forEach((value, key) => res.setHeader(key, value));
-  if (!response.body) { res.end(); return; }
+  if (!response.body) {
+    res.end();
+    return;
+  }
   const nodeStream = Readable.fromWeb(response.body as any);
   nodeStream.on("error", () => res.destroy());
   nodeStream.pipe(res);
@@ -67,14 +67,21 @@ export type NodeHandler = (req: IncomingMessage, res: ServerResponse, next?: (er
 export function getNodeHandler(hs: Homeserver): NodeHandler {
   return (req, res, next) => {
     const path = (req.url ?? "/").split("?")[0];
-    if (next && !isMatrixPath(path)) { next(); return; }
+    if (next && !isMatrixPath(path)) {
+      next();
+      return;
+    }
     (async () => {
       const request = await toWebRequest(req as NodeRequestWithBody);
       const response = await handleRequest(hs, request, { ip: req.socket?.remoteAddress ?? null });
       await writeWebResponse(res, response);
     })().catch((err) => {
       if (next) next(err);
-      else { hs.logger.error("Node handler failure", err); if (!res.headersSent) res.statusCode = 500; res.end(); }
+      else {
+        hs.logger.error("Node handler failure", err);
+        if (!res.headersSent) res.statusCode = 500;
+        res.end();
+      }
     });
   };
 }
@@ -87,7 +94,11 @@ export function getExpressHandler(hs: Homeserver): (req: any, res: any, next: (e
 /** Minimal structural Fastify types so that fastify is not a dependency. */
 interface FastifyLike {
   removeAllContentTypeParsers(): void;
-  addContentTypeParser(type: string, opts: { parseAs: "buffer" }, parser: (req: any, body: Buffer, done: (err: Error | null, body?: unknown) => void) => void): void;
+  addContentTypeParser(
+    type: string,
+    opts: { parseAs: "buffer" },
+    parser: (req: any, body: Buffer, done: (err: Error | null, body?: unknown) => void) => void,
+  ): void;
   route(opts: { method: string[]; url: string; handler: (request: any, reply: any) => unknown }): void;
 }
 

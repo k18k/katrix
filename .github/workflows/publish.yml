@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: 26
           registry-url: https://npm.pkg.github.com
-          scope: '@k18k'
+          scope: "@k18k"
           cache: npm
       - run: npm ci
       - name: Check the tag matches package.json

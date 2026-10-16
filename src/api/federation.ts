@@ -29,7 +29,10 @@ async function authenticate(ctx: RequestContext): Promise<string> {
   if (!hs.federation.serverAllowed(auth.origin)) throw errors.forbidden("Federation with this server is not allowed");
   const bytes = await ctx.bytes();
   const toSign: Record<string, unknown> = {
-    method: ctx.method, uri: ctx.url.pathname + ctx.url.search, origin: auth.origin, destination: hs.serverName,
+    method: ctx.method,
+    uri: ctx.url.pathname + ctx.url.search,
+    origin: auth.origin,
+    destination: hs.serverName,
   };
   if (bytes.length) toSign.content = await ctx.json();
   const key = await hs.federation.keyring.getKey(auth.origin, auth.key);
@@ -55,7 +58,7 @@ async function checkAcl(hs: Homeserver, roomId: string, origin: string): Promise
 async function serverCanSee(hs: Homeserver, server: string, ev: StoredEvent): Promise<boolean> {
   const ids = await hs.rooms.snapshotIds(ev.snapshot);
   const hvId = ids[stateKey("m.room.history_visibility", "")];
-  const hv = hvId ? (await hs.rooms.getPdu(hvId))?.content?.history_visibility ?? "shared" : "shared";
+  const hv = hvId ? ((await hs.rooms.getPdu(hvId))?.content?.history_visibility ?? "shared") : "shared";
   if (hv === "world_readable" || hv === "shared") return true;
   for (const [key, id] of Object.entries(ids)) {
     const [type, userId] = splitStateKey(key);
@@ -88,7 +91,10 @@ async function authChainOf(hs: Homeserver, ids: string[]): Promise<PDU[]> {
       }
     }
     const loaded = await hs.rooms.getPdus(next);
-    for (const id of next) { const p = loaded.get(id); if (p) out.push(p); }
+    for (const id of next) {
+      const p = loaded.get(id);
+      if (p) out.push(p);
+    }
     frontier = next;
   }
   return out;
@@ -103,20 +109,33 @@ async function stateBeforeEvent(hs: Homeserver, roomId: string, version: string,
 
 /** Build a membership template for make_join / make_leave / make_knock. */
 async function makeMembership(
-  hs: Homeserver, roomId: string, version: string, userId: string, membership: string, content: Record<string, any> = {},
+  hs: Homeserver,
+  roomId: string,
+  version: string,
+  userId: string,
+  membership: string,
+  content: Record<string, any> = {},
 ): Promise<Record<string, any>> {
   const state = await hs.rooms.currentState(roomId);
   const extremities = await hs.rooms.extremities(roomId);
   const prevs = [...(await hs.rooms.getPdus(extremities)).values()].sort((a, b) => b.depth - a.depth).slice(0, 10);
   const f = roomVersionFeatures(version);
   const draft = { type: "m.room.member", sender: userId, state_key: userId, content: { membership, ...content } };
-  const authIds = authEventKeys(draft, version).map((k) => state.get(k)?.event_id).filter((x): x is string => !!x);
+  const authIds = authEventKeys(draft, version)
+    .map((k) => state.get(k)?.event_id)
+    .filter((x): x is string => !!x);
   const ref = (id: string, pdu?: PDU) => (f.legacyEventIds ? [id, pdu?.hashes ?? {}] : id);
   const authPdus = await hs.rooms.getPdus(authIds);
   const event: Record<string, any> = {
-    type: "m.room.member", room_id: roomId, sender: userId, state_key: userId, content: draft.content,
-    origin_server_ts: Date.now(), depth: Math.min(prevs.reduce((m, p) => Math.max(m, p.depth), 0) + 1, Number.MAX_SAFE_INTEGER),
-    prev_events: prevs.map((p) => ref(p.event_id!, p)), auth_events: authIds.map((id) => ref(id, authPdus.get(id))),
+    type: "m.room.member",
+    room_id: roomId,
+    sender: userId,
+    state_key: userId,
+    content: draft.content,
+    origin_server_ts: Date.now(),
+    depth: Math.min(prevs.reduce((m, p) => Math.max(m, p.depth), 0) + 1, Number.MAX_SAFE_INTEGER),
+    prev_events: prevs.map((p) => ref(p.event_id!, p)),
+    auth_events: authIds.map((id) => ref(id, authPdus.get(id))),
   };
   if (f.legacyEventIds) event.origin = domainOf(userId);
   // The template must be allowed by the current state.
@@ -141,8 +160,14 @@ async function restrictedAuthoriser(hs: Homeserver, state: StateMap, version: st
   let unverifiable = false;
   for (const allow of Array.isArray(joinRules?.allow) ? joinRules!.allow : []) {
     if (allow?.type !== "m.room_membership" || typeof allow.room_id !== "string") continue;
-    if (!(await hs.rooms.serverIsJoined(allow.room_id))) { unverifiable = true; continue; }
-    if ((await hs.rooms.membership(allow.room_id, userId)) === "join") { allowed = true; break; }
+    if (!(await hs.rooms.serverIsJoined(allow.room_id))) {
+      unverifiable = true;
+      continue;
+    }
+    if ((await hs.rooms.membership(allow.room_id, userId)) === "join") {
+      allowed = true;
+      break;
+    }
   }
   if (!allowed) {
     // 400 when we cannot check some allowed room (another server might); 403 when the user clearly doesn't qualify.
@@ -152,14 +177,21 @@ async function restrictedAuthoriser(hs: Homeserver, state: StateMap, version: st
   const pl = powerLevels(state, version);
   for (const [key, ev] of state) {
     const [type, member] = splitStateKey(key);
-    if (type === "m.room.member" && hs.isLocalUser(member) && ev.content?.membership === "join" && userLevel(pl, member) >= pl.invite) return member;
+    if (type === "m.room.member" && hs.isLocalUser(member) && ev.content?.membership === "join" && userLevel(pl, member) >= pl.invite)
+      return member;
   }
   throw new MatrixError(400, "M_UNABLE_TO_GRANT_JOIN", "No local user can authorise this join");
 }
 
 /** Shared send_join / send_leave / send_knock processing. */
 /** Send the invite an m.room.third_party_invite stands for, on behalf of its (local) sender. */
-async function exchangeThirdPartyInvite(hs: Homeserver, roomId: string, sender: string, invitee: string, signed: Record<string, any>): Promise<void> {
+async function exchangeThirdPartyInvite(
+  hs: Homeserver,
+  roomId: string,
+  sender: string,
+  invitee: string,
+  signed: Record<string, any>,
+): Promise<void> {
   const token = signed.token;
   if (typeof token !== "string") throw errors.badJson("signed.token is required");
   const pending = getState(await hs.rooms.currentState(roomId), "m.room.third_party_invite", token);
@@ -181,7 +213,8 @@ async function sendMembership(ctx: RequestContext, origin: string, membership: s
   if (domainOf(raw.sender) !== origin) throw errors.forbidden("Sender does not belong to the origin server");
   let { pdu, joinAuthorisedSignatureValid } = await hs.federation.verifyPdu(raw, version, roomId);
   if (pdu.event_id !== ctx.params.eventId) throw errors.badJson("Event ID mismatch");
-  if (membership === "knock" && !roomVersionFeatures(version).knock) throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Knocking is not supported", { room_version: version });
+  if (membership === "knock" && !roomVersionFeatures(version).knock)
+    throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Knocking is not supported", { room_version: version });
 
   // Countersign restricted joins authorised by one of our users.
   const via = pdu.content?.join_authorised_via_users_server;
@@ -216,10 +249,18 @@ export function registerFederationRoutes(r: Router): void {
     for (const server of servers) {
       if (server === ctx.hs.serverName) {
         const key = ctx.hs.signingKey;
-        out.push(signJson({
-          server_name: ctx.hs.serverName, valid_until_ts: Date.now() + 24 * 3600_000,
-          verify_keys: { [`ed25519:${key.keyId}`]: { key: key.publicKeyBase64 } }, old_verify_keys: {},
-        }, ctx.hs.serverName, key));
+        out.push(
+          signJson(
+            {
+              server_name: ctx.hs.serverName,
+              valid_until_ts: Date.now() + 24 * 3600_000,
+              verify_keys: { [`ed25519:${key.keyId}`]: { key: key.publicKeyBase64 } },
+              old_verify_keys: {},
+            },
+            ctx.hs.serverName,
+            key,
+          ),
+        );
         continue;
       }
       // Fetch the origin's own signed response and countersign it as a notary.
@@ -227,7 +268,9 @@ export function registerFederationRoutes(r: Router): void {
         const fresh = await ctx.hs.federation.client.request(server, "GET", "/_matrix/key/v2/server", { signed: false, timeoutMs: 10_000 });
         await ctx.hs.federation.keyring.ingestServerKeys(server, fresh);
         if (fresh.server_name === server) out.push(signJson(fresh, ctx.hs.serverName, ctx.hs.signingKey));
-      } catch { /* unreachable server: nothing to return */ }
+      } catch {
+        /* unreachable server: nothing to return */
+      }
     }
     return { server_keys: out };
   };
@@ -253,7 +296,9 @@ export function registerFederationRoutes(r: Router): void {
     await rejectIfPartial(hs, roomId);
     const supported = ctx.query.getAll("ver");
     if (!(supported.length ? supported : ["1"]).includes(version)) {
-      throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Your server does not support this room version", { room_version: version });
+      throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Your server does not support this room version", {
+        room_version: version,
+      });
     }
     const state = await checkAcl(hs, roomId, origin);
     if (FederationJoinGuard.noLocalMembers(hs, state)) throw errors.notFound("This server is not in the room");
@@ -289,8 +334,14 @@ export function registerFederationRoutes(r: Router): void {
     await checkAcl(ctx.hs, roomId, origin);
     return { event: await makeMembership(ctx.hs, roomId, version, userId, "leave"), room_version: version };
   });
-  fed("PUT", "/v2/send_leave/:roomId/:eventId", async (ctx, origin) => { await sendMembership(ctx, origin, "leave"); return {}; });
-  fed("PUT", "/v1/send_leave/:roomId/:eventId", async (ctx, origin) => { await sendMembership(ctx, origin, "leave"); return [200, {}]; });
+  fed("PUT", "/v2/send_leave/:roomId/:eventId", async (ctx, origin) => {
+    await sendMembership(ctx, origin, "leave");
+    return {};
+  });
+  fed("PUT", "/v1/send_leave/:roomId/:eventId", async (ctx, origin) => {
+    await sendMembership(ctx, origin, "leave");
+    return [200, {}];
+  });
 
   fed("GET", "/v1/make_knock/:roomId/:userId", async (ctx, origin) => {
     const { roomId, userId } = ctx.params;
@@ -299,7 +350,9 @@ export function registerFederationRoutes(r: Router): void {
     await rejectIfPartial(ctx.hs, roomId);
     const supported = ctx.query.getAll("ver");
     if (!(supported.length ? supported : ["1"]).includes(version) || !roomVersionFeatures(version).knock) {
-      throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Your server does not support this room version", { room_version: version });
+      throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Your server does not support this room version", {
+        room_version: version,
+      });
     }
     await checkAcl(ctx.hs, roomId, origin);
     return { event: await makeMembership(ctx.hs, roomId, version, userId, "knock"), room_version: version };
@@ -333,13 +386,22 @@ export function registerFederationRoutes(r: Router): void {
     if (pdu.event_id !== ctx.params.eventId) throw errors.badJson("Event ID mismatch");
     if ((await inviteDecision(hs, target, raw.sender)) === "block") throw errors.forbidden("This user does not accept invites from you");
     // Ignore invites from ignored users.
-    const ignored = await hs.db.findOne("account_data", [{ field: "user_id", value: target }, { field: "room_id", value: "" }, { field: "type", value: "m.ignored_user_list" }]);
+    const ignored = await hs.db.findOne("account_data", [
+      { field: "user_id", value: target },
+      { field: "room_id", value: "" },
+      { field: "type", value: "m.ignored_user_list" },
+    ]);
     const signedRedacted = signJson(redact({ ...raw }, version), hs.serverName, hs.signingKey);
     const signatures = { ...pdu.signatures, [hs.serverName]: signedRedacted.signatures[hs.serverName] };
-    const inviteState = Array.isArray(body.invite_room_state) ? body.invite_room_state : Array.isArray(raw.unsigned?.invite_room_state) ? raw.unsigned.invite_room_state : [];
+    const inviteState = Array.isArray(body.invite_room_state)
+      ? body.invite_room_state
+      : Array.isArray(raw.unsigned?.invite_room_state)
+        ? raw.unsigned.invite_room_state
+        : [];
     // MSC4311: the stripped state must carry the room's create event (enforced from room version 12).
     const createInState = inviteState.find((e: any) => e?.type === "m.room.create");
-    if (v2 && !createInState && roomVersionFeatures(version).v12) throw errors.missingParam("invite_room_state must include the m.room.create event");
+    if (v2 && !createInState && roomVersionFeatures(version).v12)
+      throw errors.missingParam("invite_room_state must include the m.room.create event");
     if (createInState && roomVersionFeatures(version).v12 && createInState.event_id === undefined) {
       try {
         if (hs.federation.computeEventId(createInState, version) !== `$${raw.room_id.slice(1)}`) throw new Error("mismatch");
@@ -347,7 +409,7 @@ export function registerFederationRoutes(r: Router): void {
         throw errors.invalidParam("invite_room_state contains a create event for another room");
       }
     }
-    const stored: PDU = { ...pdu, signatures, unsigned: { ...(pdu.unsigned ?? {}), invite_room_state: inviteState } };
+    const stored: PDU = { ...pdu, signatures, unsigned: { ...pdu.unsigned, invite_room_state: inviteState } };
     if (!ignored?.content?.ignored_users?.[raw.sender]) {
       await hs.rooms.recordRemoteMembership(stored, version);
     }
@@ -466,7 +528,10 @@ export function registerFederationRoutes(r: Router): void {
     const ts = Number(ctx.query.get("ts"));
     const dir = ctx.query.get("dir");
     if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
-    const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }], sortBy: { field: "stream", direction: dir === "f" ? "asc" : "desc" } });
+    const rows = await hs.db.findMany("events", {
+      where: [{ field: "room_id", value: roomId }],
+      sortBy: { field: "stream", direction: dir === "f" ? "asc" : "desc" },
+    });
     for (const row of rows) {
       const t = row.json.origin_server_ts;
       if (dir === "f" ? t >= ts : t <= ts) return { event_id: row.event_id, origin_server_ts: t };
@@ -498,7 +563,8 @@ export function registerFederationRoutes(r: Router): void {
   });
 
   fed("POST", "/unstable/event_relationships", async (ctx, origin) =>
-    relationshipsForServer(ctx.hs, origin, await ctx.json(), (ids) => authChainOf(ctx.hs, ids)));
+    relationshipsForServer(ctx.hs, origin, await ctx.json(), (ids) => authChainOf(ctx.hs, ids)),
+  );
 
   fed("POST", "/v1/user/keys/query", async (ctx) => {
     const body = await ctx.json();
@@ -546,8 +612,12 @@ export function registerFederationRoutes(r: Router): void {
     const limit = Number(body.limit ?? ctx.query.get("limit") ?? 0) || undefined;
     const rooms = await hs.db.findMany("rooms", { where: [{ field: "is_public", value: true }] });
     let chunk = await Promise.all(rooms.map((r) => roomDetails(hs, r.room_id)));
-    const term = isObject(body.filter) && typeof body.filter.generic_search_term === "string" ? body.filter.generic_search_term.toLowerCase() : null;
-    if (term) chunk = chunk.filter((c) => [c.name, c.topic, c.canonical_alias].some((v) => typeof v === "string" && v.toLowerCase().includes(term)));
+    const term =
+      isObject(body.filter) && typeof body.filter.generic_search_term === "string" ? body.filter.generic_search_term.toLowerCase() : null;
+    if (term)
+      chunk = chunk.filter((c) =>
+        [c.name, c.topic, c.canonical_alias].some((v) => typeof v === "string" && v.toLowerCase().includes(term)),
+      );
     chunk.sort((a, b) => b.num_joined_members - a.num_joined_members);
     const since = Number.parseInt(String(body.since ?? ctx.query.get("since") ?? "0").replace(/^o/, ""), 10) || 0;
     const page = limit ? chunk.slice(since, since + limit) : chunk.slice(since);
@@ -568,7 +638,9 @@ export function registerFederationRoutes(r: Router): void {
       const details = await roomDetails(hs, id);
       const jr = getState(s, "m.room.join_rules")?.content;
       if (["restricted", "knock_restricted"].includes(jr?.join_rule)) {
-        details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : []).filter((a: any) => a?.type === "m.room_membership").map((a: any) => a.room_id);
+        details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : [])
+          .filter((a: any) => a?.type === "m.room_membership")
+          .map((a: any) => a.room_id);
       }
       return details;
     };
@@ -576,7 +648,8 @@ export function registerFederationRoutes(r: Router): void {
       const jr = getState(s, "m.room.join_rules")?.content;
       const rule = jr?.join_rule ?? "invite";
       const hv = getState(s, "m.room.history_visibility")?.content?.history_visibility;
-      if (["public", "knock", "knock_restricted"].includes(rule) || hv === "world_readable" || FederationJoinGuard.serverInRoom(s, origin)) return true;
+      if (["public", "knock", "knock_restricted"].includes(rule) || hv === "world_readable" || FederationJoinGuard.serverInRoom(s, origin))
+        return true;
       if (rule !== "restricted") return false;
       // Restricted rooms are visible to servers with a member in an allowed room (as far as we know).
       for (const allow of Array.isArray(jr?.allow) ? jr!.allow : []) {
@@ -596,7 +669,10 @@ export function registerFederationRoutes(r: Router): void {
       childrenState.push({ type, state_key: childId, sender: ev.sender, content: ev.content, origin_server_ts: ev.origin_server_ts });
       if (!(await hs.rooms.exists(childId))) continue;
       const childState = await hs.rooms.currentState(childId);
-      if (!(await accessible(childState))) { inaccessible.push(childId); continue; }
+      if (!(await accessible(childState))) {
+        inaccessible.push(childId);
+        continue;
+      }
       const childSummary = await summary(childId, childState);
       childSummary.children_state = [];
       children.push(childSummary);
@@ -614,8 +690,10 @@ export function registerFederationRoutes(r: Router): void {
     const data = await hs.media.get(ctx.params.mediaId);
     if (!data) throw errors.notFound("Media not found");
     const boundary = randomToken(16);
-    const head = `--${boundary}\r\nContent-Type: application/json\r\n\r\n{}\r\n--${boundary}\r\nContent-Type: ${meta.content_type ?? "application/octet-stream"}\r\n` +
-      (meta.filename ? `Content-Disposition: attachment; filename*=utf-8''${encodeURIComponent(meta.filename)}\r\n` : "") + "\r\n";
+    const head =
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n{}\r\n--${boundary}\r\nContent-Type: ${meta.content_type ?? "application/octet-stream"}\r\n` +
+      (meta.filename ? `Content-Disposition: attachment; filename*=utf-8''${encodeURIComponent(meta.filename)}\r\n` : "") +
+      "\r\n";
     const body = Buffer.concat([Buffer.from(head), Buffer.from(data), Buffer.from(`\r\n--${boundary}--\r\n`)]);
     return new Response(body, { status: 200, headers: { "content-type": `multipart/mixed; boundary=${boundary}` } });
   };
@@ -647,7 +725,8 @@ export function registerFederationRoutes(r: Router): void {
     if (event.type !== "m.room.member" || event.room_id !== roomId || event.content?.membership !== "invite" || !isObject(signed)) {
       throw errors.badJson("Expected an m.room.member invite with third_party_invite");
     }
-    if (typeof event.sender !== "string" || !hs.isLocalUser(event.sender)) throw errors.forbidden("The sender is not a user of this server");
+    if (typeof event.sender !== "string" || !hs.isLocalUser(event.sender))
+      throw errors.forbidden("The sender is not a user of this server");
     if (typeof event.state_key !== "string" || domainOf(event.state_key) !== origin || signed.mxid !== event.state_key) {
       throw errors.forbidden("The invitee does not belong to the requesting server");
     }
@@ -666,12 +745,23 @@ export function registerFederationRoutes(r: Router): void {
       const signed = invite?.signed;
       if (!isObject(signed) || typeof signed.mxid !== "string" || !hs.isLocalUser(signed.mxid)) continue;
       if (typeof invite.room_id !== "string" || typeof invite.sender !== "string") continue;
-      const event = { type: "m.room.member", room_id: invite.room_id, sender: invite.sender, state_key: signed.mxid, content: { membership: "invite", third_party_invite: { signed } } };
+      const event = {
+        type: "m.room.member",
+        room_id: invite.room_id,
+        sender: invite.sender,
+        state_key: signed.mxid,
+        content: { membership: "invite", third_party_invite: { signed } },
+      };
       try {
         if (hs.isLocalUser(invite.sender)) {
           await exchangeThirdPartyInvite(hs, invite.room_id, invite.sender, signed.mxid, signed);
         } else {
-          await hs.federation.client.request(domainOf(invite.sender), "PUT", `/_matrix/federation/v1/exchange_third_party_invite/${encodeURIComponent(invite.room_id)}`, { body: event });
+          await hs.federation.client.request(
+            domainOf(invite.sender),
+            "PUT",
+            `/_matrix/federation/v1/exchange_third_party_invite/${encodeURIComponent(invite.room_id)}`,
+            { body: event },
+          );
         }
       } catch (err) {
         hs.logger.warn("Could not exchange third-party invite to", invite.room_id, "for", signed.mxid, err);
@@ -680,7 +770,6 @@ export function registerFederationRoutes(r: Router): void {
     return {};
   });
 }
-
 
 /** Helpers for "is a server in the room" checks. */
 const FederationJoinGuard = {

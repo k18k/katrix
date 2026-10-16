@@ -2,15 +2,22 @@
   "name": "@k18k/matrix-nodejs-homeserver",
   "version": "0.1.1",
   "description": "A framework- and database-agnostic Matrix homeserver library for Node.js",
-  "type": "module",
+  "keywords": [
+    "chat",
+    "homeserver",
+    "matrix"
+  ],
   "license": "PolyForm-Noncommercial-1.0.0",
-  "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com/"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/k18k/matrix-nodejs-homeserver.git"
   },
-  "engines": {
-    "node": ">=26"
-  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -19,30 +26,28 @@
       "default": "./dist/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com/"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "lint": "oxlint",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "build": "tsdown",
     "prepare": "npm run build",
     "start:example": "node examples/node-http.ts",
     "start:multi-node-example": "node examples/multi-node.ts"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/k18k/matrix-nodejs-homeserver.git"
-  },
-  "keywords": [
-    "matrix",
-    "homeserver",
-    "chat"
-  ],
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
     "tsdown": "^0.23.1",
     "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=26"
   }
 }

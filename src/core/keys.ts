@@ -36,17 +36,26 @@ export class KeyService {
   async upload(userId: string, deviceId: string, body: Record<string, any>): Promise<Record<string, number>> {
     if (body.device_keys !== undefined) {
       const dk = body.device_keys;
-      if (!isObject(dk) || dk.user_id !== userId || dk.device_id !== deviceId) throw errors.invalidParam("device_keys do not match this device");
+      if (!isObject(dk) || dk.user_id !== userId || dk.device_id !== deviceId)
+        throw errors.invalidParam("device_keys do not match this device");
       if (!Array.isArray(dk.algorithms) || !isObject(dk.keys) || !isObject(dk.signatures)) {
         throw errors.badJson("device_keys must contain algorithms, keys and signatures");
       }
-      const existing = await this.hs.db.findOne("device_keys", [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }]);
+      const existing = await this.hs.db.findOne("device_keys", [
+        { field: "user_id", value: userId },
+        { field: "device_id", value: deviceId },
+      ]);
       if (!existing || JSON.stringify(existing.keys) !== JSON.stringify(dk)) {
-        await this.hs.streams.write((stream) => this.hs.db.upsert("device_keys", { user_id: userId, device_id: deviceId, keys: dk, stream }));
+        await this.hs.streams.write((stream) =>
+          this.hs.db.upsert("device_keys", { user_id: userId, device_id: deviceId, keys: dk, stream }),
+        );
         await this.deviceChanged(userId);
       }
     }
-    const device = [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }];
+    const device = [
+      { field: "user_id", value: userId },
+      { field: "device_id", value: deviceId },
+    ];
     if (isObject(body.one_time_keys)) {
       for (const [fullId, key] of Object.entries(body.one_time_keys)) {
         const [algorithm] = fullId.split(":");
@@ -55,7 +64,18 @@ export class KeyService {
           if (JSON.stringify(existing.key) !== JSON.stringify(key)) throw errors.invalidParam(`One time key ${fullId} already exists`);
           continue;
         }
-        await this.hs.streams.write((seq) => this.hs.db.create("one_time_keys", { user_id: userId, device_id: deviceId, key_id: fullId, algorithm, key, fallback: false, used: false, seq }));
+        await this.hs.streams.write((seq) =>
+          this.hs.db.create("one_time_keys", {
+            user_id: userId,
+            device_id: deviceId,
+            key_id: fullId,
+            algorithm,
+            key,
+            fallback: false,
+            used: false,
+            seq,
+          }),
+        );
       }
     }
     // Uploading a fallback key replaces the previous one of the same algorithm.
@@ -74,7 +94,11 @@ export class KeyService {
 
   async oneTimeKeyCounts(userId: string, deviceId: string): Promise<Record<string, number>> {
     const rows = await this.hs.db.findMany("one_time_keys", {
-      where: [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }, { field: "fallback", value: false }],
+      where: [
+        { field: "user_id", value: userId },
+        { field: "device_id", value: deviceId },
+        { field: "fallback", value: false },
+      ],
     });
     const counts: Record<string, number> = { signed_curve25519: 0 };
     for (const r of rows) counts[r.algorithm] = (counts[r.algorithm] ?? 0) + 1;
@@ -83,7 +107,11 @@ export class KeyService {
 
   async unusedFallbackKeyTypes(userId: string, deviceId: string): Promise<string[]> {
     const rows = await this.hs.db.findMany("fallback_keys", {
-      where: [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }, { field: "used", value: false }],
+      where: [
+        { field: "user_id", value: userId },
+        { field: "device_id", value: deviceId },
+        { field: "used", value: false },
+      ],
     });
     return [...new Set(rows.map((r) => r.algorithm))];
   }
@@ -92,7 +120,10 @@ export class KeyService {
     const result: Record<string, any> = { device_keys: {}, failures: {}, master_keys: {}, self_signing_keys: {}, user_signing_keys: {} };
     const remote: Record<string, string[]> = {};
     for (const [userId, devices] of Object.entries(deviceKeys ?? {})) {
-      if (!this.hs.isLocalUser(userId)) { remote[userId] = devices; continue; }
+      if (!this.hs.isLocalUser(userId)) {
+        remote[userId] = devices;
+        continue;
+      }
       const rows = await this.hs.db.findMany("device_keys", { where: [{ field: "user_id", value: userId }] });
       const deviceRows = await this.hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
       const names = new Map(deviceRows.map((d) => [d.device_id, d.display_name]));
@@ -103,7 +134,7 @@ export class KeyService {
         if (!names.has(row.device_id)) continue;
         const keys = await this.withSignatures(userId, `${row.device_id}`, row.keys);
         const name = names.get(row.device_id);
-        keys.unsigned = { ...(keys.unsigned ?? {}), ...(name ? { device_display_name: name } : {}) };
+        keys.unsigned = { ...keys.unsigned, ...(name ? { device_display_name: name } : {}) };
         out[row.device_id] = keys;
       }
       result.device_keys[userId] = out;
@@ -127,7 +158,10 @@ export class KeyService {
         }
         tracked.add(userId);
         const list = await this.hs.db.findOne("remote_device_lists", [{ field: "user_id", value: userId }]);
-        if (!list || list.stale) { fetch[userId] = []; continue; }
+        if (!list || list.stale) {
+          fetch[userId] = [];
+          continue;
+        }
         await this.fromRemoteCache(userId, devices, result);
       }
       if (Object.keys(fetch).length) {
@@ -143,7 +177,12 @@ export class KeyService {
         }
         for (const userId of Object.keys(fetch)) {
           if (tracked.has(userId) && isObject(fetched.device_keys[userId])) {
-            await this.storeRemoteCache(userId, fetched.device_keys[userId], fetched.master_keys[userId], fetched.self_signing_keys[userId]);
+            await this.storeRemoteCache(
+              userId,
+              fetched.device_keys[userId],
+              fetched.master_keys[userId],
+              fetched.self_signing_keys[userId],
+            );
             await this.fromRemoteCache(userId, remote[userId], result);
             continue;
           }
@@ -158,7 +197,12 @@ export class KeyService {
 
   /** Whether a remote user shares a room with a local user (by known membership). */
   async isTracked(userId: string): Promise<boolean> {
-    const rows = await this.hs.db.findMany("memberships", { where: [{ field: "user_id", value: userId }, { field: "membership", value: "join" }] });
+    const rows = await this.hs.db.findMany("memberships", {
+      where: [
+        { field: "user_id", value: userId },
+        { field: "membership", value: "join" },
+      ],
+    });
     for (const row of rows) {
       if ((await this.hs.rooms.joinedMembers(row.room_id)).some((u) => this.hs.isLocalUser(u))) return true;
     }
@@ -184,10 +228,20 @@ export class KeyService {
     for (const [deviceId, keys] of Object.entries(devices)) {
       if (!isObject(keys)) continue;
       const name = keys.unsigned?.device_display_name;
-      await this.hs.db.upsert("remote_devices", { user_id: userId, device_id: deviceId, keys, display_name: typeof name === "string" ? name : null, stream_id: 0 });
+      await this.hs.db.upsert("remote_devices", {
+        user_id: userId,
+        device_id: deviceId,
+        keys,
+        display_name: typeof name === "string" ? name : null,
+        stream_id: 0,
+      });
     }
-    for (const [type, key] of [["master", master], ["self_signing", selfSigning]] as const) {
-      if (isObject(key)) await this.hs.streams.write((stream) => this.hs.db.upsert("cross_signing_keys", { user_id: userId, key_type: type, key, stream }));
+    for (const [type, key] of [
+      ["master", master],
+      ["self_signing", selfSigning],
+    ] as const) {
+      if (isObject(key))
+        await this.hs.streams.write((stream) => this.hs.db.upsert("cross_signing_keys", { user_id: userId, key_type: type, key, stream }));
     }
     await this.hs.db.upsert("remote_device_lists", { user_id: userId, stream_id: 0, stale: false });
   }
@@ -205,11 +259,16 @@ export class KeyService {
   }
 
   private async withSignatures(userId: string, keyId: string, key: Record<string, any>): Promise<Record<string, any>> {
-    const sigs = await this.hs.db.findMany("key_signatures", { where: [{ field: "user_id", value: userId }, { field: "key_id", value: keyId }] });
+    const sigs = await this.hs.db.findMany("key_signatures", {
+      where: [
+        { field: "user_id", value: userId },
+        { field: "key_id", value: keyId },
+      ],
+    });
     if (sigs.length === 0) return structuredClone(key);
     const out = structuredClone(key);
     out.signatures ??= {};
-    for (const s of sigs) out.signatures[s.signer] = { ...(out.signatures[s.signer] ?? {}), [s.signer_key_id]: s.signature };
+    for (const s of sigs) out.signatures[s.signer] = { ...out.signatures[s.signer], [s.signer_key_id]: s.signature };
     return out;
   }
 
@@ -217,11 +276,20 @@ export class KeyService {
     const result: Record<string, any> = {};
     for (const [userId, devices] of Object.entries(request ?? {})) {
       for (const [deviceId, algorithm] of Object.entries(devices ?? {})) {
-        const base = [{ field: "user_id", value: userId }, { field: "device_id", value: deviceId }, { field: "algorithm", value: algorithm }];
+        const base = [
+          { field: "user_id", value: userId },
+          { field: "device_id", value: deviceId },
+          { field: "algorithm", value: algorithm },
+        ];
         // Keys are handed out in upload order (MSC4225).
-        let key: Record<string, any> | null = (await this.hs.db.findMany("one_time_keys", {
-          where: [...base, { field: "fallback", value: false }], sortBy: { field: "seq", direction: "asc" }, limit: 1,
-        }))[0] ?? null;
+        let key: Record<string, any> | null =
+          (
+            await this.hs.db.findMany("one_time_keys", {
+              where: [...base, { field: "fallback", value: false }],
+              sortBy: { field: "seq", direction: "asc" },
+              limit: 1,
+            })
+          )[0] ?? null;
         if (key) {
           await this.hs.db.delete("one_time_keys", [...base, { field: "key_id", value: key.key_id }]);
         } else {
@@ -255,11 +323,17 @@ export class KeyService {
       for (const [keyId, signed] of Object.entries(keys)) {
         const sigs = (signed as any)?.signatures?.[signer];
         if (!isObject(sigs)) {
-          failures[userId] = { ...(failures[userId] ?? {}), [keyId]: { errcode: "M_INVALID_SIGNATURE", error: "No signature from signer" } };
+          failures[userId] = { ...failures[userId], [keyId]: { errcode: "M_INVALID_SIGNATURE", error: "No signature from signer" } };
           continue;
         }
         for (const [signerKeyId, signature] of Object.entries(sigs)) {
-          await this.hs.db.upsert("key_signatures", { user_id: userId, key_id: keyId, signer, signer_key_id: signerKeyId, signature: String(signature) });
+          await this.hs.db.upsert("key_signatures", {
+            user_id: userId,
+            key_id: keyId,
+            signer,
+            signer_key_id: signerKeyId,
+            signature: String(signature),
+          });
         }
         changed.add(userId);
       }
@@ -281,7 +355,10 @@ export class KeyService {
     // Users we newly share a room with also count as changed.
     const left = new Set<string>();
     const memberRows = await this.hs.db.findMany("memberships", { where: [{ field: "stream", operator: "gt", value: since }] });
-    const myRooms = new Set([...(await this.hs.rooms.roomsForUser(userId)), ...memberRows.filter((m) => m.user_id === userId).map((m) => m.room_id)]);
+    const myRooms = new Set([
+      ...(await this.hs.rooms.roomsForUser(userId)),
+      ...memberRows.filter((m) => m.user_id === userId).map((m) => m.room_id),
+    ]);
     for (const m of memberRows) {
       if (m.stream > upTo || !myRooms.has(m.room_id)) continue;
       if (m.user_id === userId) {

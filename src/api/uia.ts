@@ -37,9 +37,18 @@ export async function requireUia(
   const auth = isObject(body.auth) ? body.auth : null;
   let sessionId: string | undefined = typeof auth?.session === "string" ? auth.session : undefined;
   const stored = sessionId ? await hs.cluster.get<UiaSession>(`uia:${sessionId}`) : null;
-  const session = { completed: new Set<string>(stored?.completed ?? []), userId: stored ? stored.userId : userId, threepids: stored?.threepids ?? [] };
+  const session = {
+    completed: new Set<string>(stored?.completed ?? []),
+    userId: stored ? stored.userId : userId,
+    threepids: stored?.threepids ?? [],
+  };
   if (!stored) sessionId = randomString(24);
-  const save = () => hs.cluster.set(`uia:${sessionId}`, { completed: [...session.completed], userId: session.userId, threepids: session.threepids }, UIA_TTL_MS);
+  const save = () =>
+    hs.cluster.set(
+      `uia:${sessionId}`,
+      { completed: [...session.completed], userId: session.userId, threepids: session.threepids },
+      UIA_TTL_MS,
+    );
   const oauthUrl = hs.oauth?.options.accountManagementUrl ?? hs.oauth?.options.issuer;
   const params = hs.oauth ? { "m.oauth": { url: oauthUrl }, "org.matrix.cross_signing_reset": { url: oauthUrl } } : {};
   const challenge = (extra: Record<string, unknown> = {}) =>
@@ -83,9 +92,16 @@ export async function requireUia(
         const target = user.startsWith("@") ? user : `@${user.toLowerCase()}:${hs.serverName}`;
         if (userId && target !== userId) throw errors.forbidden("Credentials do not match the authenticated user");
         const row = await hs.db.findOne("users", [{ field: "user_id", value: target }]);
-        const ok = row && !row.deactivated && typeof auth.password === "string" && await hs.userAuth.checkPassword({
-          userId: target, localpart: target.slice(1).split(":")[0], password: auth.password, storedHash: row.password_hash,
-        });
+        const ok =
+          row &&
+          !row.deactivated &&
+          typeof auth.password === "string" &&
+          (await hs.userAuth.checkPassword({
+            userId: target,
+            localpart: target.slice(1).split(":")[0],
+            password: auth.password,
+            storedHash: row.password_hash,
+          }));
         if (!ok) throw challenge({ errcode: "M_FORBIDDEN", error: "Invalid password" });
         session.completed.add("m.login.password");
         break;
@@ -94,7 +110,8 @@ export async function requireUia(
       case "m.login.msisdn": {
         const validated = await hs.threepids.validated(auth.threepid_creds ?? auth.threepidCreds);
         const medium = auth.type === "m.login.email.identity" ? "email" : "msisdn";
-        if (!validated || validated.medium !== medium) throw challenge({ errcode: "M_UNAUTHORIZED", error: "The address has not been validated" });
+        if (!validated || validated.medium !== medium)
+          throw challenge({ errcode: "M_UNAUTHORIZED", error: "The address has not been validated" });
         // For an authenticated user, the address must be one of theirs.
         if (session.userId && (await hs.threepids.userFor(validated.medium, validated.address)) !== session.userId) {
           throw challenge({ errcode: "M_FORBIDDEN", error: "This address does not belong to your account" });
@@ -110,7 +127,8 @@ export async function requireUia(
   const done = flows.some((stages) => stages.every((s) => session!.completed.has(s)));
   if (!done) {
     await save();
-    if (!userId && typeof body.username === "string") await hs.cluster.set(`uia-register:${body.username.toLowerCase()}`, sessionId, UIA_TTL_MS);
+    if (!userId && typeof body.username === "string")
+      await hs.cluster.set(`uia-register:${body.username.toLowerCase()}`, sessionId, UIA_TTL_MS);
     if (auth?.type) throw challenge();
     const e = challenge();
     // A first request without `auth` gets a plain 401 without errcode.
@@ -119,4 +137,3 @@ export async function requireUia(
   await hs.cluster.delete(`uia:${sessionId}`);
   return { threepids: session.threepids };
 }
-

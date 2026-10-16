@@ -20,7 +20,9 @@ export interface SsoProvider {
    * Map ID token / userinfo claims to a Matrix account. Return a localpart and optional
    * display name, or null to refuse login. Default: sanitised `preferred_username`, then `sub`.
    */
-  mapUser?: (claims: Record<string, any>) => { localpart: string; displayname?: string } | null | Promise<{ localpart: string; displayname?: string } | null>;
+  mapUser?: (
+    claims: Record<string, any>,
+  ) => { localpart: string; displayname?: string } | null | Promise<{ localpart: string; displayname?: string } | null>;
   /** Create accounts for unknown users. Default: true. */
   allowRegistration?: boolean;
 }
@@ -38,7 +40,10 @@ interface PendingLogin {
 }
 
 function sanitizeLocalpart(raw: string): string {
-  return raw.toLowerCase().replace(/[^a-z0-9._=\-/+]/g, "_").slice(0, 200);
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9._=\-/+]/g, "_")
+    .slice(0, 200);
 }
 
 function decodeJwtPayload(jwt: string): Record<string, any> {
@@ -67,7 +72,9 @@ export class SsoService {
   private async discover(provider: SsoProvider): Promise<Record<string, any>> {
     const cached = this.discovery.get(provider.id);
     if (cached) return cached;
-    const res = await this.hs.fetch(`${provider.issuer.replace(/\/$/, "")}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(10_000) });
+    const res = await this.hs.fetch(`${provider.issuer.replace(/\/$/, "")}/.well-known/openid-configuration`, {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) throw new Error(`OIDC discovery for ${provider.id} failed with ${res.status}`);
     const meta = (await res.json()) as Record<string, any>;
     this.discovery.set(provider.id, meta);
@@ -82,7 +89,11 @@ export class SsoService {
     const state = randomToken(24);
     const verifier = urlSafeBase64(randomBytes(32));
     const nonce = randomToken(16);
-    await this.hs.cluster.set(`sso:${state}`, { providerId: provider.id, redirectUrl, verifier, nonce, expires: Date.now() + 10 * 60_000 }, 10 * 60_000);
+    await this.hs.cluster.set(
+      `sso:${state}`,
+      { providerId: provider.id, redirectUrl, verifier, nonce, expires: Date.now() + 10 * 60_000 },
+      10 * 60_000,
+    );
     const url = new URL(meta.authorization_endpoint);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", provider.clientId);
@@ -100,7 +111,8 @@ export class SsoService {
     const state = params.get("state") ?? "";
     const pending = await this.hs.cluster.get<PendingLogin>(`sso:${state}`);
     await this.hs.cluster.delete(`sso:${state}`);
-    if (!pending || pending.expires < Date.now() || pending.providerId !== providerId) throw errors.forbidden("Unknown or expired login attempt");
+    if (!pending || pending.expires < Date.now() || pending.providerId !== providerId)
+      throw errors.forbidden("Unknown or expired login attempt");
     if (params.get("error")) throw errors.forbidden(`Login failed: ${params.get("error")}`);
     const code = params.get("code");
     if (!code) throw errors.missingParam("Missing code");
@@ -108,7 +120,11 @@ export class SsoService {
     const meta = await this.discover(provider);
 
     const body = new URLSearchParams({
-      grant_type: "authorization_code", code, redirect_uri: this.callbackUrl(provider), code_verifier: pending.verifier, client_id: provider.clientId,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: this.callbackUrl(provider),
+      code_verifier: pending.verifier,
+      client_id: provider.clientId,
     });
     const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
     if (provider.clientSecret) {
@@ -129,7 +145,10 @@ export class SsoService {
       if (typeof claims.exp === "number" && claims.exp * 1000 < Date.now()) throw errors.forbidden("ID token expired");
     }
     if (meta.userinfo_endpoint && typeof tokens.access_token === "string") {
-      const info = await this.hs.fetch(meta.userinfo_endpoint, { headers: { authorization: `Bearer ${tokens.access_token}` }, signal: AbortSignal.timeout(10_000) });
+      const info = await this.hs.fetch(meta.userinfo_endpoint, {
+        headers: { authorization: `Bearer ${tokens.access_token}` },
+        signal: AbortSignal.timeout(10_000),
+      });
       if (info.ok) {
         const userinfo = (await info.json()) as Record<string, any>;
         if (claims.sub && userinfo.sub !== claims.sub) throw errors.forbidden("Userinfo subject mismatch");
@@ -147,7 +166,10 @@ export class SsoService {
   }
 
   private async resolveUser(provider: SsoProvider, claims: Record<string, any>): Promise<string> {
-    const link = await this.hs.db.findOne("sso_identities", [{ field: "idp_id", value: provider.id }, { field: "subject", value: claims.sub }]);
+    const link = await this.hs.db.findOne("sso_identities", [
+      { field: "idp_id", value: provider.id },
+      { field: "subject", value: claims.sub },
+    ]);
     if (link) return link.user_id;
     if (provider.allowRegistration === false) throw errors.forbidden("No account is linked to this identity");
     const mapped = provider.mapUser

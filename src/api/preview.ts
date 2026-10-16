@@ -8,11 +8,29 @@ import type { RequestContext, Router } from "../http/router.ts";
 const MAX_BYTES = 1024 * 1024;
 
 const privateRanges = new BlockList();
-for (const [net, prefix] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16],
-  ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 4], ["240.0.0.0", 4]] as const) {
+for (const [net, prefix] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4],
+] as const) {
   privateRanges.addSubnet(net, prefix, "ipv4");
 }
-for (const [net, prefix] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8], ["::ffff:0:0", 96]] as const) {
+for (const [net, prefix] of [
+  ["::", 128],
+  ["::1", 128],
+  ["fc00::", 7],
+  ["fe80::", 10],
+  ["ff00::", 8],
+  ["::ffff:0:0", 96],
+] as const) {
   privateRanges.addSubnet(net, prefix, "ipv6");
 }
 
@@ -25,7 +43,10 @@ async function assertPublicHost(hostname: string): Promise<void> {
 }
 
 function decodeEntities(s: string): string {
-  return s.replace(/&(amp|lt|gt|quot|#39|#x27);/g, (m) => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&#x27;": "'" })[m] ?? m);
+  return s.replace(
+    /&(amp|lt|gt|quot|#39|#x27);/g,
+    (m) => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&#x27;": "'" })[m] ?? m,
+  );
 }
 
 export function parseOpenGraph(html: string): Record<string, string> {
@@ -50,11 +71,19 @@ async function preview(hs: Homeserver, rawUrl: string): Promise<Record<string, a
   const opts = hs.config.urlPreviews;
   if (!opts) throw errors.notFound("URL previews are disabled");
   let url: URL;
-  try { url = new URL(rawUrl); } catch { throw errors.invalidParam("Invalid URL"); }
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw errors.invalidParam("Invalid URL");
+  }
   if (url.protocol !== "http:" && url.protocol !== "https:") throw errors.invalidParam("Only http(s) URLs can be previewed");
   for (let redirects = 0; redirects < 5; redirects++) {
     if (!opts.allowPrivateAddresses) await assertPublicHost(url.hostname);
-    const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(10_000), headers: { "user-agent": "matrix-nodejs-homeserver" } });
+    const res = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
+      headers: { "user-agent": "matrix-nodejs-homeserver" },
+    });
     if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
       url = new URL(res.headers.get("location")!, url);
       continue;
@@ -78,7 +107,9 @@ async function preview(hs: Homeserver, rawUrl: string): Promise<Record<string, a
         const img = await fetch(imageUrl, { signal: AbortSignal.timeout(10_000) });
         const imgType = img.headers.get("content-type") ?? "";
         if (img.ok && imgType.startsWith("image/")) Object.assign(og, await storeImage(hs, img, imgType));
-      } catch { /* keep the preview without an image */ }
+      } catch {
+        /* keep the preview without an image */
+      }
     }
     return og;
   }
@@ -93,13 +124,19 @@ export function imageSize(data: Uint8Array): { width: number; height: number } |
   if (b.length >= 30 && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP") {
     const chunk = b.toString("ascii", 12, 16);
     if (chunk === "VP8 ") return { width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff };
-    if (chunk === "VP8L") { const bits = b.readUInt32LE(21); return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 }; }
+    if (chunk === "VP8L") {
+      const bits = b.readUInt32LE(21);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+    }
     if (chunk === "VP8X") return { width: b.readUIntLE(24, 3) + 1, height: b.readUIntLE(27, 3) + 1 };
   }
   if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) {
     let i = 2;
     while (i + 9 < b.length) {
-      if (b[i] !== 0xff) { i++; continue; }
+      if (b[i] !== 0xff) {
+        i++;
+        continue;
+      }
       const marker = b[i + 1];
       const len = b.readUInt16BE(i + 2);
       // SOF0..SOF15 except DHT (C4), JPG (C8) and DAC (CC) carry the frame size.
@@ -118,10 +155,20 @@ async function storeImage(hs: Homeserver, res: Response, type: string): Promise<
   if (data.length > MAX_BYTES * 10) return {};
   const mediaId = randomString(24);
   await hs.media.put(mediaId, data, { contentType: type, filename: null, size: data.length });
-  await hs.db.create("media", { media_id: mediaId, content_type: type, filename: null, size: data.length, uploader: "", created_ts: Date.now(), pending: false });
+  await hs.db.create("media", {
+    media_id: mediaId,
+    content_type: type,
+    filename: null,
+    size: data.length,
+    uploader: "",
+    created_ts: Date.now(),
+    pending: false,
+  });
   const size = imageSize(data);
   return {
-    "og:image": `mxc://${hs.serverName}/${mediaId}`, "og:image:type": type, "matrix:image:size": data.length,
+    "og:image": `mxc://${hs.serverName}/${mediaId}`,
+    "og:image:type": type,
+    "matrix:image:size": data.length,
     ...(size ? { "og:image:width": size.width, "og:image:height": size.height } : {}),
   };
 }

@@ -61,17 +61,27 @@ export class PartialStateService {
    * of a partial-state room hosted by the sender, remember them for when the state is complete.
    */
   async notePendingDeviceUpdate(userId: string, origin: string): Promise<void> {
-    const rows = (await this.hs.db.findMany("partial_state_rooms", {})).filter((r) => r.completed_stream === null && (r.servers ?? []).includes(origin));
+    const rows = (await this.hs.db.findMany("partial_state_rooms", {})).filter(
+      (r) => r.completed_stream === null && (r.servers ?? []).includes(origin),
+    );
     for (const row of rows) {
       const pending: string[] = Array.isArray(row.pending_device_users) ? row.pending_device_users : [];
       if (pending.includes(userId)) continue;
-      await this.hs.db.update("partial_state_rooms", [{ field: "room_id", value: row.room_id }], { pending_device_users: [...pending, userId] });
+      await this.hs.db.update("partial_state_rooms", [{ field: "room_id", value: row.room_id }], {
+        pending_device_users: [...pending, userId],
+      });
     }
   }
 
   async markPartial(roomId: string, joinEventId: string, origin: string, servers: string[]): Promise<void> {
     await this.hs.db.upsert("partial_state_rooms", {
-      room_id: roomId, join_event_id: joinEventId, origin, servers: [...new Set([origin, ...servers])], created_ts: Date.now(), completed_stream: null, pending_device_users: [],
+      room_id: roomId,
+      join_event_id: joinEventId,
+      origin,
+      servers: [...new Set([origin, ...servers])],
+      created_ts: Date.now(),
+      completed_stream: null,
+      pending_device_users: [],
     });
     this.partial.set(roomId, true);
     this.completedStreams.delete(roomId);
@@ -91,7 +101,12 @@ export class PartialStateService {
         resolve();
       };
       // State changes are announced on one channel for both directions: re-check before resolving.
-      const check = () => void this.isPartial(roomId).then((p) => { if (!p) done(); }).catch(() => {});
+      const check = () =>
+        void this.isPartial(roomId)
+          .then((p) => {
+            if (!p) done();
+          })
+          .catch(() => {});
       this.completed.on(roomId, check);
       signal?.addEventListener("abort", done);
       this.hs.once?.("close", done);
@@ -107,7 +122,10 @@ export class PartialStateService {
   /** Resume resyncs of rooms left partial (e.g. by a restart). */
   async resume(): Promise<void> {
     const rows = (await this.hs.db.findMany("partial_state_rooms", {})).filter((r) => r.completed_stream === null);
-    this.hs.logger.debug("Resuming partial state resyncs", rows.map((r) => r.room_id));
+    this.hs.logger.debug(
+      "Resuming partial state resyncs",
+      rows.map((r) => r.room_id),
+    );
     for (const row of rows) this.startResync(row.room_id);
   }
 
@@ -167,10 +185,16 @@ export class PartialStateService {
         const fullBefore = await this.hs.federation.stateFromPrevs(server, roomId, version, prevIds, { remote: true });
         // Requests fail while shutting down: never complete (or give up on) a resync then.
         if (this.stopped || this.hs.isClosed) return true;
-        if (!fullBefore[stateKey("m.room.create", "")] && !roomVersionFeatures(version).v12) throw new Error("Resynced state lacks the create event");
+        if (!fullBefore[stateKey("m.room.create", "")] && !roomVersionFeatures(version).v12)
+          throw new Error("Resynced state lacks the create event");
         // Servers we sent the room's traffic to while partial: the resident's list plus those in our partial state.
-        const notified = new Set<string>([...(row.servers ?? []), ...this.hs.federation.serversInRoom(await this.hs.rooms.currentState(roomId), false)]);
-        const missed = await this.hs.rooms.withLock(roomId, () => this.hs.rooms.completePartialState(roomId, version, row.join_event_id, fullBefore, notified));
+        const notified = new Set<string>([
+          ...(row.servers ?? []),
+          ...this.hs.federation.serversInRoom(await this.hs.rooms.currentState(roomId), false),
+        ]);
+        const missed = await this.hs.rooms.withLock(roomId, () =>
+          this.hs.rooms.completePartialState(roomId, version, row.join_event_id, fullBefore, notified),
+        );
         await this.finish(roomId);
         // Servers wrongly left out meanwhile get our members' device lists now.
         if (missed.length) {
@@ -187,7 +211,9 @@ export class PartialStateService {
   }
 
   private async finish(roomId: string): Promise<void> {
-    await this.hs.streams.write((stream) => this.hs.db.update("partial_state_rooms", [{ field: "room_id", value: roomId }], { completed_stream: stream }));
+    await this.hs.streams.write((stream) =>
+      this.hs.db.update("partial_state_rooms", [{ field: "room_id", value: roomId }], { completed_stream: stream }),
+    );
     this.partial.set(roomId, false);
     this.completedStreams.delete(roomId);
     this.completed.emit(roomId);

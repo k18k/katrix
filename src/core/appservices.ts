@@ -53,15 +53,21 @@ function parseScalar(raw: string): unknown {
   if (v === "[]") return [];
   if (v === "{}") return {};
   if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
-  if ((v.startsWith('"') && v.endsWith('"'))) return JSON.parse(v);
+  if (v.startsWith('"') && v.endsWith('"')) return JSON.parse(v);
   if (v.startsWith("'") && v.endsWith("'")) return v.slice(1, -1).replace(/''/g, "'");
-  if (v.startsWith("[") && v.endsWith("]")) return v.slice(1, -1).split(",").map((x) => parseScalar(x)).filter((x) => x !== null);
+  if (v.startsWith("[") && v.endsWith("]"))
+    return v
+      .slice(1, -1)
+      .split(",")
+      .map((x) => parseScalar(x))
+      .filter((x) => x !== null);
   return v;
 }
 
 /** Minimal YAML reader (indentation-based maps, "- " lists, scalars, comments). */
 function parseSimpleYaml(text: string): unknown {
-  const lines = text.split(/\r?\n/)
+  const lines = text
+    .split(/\r?\n/)
     .map((l) => l.replace(/\s+#.*$/, "").replace(/^#.*$/, ""))
     .filter((l) => l.trim() !== "")
     .map((l) => ({ indent: l.length - l.trimStart().length, text: l.trim() }));
@@ -85,7 +91,10 @@ function parseSimpleYaml(text: string): unknown {
     const obj: Record<string, unknown> = {};
     while (i < lines.length && lines[i].indent === indent && !lines[i].text.startsWith("- ")) {
       const m = /^([^:]+):\s*(.*)$/.exec(lines[i].text);
-      if (!m) { i++; continue; }
+      if (!m) {
+        i++;
+        continue;
+      }
       const key = m[1].trim().replace(/^["']|["']$/g, "");
       i++;
       if (m[2] !== "") obj[key] = parseScalar(m[2]);
@@ -101,7 +110,11 @@ function parseSimpleYaml(text: string): unknown {
 /** Load every *.yaml / *.yml / *.json registration in a directory. */
 export async function loadAppServiceRegistrations(directory: string): Promise<AppServiceRegistration[]> {
   let names: string[];
-  try { names = await readdir(directory); } catch { return []; }
+  try {
+    names = await readdir(directory);
+  } catch {
+    return [];
+  }
   const out: AppServiceRegistration[] = [];
   for (const name of names.filter((n) => /\.(ya?ml|json)$/.test(n)).sort()) {
     out.push(parseAppServiceRegistration(await readFile(join(directory, name), "utf8")));
@@ -118,7 +131,10 @@ export class AppServiceService {
   constructor(hs: Homeserver, registrations: AppServiceRegistration[]) {
     this.hs = hs;
     this.services = registrations.map((reg) => ({
-      reg, users: compile(reg.namespaces?.users), aliases: compile(reg.namespaces?.aliases), rooms: compile(reg.namespaces?.rooms),
+      reg,
+      users: compile(reg.namespaces?.users),
+      aliases: compile(reg.namespaces?.aliases),
+      rooms: compile(reg.namespaces?.rooms),
     }));
   }
 
@@ -162,8 +178,15 @@ export class AppServiceService {
     if (!this.isInterestedUser(reg, userId)) throw errors.forbidden("Application service cannot masquerade as this user");
     if (userId === this.senderOf(reg) && !(await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]))) {
       await this.hs.db.create("users", {
-        user_id: userId, localpart: reg.sender_localpart, password_hash: null, displayname: reg.sender_localpart, avatar_url: null,
-        is_guest: false, is_admin: false, deactivated: false, created_ts: Date.now(),
+        user_id: userId,
+        localpart: reg.sender_localpart,
+        password_hash: null,
+        displayname: reg.sender_localpart,
+        avatar_url: null,
+        is_guest: false,
+        is_admin: false,
+        deactivated: false,
+        created_ts: Date.now(),
       });
     }
     const user = await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]);
@@ -206,7 +229,11 @@ export class AppServiceService {
       if (!reg.url || !(reg.receive_ephemeral || reg["de.sorunome.msc2409.push_ephemeral"])) continue;
       let interested = users.some((u) => this.isInterestedUser(reg, u)) || (roomId !== null && svc.rooms.some((n) => n.re.test(roomId)));
       if (!interested && roomId) {
-        for (const u of await this.hs.rooms.joinedMembers(roomId)) if (this.isInterestedUser(reg, u)) { interested = true; break; }
+        for (const u of await this.hs.rooms.joinedMembers(roomId))
+          if (this.isInterestedUser(reg, u)) {
+            interested = true;
+            break;
+          }
       }
       if (interested) await this.enqueue(reg, "ephemeral", roomId ? { ...event, room_id: roomId } : event);
     }
@@ -237,11 +264,18 @@ export class AppServiceService {
     if (!reg?.url) return;
     await this.hs.cluster.lock(`appservice:${asId}`, async () => {
       for (;;) {
-        const rows = await this.hs.db.findMany("appservice_outbox", { where: [{ field: "as_id", value: asId }], sortBy: { field: "id", direction: "asc" }, limit: 100 });
+        const rows = await this.hs.db.findMany("appservice_outbox", {
+          where: [{ field: "as_id", value: asId }],
+          sortBy: { field: "id", direction: "asc" },
+          limit: 100,
+        });
         if (!rows.length) return;
         const body: Record<string, any> = { events: rows.filter((r) => r.kind === "event").map((r) => r.payload) };
         const ephemeral = rows.filter((r) => r.kind === "ephemeral").map((r) => r.payload);
-        if (ephemeral.length) { body.ephemeral = ephemeral; body["de.sorunome.msc2409.ephemeral"] = ephemeral; }
+        if (ephemeral.length) {
+          body.ephemeral = ephemeral;
+          body["de.sorunome.msc2409.ephemeral"] = ephemeral;
+        }
         const txnId = String(rows[rows.length - 1].id);
         try {
           const res = await this.hs.fetch(`${reg.url!.replace(/\/$/, "")}/_matrix/app/v1/transactions/${txnId}`, {
@@ -281,7 +315,8 @@ export class AppServiceService {
     if (!reg.url) return null;
     try {
       return await this.hs.fetch(`${reg.url.replace(/\/$/, "")}${path}`, {
-        headers: { authorization: `Bearer ${reg.hs_token}` }, signal: AbortSignal.timeout(10_000),
+        headers: { authorization: `Bearer ${reg.hs_token}` },
+        signal: AbortSignal.timeout(10_000),
       });
     } catch {
       return null;
@@ -325,7 +360,11 @@ export class AppServiceService {
     } catch (err) {
       throw new MatrixError(502, "M_CONNECTION_FAILED", `Could not reach the application service: ${(err as Error).message}`);
     }
-    if (!res.ok) throw new MatrixError(502, "M_BAD_STATUS", "Application service returned an error", { status: res.status, body: await res.text().catch(() => "") });
+    if (!res.ok)
+      throw new MatrixError(502, "M_BAD_STATUS", "Application service returned an error", {
+        status: res.status,
+        body: await res.text().catch(() => ""),
+      });
     return Date.now() - started;
   }
 

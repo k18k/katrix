@@ -72,12 +72,12 @@ const homeserver = createHomeserver({
   cluster,
   mediaAdapter: process.env.S3_BUCKET
     ? s3Media({
-      bucket: process.env.S3_BUCKET,
-      region: process.env.S3_REGION ?? "us-east-1",
-      accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
-      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
-      endpoint: process.env.S3_ENDPOINT,
-    })
+        bucket: process.env.S3_BUCKET,
+        region: process.env.S3_REGION ?? "us-east-1",
+        accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
+        endpoint: process.env.S3_ENDPOINT,
+      })
     : postgresMedia(pool),
   // Same behaviour as examples/node-http.ts: the first account becomes the admin.
   userAuthAdapter: { registrationEnabled: false },

@@ -58,7 +58,10 @@ export class Router {
     for (const route of this.routes) {
       const params = matchSegments(route.segments, parts);
       if (!params) continue;
-      if (route.method !== method) { methodMismatch = true; continue; }
+      if (route.method !== method) {
+        methodMismatch = true;
+        continue;
+      }
       return { handler: route.handler, params };
     }
     return methodMismatch ? "method" : null;
@@ -76,7 +79,11 @@ function matchSegments(segments: string[], parts: string[]): Record<string, stri
     }
     if (i >= parts.length) return null;
     if (seg.startsWith(":")) {
-      try { params[seg.slice(1)] = decodeURIComponent(parts[i]); } catch { return null; }
+      try {
+        params[seg.slice(1)] = decodeURIComponent(parts[i]);
+      } catch {
+        return null;
+      }
     } else if (seg !== parts[i]) {
       return null;
     }

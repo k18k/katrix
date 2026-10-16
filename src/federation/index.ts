@@ -112,7 +112,11 @@ export class FederationService {
    * Verify an incoming PDU: event ID, signatures and content hash. Events with a bad
    * content hash are redacted (as the spec requires) rather than rejected.
    */
-  async verifyPdu(raw: Record<string, any>, version: string, roomId: string): Promise<{ pdu: PDU; joinAuthorisedSignatureValid?: boolean }> {
+  async verifyPdu(
+    raw: Record<string, any>,
+    version: string,
+    roomId: string,
+  ): Promise<{ pdu: PDU; joinAuthorisedSignatureValid?: boolean }> {
     if (!isObject(raw) || typeof raw.type !== "string" || typeof raw.sender !== "string" || !isObject(raw.content)) {
       throw errors.badJson("Malformed PDU");
     }
@@ -132,7 +136,13 @@ export class FederationService {
     }
     let joinAuthorisedSignatureValid: boolean | undefined;
     const via = raw.content?.join_authorised_via_users_server;
-    if (f.restricted && raw.type === "m.room.member" && raw.content?.membership === "join" && typeof via === "string" && via.includes(":")) {
+    if (
+      f.restricted &&
+      raw.type === "m.room.member" &&
+      raw.content?.membership === "join" &&
+      typeof via === "string" &&
+      via.includes(":")
+    ) {
       joinAuthorisedSignatureValid = await this.keyring.verifySignedBy(redacted, domainOf(via));
     }
     let pdu: PDU = { ...(raw as PDU), event_id: eventId };
@@ -222,9 +232,22 @@ export class FederationService {
     if (!this.enabled || !this.hs.isLocalUser(userId)) return;
     const servers = await this.serversSharingRooms(userId);
     if (!servers.size) return;
-    await this.sender.sendEdu(servers, "m.presence", {
-      push: [{ user_id: userId, presence, last_active_ago: 0, currently_active: presence === "online", ...(statusMsg ? { status_msg: statusMsg } : {}) }],
-    }, false);
+    await this.sender.sendEdu(
+      servers,
+      "m.presence",
+      {
+        push: [
+          {
+            user_id: userId,
+            presence,
+            last_active_ago: 0,
+            currently_active: presence === "online",
+            ...(statusMsg ? { status_msg: statusMsg } : {}),
+          },
+        ],
+      },
+      false,
+    );
   }
 
   /** Tell servers sharing rooms with a local user that their device list changed. */
@@ -236,13 +259,19 @@ export class FederationService {
     const updates: { deviceId: string; deleted: boolean }[] = devices.map((d) => ({ deviceId: d.device_id, deleted: false }));
     if (deletedDeviceId) updates.push({ deviceId: deletedDeviceId, deleted: true });
     for (const u of updates) {
-      const prev = this.deviceStreams.get(userId) ?? (await this.hs.db.findOne("device_list_changes", [{ field: "user_id", value: userId }]))?.stream ?? 0;
+      const prev =
+        this.deviceStreams.get(userId) ??
+        (await this.hs.db.findOne("device_list_changes", [{ field: "user_id", value: userId }]))?.stream ??
+        0;
       const streamId = Math.max(await this.hs.streams.write(async (id) => id), prev + 1);
       this.deviceStreams.set(userId, streamId);
       const content: Record<string, any> = { user_id: userId, device_id: u.deviceId, stream_id: streamId, prev_id: prev ? [prev] : [] };
       if (u.deleted) content.deleted = true;
       else {
-        const keys = await this.hs.db.findOne("device_keys", [{ field: "user_id", value: userId }, { field: "device_id", value: u.deviceId }]);
+        const keys = await this.hs.db.findOne("device_keys", [
+          { field: "user_id", value: userId },
+          { field: "device_id", value: u.deviceId },
+        ]);
         if (keys) content.keys = keys.keys;
         const d = devices.find((x) => x.device_id === u.deviceId);
         if (d?.display_name) content.device_display_name = d.display_name;
@@ -340,22 +369,35 @@ export class FederationService {
     if (raw?.type !== "m.room.member" || typeof raw.state_key !== "string" || !this.hs.isLocalUser(raw.state_key)) {
       throw errors.notFound("Unknown room");
     }
-    const row = await this.hs.db.findOne("memberships", [{ field: "room_id", value: roomId }, { field: "user_id", value: raw.state_key }]);
+    const row = await this.hs.db.findOne("memberships", [
+      { field: "room_id", value: roomId },
+      { field: "user_id", value: raw.state_key },
+    ]);
     if (!row) throw errors.notFound("Unknown room");
     const previous = await this.hs.rooms.getPdu(row.event_id);
-    const create = (previous?.unsigned?.invite_room_state ?? previous?.unsigned?.knock_room_state ?? [])
-      .find((e: any) => e?.type === "m.room.create");
+    const create = (previous?.unsigned?.invite_room_state ?? previous?.unsigned?.knock_room_state ?? []).find(
+      (e: any) => e?.type === "m.room.create",
+    );
     const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
     const { pdu } = await this.verifyPdu(raw, version, roomId);
     if (domainOf(pdu.sender) !== origin && domainOf(pdu.sender) !== domainOf(raw.state_key)) throw errors.forbidden("Unexpected sender");
     const membership = pdu.content?.membership;
     // Only the original inviter (or the user themselves) can rescind an invite.
-    if (row.membership === "invite" && (membership === "leave" || membership === "ban") && previous && pdu.sender !== previous.sender && pdu.sender !== raw.state_key) {
+    if (
+      row.membership === "invite" &&
+      (membership === "leave" || membership === "ban") &&
+      previous &&
+      pdu.sender !== previous.sender &&
+      pdu.sender !== raw.state_key
+    ) {
       return pdu.event_id!;
     }
     if (membership === "invite" || membership === "join") {
       // A knock was accepted (invite) — keep the stripped state from the knock for the client.
-      pdu.unsigned = { ...(pdu.unsigned ?? {}), invite_room_state: previous?.unsigned?.knock_room_state ?? previous?.unsigned?.invite_room_state ?? [] };
+      pdu.unsigned = {
+        ...pdu.unsigned,
+        invite_room_state: previous?.unsigned?.knock_room_state ?? previous?.unsigned?.invite_room_state ?? [],
+      };
     }
     if (membership !== "join") await this.hs.rooms.recordRemoteMembership(pdu, version);
     return pdu.event_id!;
@@ -372,7 +414,12 @@ export class FederationService {
       const outlier = await this.hs.rooms.getOutlier(id);
       if (outlier?.rejected) {
         await this.hs.db.upsert("outliers", {
-          event_id: pdu.event_id, room_id: roomId, json: pdu, state_snapshot: null, soft_failed: false, rejected: `Auth event ${id} was rejected`,
+          event_id: pdu.event_id,
+          room_id: roomId,
+          json: pdu,
+          state_snapshot: null,
+          soft_failed: false,
+          rejected: `Auth event ${id} was rejected`,
         });
         return;
       }
@@ -411,7 +458,11 @@ export class FederationService {
       const outlier = await this.hs.rooms.getOutlier(id);
       if (outlier?.rejected || !(await this.hs.rooms.knowsEvent(id))) {
         await this.hs.db.upsert("outliers", {
-          event_id: pdu.event_id, room_id: roomId, json: pdu, state_snapshot: null, soft_failed: false,
+          event_id: pdu.event_id,
+          room_id: roomId,
+          json: pdu,
+          state_snapshot: null,
+          soft_failed: false,
           rejected: outlier?.rejected ? `Auth event ${id} was rejected` : `Auth event ${id} is unavailable`,
         });
         return;
@@ -419,7 +470,11 @@ export class FederationService {
     }
 
     try {
-      const result = await this.hs.rooms.persistEvent(roomId, version, pdu, { joinAuthorisedSignatureValid, stateBefore, gap: !!stateBefore });
+      const result = await this.hs.rooms.persistEvent(roomId, version, pdu, {
+        joinAuthorisedSignatureValid,
+        stateBefore,
+        gap: !!stateBefore,
+      });
       if (result.status === "rejected") this.hs.logger.debug("Rejected", pdu.event_id, result.reason);
     } catch (err) {
       if (err instanceof MissingStateError && !stateBefore && depth > 0) {
@@ -436,12 +491,21 @@ export class FederationService {
    * fetch the state at it (/state_ids) plus the event itself, then resolve all
    * predecessors' states. Throws if a required event cannot be fetched.
    */
-  async stateFromPrevs(origin: string, roomId: string, version: string, prevIds: string[], opts: { remote?: boolean } = {}): Promise<Record<string, string>> {
+  async stateFromPrevs(
+    origin: string,
+    roomId: string,
+    version: string,
+    prevIds: string[],
+    opts: { remote?: boolean } = {},
+  ): Promise<Record<string, string>> {
     const sets: Record<string, string>[] = [];
     for (const prev of prevIds) {
       // `remote`: our own view of the state is incomplete (partial-state join), so always ask.
       const snap = opts.remote ? null : await this.hs.rooms.snapshotOf(prev);
-      if (snap !== null) { sets.push(await this.hs.rooms.snapshotIds(snap)); continue; }
+      if (snap !== null) {
+        sets.push(await this.hs.rooms.snapshotIds(snap));
+        continue;
+      }
       if ((await this.hs.rooms.getOutlier(prev))?.rejected) continue;
       const before = await this.fetchStateBefore(origin, roomId, version, prev);
       if (!(await this.hs.rooms.getPdu(prev))) await this.fetchEvent(origin, roomId, version, prev);
@@ -451,7 +515,7 @@ export class FederationService {
     }
     if (!sets.length) throw errors.forbidden("All predecessors were rejected");
     if (sets.length === 1) return sets[0];
-    const create = roomVersionFeatures(version).v12 ? (await this.hs.rooms.getPdu(`$${roomId.slice(1)}`)) ?? undefined : undefined;
+    const create = roomVersionFeatures(version).v12 ? ((await this.hs.rooms.getPdu(`$${roomId.slice(1)}`)) ?? undefined) : undefined;
     return resolveState(sets, version, (ids) => this.hs.rooms.getPdus(ids), create);
   }
 
@@ -461,7 +525,11 @@ export class FederationService {
     for (const id of authIds) if (!(await this.hs.rooms.knowsEvent(id))) missing.push(id);
     if (!missing.length) return;
     try {
-      const res = await this.client.request(origin, "GET", `/_matrix/federation/v1/event_auth/${encodeURIComponent(roomId)}/${encodeURIComponent(pdu.event_id!)}`);
+      const res = await this.client.request(
+        origin,
+        "GET",
+        `/_matrix/federation/v1/event_auth/${encodeURIComponent(roomId)}/${encodeURIComponent(pdu.event_id!)}`,
+      );
       await this.storeOutliers(roomId, version, Array.isArray(res.auth_chain) ? res.auth_chain : []);
     } catch {
       // Fall back to fetching the missing auth events (and their auth events) one by one.
@@ -539,7 +607,10 @@ export class FederationService {
     // Computing the state of a large room can take the remote server a while.
     const timeoutMs = 300_000;
     try {
-      res = await this.client.request(origin, "GET", `/_matrix/federation/v1/state_ids/${encodeURIComponent(roomId)}`, { query: { event_id: eventId }, timeoutMs });
+      res = await this.client.request(origin, "GET", `/_matrix/federation/v1/state_ids/${encodeURIComponent(roomId)}`, {
+        query: { event_id: eventId },
+        timeoutMs,
+      });
     } catch (err) {
       this.hs.logger.debug("/state_ids failed, falling back to /state", origin, err);
     }
@@ -561,7 +632,10 @@ export class FederationService {
       // Every state event must be available; otherwise the state cannot be trusted.
       for (const id of stateIds) if (!(await this.hs.rooms.knowsEvent(id))) throw errors.notFound(`Could not fetch state event ${id}`);
     } else {
-      const res = await this.client.request(origin, "GET", `/_matrix/federation/v1/state/${encodeURIComponent(roomId)}`, { query: { event_id: eventId }, timeoutMs });
+      const res = await this.client.request(origin, "GET", `/_matrix/federation/v1/state/${encodeURIComponent(roomId)}`, {
+        query: { event_id: eventId },
+        timeoutMs,
+      });
       const pdus: any[] = Array.isArray(res.pdus) ? res.pdus : [];
       if (!pdus.length) throw errors.notFound("Remote server returned no state");
       await this.storeOutliers(roomId, version, [...(Array.isArray(res.auth_chain) ? res.auth_chain : []), ...pdus]);
@@ -594,7 +668,14 @@ export class FederationService {
       if (seen.has(pdu.event_id!)) continue;
       seen.add(pdu.event_id!);
       const rejected = await this.checkOutlierAuth(roomId, version, pdu);
-      await this.hs.db.upsert("outliers", { event_id: pdu.event_id, room_id: roomId, json: pdu, state_snapshot: null, rejected, soft_failed: false });
+      await this.hs.db.upsert("outliers", {
+        event_id: pdu.event_id,
+        room_id: roomId,
+        json: pdu,
+        state_snapshot: null,
+        rejected,
+        soft_failed: false,
+      });
     }
   }
 
@@ -610,9 +691,10 @@ export class FederationService {
       authPdus.push(p);
     }
     try {
-      const create = roomVersionFeatures(version).v12 && pdu.type !== "m.room.create"
-        ? (await this.hs.rooms.getPdu(`$${roomId.slice(1)}`)) ?? undefined
-        : undefined;
+      const create =
+        roomVersionFeatures(version).v12 && pdu.type !== "m.room.create"
+          ? ((await this.hs.rooms.getPdu(`$${roomId.slice(1)}`)) ?? undefined)
+          : undefined;
       checkAuth(pdu, authStateFromAuthEvents(pdu, authPdus, version, create), version);
       return null;
     } catch (err) {
@@ -658,10 +740,17 @@ export class FederationService {
               if (!(await this.mayActInRoom(roomId, userId, origin))) continue;
               const eventId = r.event_ids[r.event_ids.length - 1];
               if (typeof eventId !== "string") continue;
-              await this.hs.streams.write((stream) => this.hs.db.upsert("receipts", {
-                room_id: roomId, user_id: userId, receipt_type: receiptType, thread_id: typeof r.data?.thread_id === "string" ? r.data.thread_id : "",
-                event_id: eventId, ts: Number(r.data?.ts) || Date.now(), stream,
-              }));
+              await this.hs.streams.write((stream) =>
+                this.hs.db.upsert("receipts", {
+                  room_id: roomId,
+                  user_id: userId,
+                  receipt_type: receiptType,
+                  thread_id: typeof r.data?.thread_id === "string" ? r.data.thread_id : "",
+                  event_id: eventId,
+                  ts: Number(r.data?.ts) || Date.now(),
+                  stream,
+                }),
+              );
             }
           }
           this.hs.notifier.notify(await this.hs.rooms.joinedMembers(roomId));
@@ -672,10 +761,15 @@ export class FederationService {
         for (const p of Array.isArray(content.push) ? content.push : []) {
           if (!isObject(p) || typeof p.user_id !== "string" || domainOf(p.user_id) !== origin) continue;
           if (!["online", "offline", "unavailable"].includes(p.presence)) continue;
-          await this.hs.streams.write((stream) => this.hs.db.upsert("presence", {
-            user_id: p.user_id, presence: p.presence, status_msg: typeof p.status_msg === "string" ? p.status_msg : null,
-            last_active_ts: Date.now() - (Number(p.last_active_ago) || 0), stream,
-          }));
+          await this.hs.streams.write((stream) =>
+            this.hs.db.upsert("presence", {
+              user_id: p.user_id,
+              presence: p.presence,
+              status_msg: typeof p.status_msg === "string" ? p.status_msg : null,
+              last_active_ts: Date.now() - (Number(p.last_active_ago) || 0),
+              stream,
+            }),
+          );
           this.hs.notifier.notify(await this.hs.rooms.usersSharingRooms(p.user_id));
         }
         return;
@@ -697,7 +791,10 @@ export class FederationService {
         if (typeof userId !== "string" || domainOf(userId) !== origin) return;
         for (const type of ["master", "self_signing"]) {
           const key = content[`${type}_key`];
-          if (isObject(key)) await this.hs.streams.write((stream) => this.hs.db.upsert("cross_signing_keys", { user_id: userId, key_type: type, key, stream }));
+          if (isObject(key))
+            await this.hs.streams.write((stream) =>
+              this.hs.db.upsert("cross_signing_keys", { user_id: userId, key_type: type, key, stream }),
+            );
         }
         await this.hs.keys.markRemoteStale(userId);
         await this.hs.keys.markDeviceListChanged(userId);
@@ -711,11 +808,19 @@ export class FederationService {
         for (const [userId, devices] of Object.entries(messages)) {
           if (!this.hs.isLocalUser(userId) || !isObject(devices)) continue;
           let targets = Object.keys(devices);
-          if (targets.includes("*")) targets = (await this.hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] })).map((d) => d.device_id);
+          if (targets.includes("*"))
+            targets = (await this.hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] })).map((d) => d.device_id);
           for (const deviceId of targets) {
-            await this.hs.streams.write((stream) => this.hs.db.create("to_device", {
-              stream, user_id: userId, device_id: deviceId, sender, type, content: devices[deviceId] ?? devices["*"],
-            }));
+            await this.hs.streams.write((stream) =>
+              this.hs.db.create("to_device", {
+                stream,
+                user_id: userId,
+                device_id: deviceId,
+                sender,
+                type,
+                content: devices[deviceId] ?? devices["*"],
+              }),
+            );
           }
           recipients.add(userId);
         }
@@ -732,7 +837,7 @@ export class FederationService {
   /** Build a full event from a make_join/make_leave/make_knock template and sign it. */
   private finaliseTemplate(template: Record<string, any>, version: string, extraContent: Record<string, any>): PDU {
     const { event_id, hashes, signatures, unsigned, ...rest } = template;
-    const pdu = { ...rest, content: { ...(rest.content ?? {}), ...extraContent }, origin_server_ts: Date.now() } as PDU;
+    const pdu = { ...rest, content: { ...rest.content, ...extraContent }, origin_server_ts: Date.now() } as PDU;
     if (roomVersionFeatures(version).legacyEventIds) pdu.origin = this.hs.serverName;
     return finalisePdu(pdu, version, this.hs.serverName, this.hs.signingKey);
   }
@@ -743,22 +848,37 @@ export class FederationService {
     let lastError: unknown = errors.notFound("No server could be reached to join the room");
     for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName && this.serverAllowed(s))) {
       try {
-        const tmpl = await this.client.request(server, "GET", `/_matrix/federation/v1/make_join/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`, {
-          query: { ver: SUPPORTED_ROOM_VERSIONS },
-        });
+        const tmpl = await this.client.request(
+          server,
+          "GET",
+          `/_matrix/federation/v1/make_join/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`,
+          {
+            query: { ver: SUPPORTED_ROOM_VERSIONS },
+          },
+        );
         const version = typeof tmpl.room_version === "string" ? tmpl.room_version : "1";
         if (!SUPPORTED_ROOM_VERSIONS.includes(version)) throw errors.unsupportedRoomVersion();
-        if (!isObject(tmpl.event) || tmpl.event.content?.membership !== "join" || tmpl.event.state_key !== userId || tmpl.event.sender !== userId) {
+        if (
+          !isObject(tmpl.event) ||
+          tmpl.event.content?.membership !== "join" ||
+          tmpl.event.state_key !== userId ||
+          tmpl.event.sender !== userId
+        ) {
           throw errors.badJson("Invalid make_join template");
         }
         const joinPdu = this.finaliseTemplate(tmpl.event, version, content);
         // MSC3902: ask for partial state (no membership events) so the join completes quickly;
         // the full state is fetched in the background afterwards.
-        const res = await this.client.request(server, "PUT", `/_matrix/federation/v2/send_join/${encodeURIComponent(roomId)}/${encodeURIComponent(joinPdu.event_id!)}`, {
-          body: this.toFederationPdu(joinPdu, version),
-          query: this.fasterJoins ? { omit_members: "true" } : undefined,
-          timeoutMs: 120_000,
-        });
+        const res = await this.client.request(
+          server,
+          "PUT",
+          `/_matrix/federation/v2/send_join/${encodeURIComponent(roomId)}/${encodeURIComponent(joinPdu.event_id!)}`,
+          {
+            body: this.toFederationPdu(joinPdu, version),
+            query: this.fasterJoins ? { omit_members: "true" } : undefined,
+            timeoutMs: 120_000,
+          },
+        );
         // Restricted joins come back with the authorising server's signature.
         if (isObject(res.event?.signatures)) joinPdu.signatures = { ...joinPdu.signatures, ...res.event.signatures };
         await this.completeJoin(roomId, version, joinPdu, res, server);
@@ -787,7 +907,13 @@ export class FederationService {
     }
     if (!create) throw errors.badJson("send_join response lacks the create event");
     if (!(await this.hs.rooms.exists(roomId))) {
-      await this.hs.db.upsert("rooms", { room_id: roomId, room_version: version, creator: create.sender, is_public: false, created_ts: Date.now() });
+      await this.hs.db.upsert("rooms", {
+        room_id: roomId,
+        room_version: version,
+        creator: create.sender,
+        is_public: false,
+        created_ts: Date.now(),
+      });
     }
     // Already participating (a join authorised by another server): the join fits our DAG as is.
     if (await this.hs.rooms.serverIsJoined(roomId)) {
@@ -798,11 +924,19 @@ export class FederationService {
     // already hold the join's predecessors.
     let gap = false;
     for (const prev of (joinPdu.prev_events ?? []).map(eventIdOf)) if (!(await this.hs.rooms.getEvent(prev))) gap = true;
-    await this.hs.rooms.withLock(roomId, () => this.hs.rooms.persistEvent(roomId, version, joinPdu, {
-      local: true, stateBefore: stateIds, createEvent: roomVersionFeatures(version).v12 ? create : undefined, noFederate: true, gap,
-    }));
+    await this.hs.rooms.withLock(roomId, () =>
+      this.hs.rooms.persistEvent(roomId, version, joinPdu, {
+        local: true,
+        stateBefore: stateIds,
+        createEvent: roomVersionFeatures(version).v12 ? create : undefined,
+        noFederate: true,
+        gap,
+      }),
+    );
     if (res.members_omitted === true) {
-      const servers = Array.isArray(res.servers_in_room) ? res.servers_in_room.filter((s: unknown): s is string => typeof s === "string") : [];
+      const servers = Array.isArray(res.servers_in_room)
+        ? res.servers_in_room.filter((s: unknown): s is string => typeof s === "string")
+        : [];
       await this.hs.partialState.markPartial(roomId, joinPdu.event_id!, origin, servers);
     }
   }
@@ -813,12 +947,21 @@ export class FederationService {
     let lastError: unknown = errors.notFound("No server could be reached to leave the room");
     for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName)) {
       try {
-        const tmpl = await this.client.request(server, "GET", `/_matrix/federation/v1/make_leave/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`);
+        const tmpl = await this.client.request(
+          server,
+          "GET",
+          `/_matrix/federation/v1/make_leave/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`,
+        );
         const version = typeof tmpl.room_version === "string" ? tmpl.room_version : "1";
         const pdu = this.finaliseTemplate(tmpl.event, version, reason ? { reason } : {});
-        await this.client.request(server, "PUT", `/_matrix/federation/v2/send_leave/${encodeURIComponent(roomId)}/${encodeURIComponent(pdu.event_id!)}`, {
-          body: this.toFederationPdu(pdu, version),
-        });
+        await this.client.request(
+          server,
+          "PUT",
+          `/_matrix/federation/v2/send_leave/${encodeURIComponent(roomId)}/${encodeURIComponent(pdu.event_id!)}`,
+          {
+            body: this.toFederationPdu(pdu, version),
+          },
+        );
         return pdu;
       } catch (err) {
         lastError = err;
@@ -832,14 +975,24 @@ export class FederationService {
     let lastError: unknown = errors.notFound("No server could be reached to knock on the room");
     for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName)) {
       try {
-        const tmpl = await this.client.request(server, "GET", `/_matrix/federation/v1/make_knock/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`, {
-          query: { ver: SUPPORTED_ROOM_VERSIONS },
-        });
+        const tmpl = await this.client.request(
+          server,
+          "GET",
+          `/_matrix/federation/v1/make_knock/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`,
+          {
+            query: { ver: SUPPORTED_ROOM_VERSIONS },
+          },
+        );
         const version = typeof tmpl.room_version === "string" ? tmpl.room_version : "1";
         const pdu = this.finaliseTemplate(tmpl.event, version, reason ? { reason } : {});
-        const res = await this.client.request(server, "PUT", `/_matrix/federation/v1/send_knock/${encodeURIComponent(roomId)}/${encodeURIComponent(pdu.event_id!)}`, {
-          body: this.toFederationPdu(pdu, version),
-        });
+        const res = await this.client.request(
+          server,
+          "PUT",
+          `/_matrix/federation/v1/send_knock/${encodeURIComponent(roomId)}/${encodeURIComponent(pdu.event_id!)}`,
+          {
+            body: this.toFederationPdu(pdu, version),
+          },
+        );
         return { pdu, knockState: Array.isArray(res.knock_room_state) ? res.knock_room_state : [] };
       } catch (err) {
         lastError = err;
@@ -853,9 +1006,14 @@ export class FederationService {
     this.requireEnabled();
     const server = domainOf(pdu.state_key!);
     if (!this.serverAllowed(server)) throw errors.forbidden("Federation with this server is not allowed");
-    const res = await this.client.request(server, "PUT", `/_matrix/federation/v2/invite/${encodeURIComponent(pdu.room_id)}/${encodeURIComponent(pdu.event_id!)}`, {
-      body: { room_version: version, event: this.toFederationPdu(pdu, version), invite_room_state: inviteRoomState },
-    });
+    const res = await this.client.request(
+      server,
+      "PUT",
+      `/_matrix/federation/v2/invite/${encodeURIComponent(pdu.room_id)}/${encodeURIComponent(pdu.event_id!)}`,
+      {
+        body: { room_version: version, event: this.toFederationPdu(pdu, version), invite_room_state: inviteRoomState },
+      },
+    );
     if (!isObject(res.event)) throw errors.unknown("Invalid invite response");
     const signed = { ...pdu, signatures: { ...pdu.signatures, ...res.event.signatures } };
     // Signatures cover the wire format (no event_id for v3+), redacted.
@@ -879,7 +1037,10 @@ export class FederationService {
     return this.client.request(domainOf(alias), "GET", "/_matrix/federation/v1/query/directory", { query: { room_alias: alias } });
   }
 
-  async queryKeys(deviceKeys: Record<string, string[]>, timeoutMs = 10_000): Promise<{ results: Record<string, any>[]; failures: Record<string, any> }> {
+  async queryKeys(
+    deviceKeys: Record<string, string[]>,
+    timeoutMs = 10_000,
+  ): Promise<{ results: Record<string, any>[]; failures: Record<string, any> }> {
     const byServer = new Map<string, Record<string, string[]>>();
     for (const [userId, devices] of Object.entries(deviceKeys)) {
       const server = domainOf(userId);
@@ -888,18 +1049,28 @@ export class FederationService {
     }
     const results: Record<string, any>[] = [];
     const failures: Record<string, any> = {};
-    await Promise.all([...byServer].map(async ([server, query]) => {
-      try {
-        if (!this.enabled || !this.serverAllowed(server)) throw new Error("Federation disabled");
-        results.push(await this.client.request(server, "POST", "/_matrix/federation/v1/user/keys/query", { body: { device_keys: query }, timeoutMs }));
-      } catch (err) {
-        failures[server] = { status: 503, message: err instanceof Error ? err.message : String(err) };
-      }
-    }));
+    await Promise.all(
+      [...byServer].map(async ([server, query]) => {
+        try {
+          if (!this.enabled || !this.serverAllowed(server)) throw new Error("Federation disabled");
+          results.push(
+            await this.client.request(server, "POST", "/_matrix/federation/v1/user/keys/query", {
+              body: { device_keys: query },
+              timeoutMs,
+            }),
+          );
+        } catch (err) {
+          failures[server] = { status: 503, message: err instanceof Error ? err.message : String(err) };
+        }
+      }),
+    );
     return { results, failures };
   }
 
-  async claimKeys(oneTimeKeys: Record<string, Record<string, string>>, timeoutMs = 10_000): Promise<{ results: Record<string, any>; failures: Record<string, any> }> {
+  async claimKeys(
+    oneTimeKeys: Record<string, Record<string, string>>,
+    timeoutMs = 10_000,
+  ): Promise<{ results: Record<string, any>; failures: Record<string, any> }> {
     const byServer = new Map<string, Record<string, Record<string, string>>>();
     for (const [userId, devices] of Object.entries(oneTimeKeys)) {
       const server = domainOf(userId);
@@ -908,15 +1079,20 @@ export class FederationService {
     }
     const results: Record<string, any> = {};
     const failures: Record<string, any> = {};
-    await Promise.all([...byServer].map(async ([server, query]) => {
-      try {
-        if (!this.enabled) throw new Error("Federation disabled");
-        const res = await this.client.request(server, "POST", "/_matrix/federation/v1/user/keys/claim", { body: { one_time_keys: query }, timeoutMs });
-        Object.assign(results, res.one_time_keys ?? {});
-      } catch (err) {
-        failures[server] = { status: 503, message: err instanceof Error ? err.message : String(err) };
-      }
-    }));
+    await Promise.all(
+      [...byServer].map(async ([server, query]) => {
+        try {
+          if (!this.enabled) throw new Error("Federation disabled");
+          const res = await this.client.request(server, "POST", "/_matrix/federation/v1/user/keys/claim", {
+            body: { one_time_keys: query },
+            timeoutMs,
+          });
+          Object.assign(results, res.one_time_keys ?? {});
+        } catch (err) {
+          failures[server] = { status: 503, message: err instanceof Error ? err.message : String(err) };
+        }
+      }),
+    );
     return { results, failures };
   }
 
@@ -927,7 +1103,9 @@ export class FederationService {
 
   async queryHierarchy(server: string, roomId: string, suggestedOnly: boolean): Promise<Record<string, any>> {
     this.requireEnabled();
-    return this.client.request(server, "GET", `/_matrix/federation/v1/hierarchy/${encodeURIComponent(roomId)}`, { query: { suggested_only: String(suggestedOnly) } });
+    return this.client.request(server, "GET", `/_matrix/federation/v1/hierarchy/${encodeURIComponent(roomId)}`, {
+      query: { suggested_only: String(suggestedOnly) },
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -953,7 +1131,9 @@ export class FederationService {
           try {
             const { pdu } = await this.verifyPdu(raw, version, roomId);
             if (!(await this.hs.rooms.getEvent(pdu.event_id!))) verified.push(pdu);
-          } catch { /* skip invalid */ }
+          } catch {
+            /* skip invalid */
+          }
         }
         if (!verified.length) return 0;
         // Allocate positions newest-first so that older events sort earlier, then persist oldest-first.
@@ -971,7 +1151,11 @@ export class FederationService {
               const unknown = [];
               for (const id of prevIds) if ((await this.hs.rooms.snapshotOf(id)) === null) unknown.push(id);
               if (unknown.length) stateBefore = await this.fetchStateBefore(server, roomId, version, pdu.event_id!);
-              const r = await this.hs.rooms.persistEvent(roomId, version, pdu, { backfill: true, stateBefore, stream: positions.get(pdu.event_id!) });
+              const r = await this.hs.rooms.persistEvent(roomId, version, pdu, {
+                backfill: true,
+                stateBefore,
+                stream: positions.get(pdu.event_id!),
+              });
               if (r.status === "persisted") stored++;
             } catch (err) {
               this.hs.logger.debug("Backfilled event failed", pdu.event_id, err);
@@ -993,17 +1177,30 @@ export class FederationService {
   /** Download remote media (authenticated federation endpoint, falling back to the legacy one). */
   async fetchMedia(server: string, mediaId: string): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
     this.requireEnabled();
-    const res = await this.client.requestRaw(server, "GET", `/_matrix/federation/v1/media/download/${encodeURIComponent(mediaId)}`, { timeoutMs: 60_000 });
+    const res = await this.client.requestRaw(server, "GET", `/_matrix/federation/v1/media/download/${encodeURIComponent(mediaId)}`, {
+      timeoutMs: 60_000,
+    });
     if (res.status === 200) {
       const ct = String(res.headers["content-type"] ?? "");
       const m = /boundary=("?)([^";]+)\1/.exec(ct);
       if (ct.startsWith("multipart/") && m) return parseMultipartMedia(res.body, m[2], this);
     }
-    const legacy = await this.client.requestRaw(server, "GET", `/_matrix/media/v3/download/${encodeURIComponent(server)}/${encodeURIComponent(mediaId)}`, {
-      query: { allow_remote: "false" }, signed: false, timeoutMs: 60_000,
-    });
+    const legacy = await this.client.requestRaw(
+      server,
+      "GET",
+      `/_matrix/media/v3/download/${encodeURIComponent(server)}/${encodeURIComponent(mediaId)}`,
+      {
+        query: { allow_remote: "false" },
+        signed: false,
+        timeoutMs: 60_000,
+      },
+    );
     if (legacy.status !== 200) throw errors.notFound("Remote media not found");
-    return { data: legacy.body, contentType: (legacy.headers["content-type"] as string) ?? null, filename: filenameFromDisposition(legacy.headers["content-disposition"] as string) };
+    return {
+      data: legacy.body,
+      contentType: (legacy.headers["content-type"] as string) ?? null,
+      filename: filenameFromDisposition(legacy.headers["content-disposition"] as string),
+    };
   }
 
   /** Remote members who should receive the invitee's stripped state. */
@@ -1052,7 +1249,11 @@ function filenameFromDisposition(header: string | undefined): string | null {
 }
 
 /** Parse a federation media multipart/mixed response: a JSON part then the file (or a redirect). */
-async function parseMultipartMedia(body: Buffer, boundary: string, fed: FederationService): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
+async function parseMultipartMedia(
+  body: Buffer,
+  boundary: string,
+  fed: FederationService,
+): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
   const delimiter = Buffer.from(`--${boundary}`);
   const parts: Buffer[] = [];
   let idx = body.indexOf(delimiter);
@@ -1075,8 +1276,16 @@ async function parseMultipartMedia(body: Buffer, boundary: string, fed: Federati
   if (headers.location) {
     const res = await fetch(headers.location, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw errors.notFound("Remote media redirect failed");
-    return { data: new Uint8Array(await res.arrayBuffer()), contentType: res.headers.get("content-type"), filename: filenameFromDisposition(res.headers.get("content-disposition") ?? undefined) };
+    return {
+      data: new Uint8Array(await res.arrayBuffer()),
+      contentType: res.headers.get("content-type"),
+      filename: filenameFromDisposition(res.headers.get("content-disposition") ?? undefined),
+    };
   }
   void fed;
-  return { data: new Uint8Array(data), contentType: headers["content-type"] ?? null, filename: filenameFromDisposition(headers["content-disposition"]) };
+  return {
+    data: new Uint8Array(data),
+    contentType: headers["content-type"] ?? null,
+    filename: filenameFromDisposition(headers["content-disposition"]),
+  };
 }
