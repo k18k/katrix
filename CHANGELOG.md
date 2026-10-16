@@ -1,5 +1,11 @@
 # matrix-nodejs-homeserver
 
+## 0.3.1
+
+### Patch Changes
+
+- 7f9c651: `GET /_matrix/federation/v1/version` reports the installed version of the package instead of a hardcoded `0.1.0` ([#16](https://github.com/k18k/matrix-nodejs-homeserver/issues/16)).
+
 ## 0.3.0
 
 ### Minor Changes
