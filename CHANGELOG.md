@@ -1,5 +1,16 @@
 # matrix-nodejs-homeserver
 
+## 0.3.0
+
+### Minor Changes
+
+- 0de468f: Federation is now off by default. A server joins the Matrix network only with `federation: { enabled: true }`; without it, local users can only talk to each other. Servers that federate today must add that option.
+- 6107d6f: Export `M`, a readonly object with the Matrix identifiers the server uses (event types, login types, capabilities, push rule IDs, ...), so code can write `M.ROOM.MEMBER` or `M.LOGIN.PASSWORD` instead of the strings `"m.room.member"` and `"m.login.password"`. `UNSTABLE` does the same for identifiers outside the `m.` namespace, such as `UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET` for `"org.matrix.cross_signing_reset"`.
+
+### Patch Changes
+
+- c01ef31: zod is bundled into the package, so installing it no longer pulls in any dependencies.
+
 ## 0.2.0
 
 ### Minor Changes
