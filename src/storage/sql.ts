@@ -304,6 +304,9 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
   return build(rootExecutor, false);
 }
 
+/** How long SQLite statements may run back to back before yielding to the event loop (#47). */
+const YIELD_AFTER_MS = 10;
+
 /** Prepared statements an SQLite adapter keeps (#40). */
 const STATEMENT_CACHE = 500;
 
@@ -355,8 +358,19 @@ export function sqliteAdapter(
   // while a transaction is open. Code running inside the transaction bypasses the gate.
   const inTransaction = new AsyncLocalStorage<boolean>();
   let gate: Promise<void> = Promise.resolve();
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/47: statements run synchronously and
+  // resolve as microtasks, so a wave of requests full of reads ran as one chain that never let the
+  // event loop take new requests or fire timers, for seconds under load. Outside transactions, a
+  // statement first yields to the event loop when the last yield is more than YIELD_AFTER_MS ago.
+  let lastYield = performance.now();
   const waitGate = async () => {
-    if (!inTransaction.getStore()) await gate;
+    if (inTransaction.getStore()) return;
+    await gate;
+    if (performance.now() - lastYield > YIELD_AFTER_MS) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      lastYield = performance.now();
+      await gate;
+    }
   };
   const executor: SqlExecutor = {
     async query(sql, params) {
