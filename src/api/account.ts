@@ -12,6 +12,8 @@ import { toMsisdn } from "#core/phone.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
 import { M, UNSTABLE } from "#core/m.ts";
+import { checkRedirectUrl, type SsoResult } from "#core/sso.ts";
+import { escapeHtml } from "#core/html.ts";
 
 // Fields shared by login and registration requests.
 const deviceFields = {
@@ -162,10 +164,32 @@ export function registerAccountRoutes(r: Router): void {
     ["v1"],
   );
 
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/19: the page that hands the login
+  // token to a client the operator has not allowlisted. It names the client and only continues
+  // when the user clicks, and it may not be framed, so another site cannot click it for them.
+  const ssoConfirmPage = (serverName: string, result: SsoResult) => {
+    const client = escapeHtml(result.client);
+    const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Continue to ${client}</title>
+<style>body{font:16px system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}a.button{display:inline-block;padding:.6rem 1.2rem;background:#0b7a55;color:#fff;border-radius:6px;text-decoration:none}</style>
+<h1>Continue to ${client}?</h1>
+<p>You signed in to <b>${escapeHtml(serverName)}</b>. <b>${client}</b> will get access to your account.</p>
+<p>If you did not just sign in with this app, close this page.</p>
+<p><a class="button" href="${escapeHtml(result.url)}">Continue to ${client}</a></p>`;
+    return new Response(html, {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
+        "x-frame-options": "DENY",
+        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+      },
+    });
+  };
+
   const ssoRedirect = async (ctx: RequestContext) => {
     if (!ctx.hs.sso) throw errors.unrecognized("SSO is not enabled");
-    const redirectUrl = ctx.query.get("redirectUrl");
-    if (!redirectUrl || !/^https?:\/\/|^[a-z][a-z0-9+.-]*:/i.test(redirectUrl)) throw errors.missingParam("Missing or invalid redirectUrl");
+    const redirectUrl = checkRedirectUrl(ctx.query.get("redirectUrl"));
+    if (!redirectUrl) throw errors.missingParam("Missing or invalid redirectUrl");
     return Response.redirect(await ctx.hs.sso.startLogin(ctx.params.idpId ?? null, redirectUrl), 302);
   };
   // A logged-in client hands a one-time token to a new device (spec "Login via an existing session").
@@ -194,7 +218,8 @@ export function registerAccountRoutes(r: Router): void {
     procedure({
       handler: async (ctx) => {
         if (!ctx.hs.sso) throw errors.unrecognized("SSO is not enabled");
-        return Response.redirect(await ctx.hs.sso.finishLogin(ctx.params.idpId, ctx.query), 302);
+        const result = await ctx.hs.sso.finishLogin(ctx.params.idpId, ctx.query);
+        return result.confirm ? ssoConfirmPage(ctx.hs.serverName, result) : Response.redirect(result.url, 302);
       },
     }),
   );

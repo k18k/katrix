@@ -3,6 +3,7 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import { toMsisdn } from "#core/phone.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { escapeHtml } from "#core/html.ts";
 
 // Third-party identifiers (email addresses and phone numbers) validated by this homeserver: it
 // sends a token through the host application's `threepid.sendEmail`/`sendSms`, and the user proves
@@ -283,8 +284,4 @@ export class ThreepidService {
     if (!session || session.client_secret !== c.client_secret || session.validated_ts === null || this.expired(session)) return null;
     return { medium: session.medium, address: session.address, validatedTs: session.validated_ts };
   }
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }

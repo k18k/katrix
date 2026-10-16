@@ -130,6 +130,9 @@ createHomeserver({
     clientId, clientSecret, mapUser: (claims) => ({ localpart: claims.email.split("@")[0] }) }] },
   publicBaseUrl: "https://matrix.example.com",
   ```
+  After signing in, users confirm the client the login token goes to, on a page
+  that names it. Clients you trust skip that page:
+  `sso: { providers, clientAllowlist: ["https://app.element.io/"] }`.
 - **Delegated OAuth 2.0** (the Matrix OAuth API, e.g. with
   matrix-authentication-service, Keycloak or Authentik). The provider owns the
   accounts, and the homeserver validates its access tokens by introspection:
