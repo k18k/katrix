@@ -1,4 +1,4 @@
-# @k18k/matrix-nodejs-homeserver
+# matrix-nodejs-homeserver
 
 A [Matrix](https://matrix.org) homeserver as an importable Node.js library. It isn't
 tied to any HTTP framework, database, auth system or deployment shape. You can use
@@ -15,13 +15,13 @@ it as a horizontally scaled chat backend that replaces Slack or Teams.
 ## Installation
 
 ```sh
-npm install github:k18k/matrix-nodejs-homeserver#main
+npm install matrix-nodejs-homeserver
 ```
 
 ```ts
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
-import { createHomeserver, getNodeHandler, sqliteAdapter, filesystemMedia } from "@k18k/matrix-nodejs-homeserver";
+import { createHomeserver, getNodeHandler, sqliteAdapter, filesystemMedia } from "matrix-nodejs-homeserver";
 
 const homeserver = createHomeserver({
   homeserver: "k18k.app",
@@ -75,7 +75,7 @@ By default a homeserver assumes it is the only process using its database. To ru
 several instances behind a load balancer, give them a shared **cluster adapter**:
 
 ```ts
-import { postgresCluster, redisCluster } from "@k18k/matrix-nodejs-homeserver";
+import { postgresCluster, redisCluster } from "matrix-nodejs-homeserver";
 
 createHomeserver({
   homeserver: "example.com",
@@ -185,7 +185,7 @@ drive unread and highlight counts (including per-thread counts) and
 requests itself (AWS Signature Version 4), so no AWS SDK is needed:
 
 ```ts
-import { s3Media } from "@k18k/matrix-nodejs-homeserver";
+import { s3Media } from "matrix-nodejs-homeserver";
 createHomeserver({
   ...,
   mediaAdapter: s3Media({
@@ -371,6 +371,19 @@ Node does not strip types from files inside `node_modules`, so the package ships
 built by tsdown: one `.js` and one `.d.ts` per source module. `npm pack`, `npm publish` and
 installs from GitHub build it through the `prepare` script. Recent npm versions ask you to
 approve install scripts of git dependencies (`npm install-scripts approve`).
+
+### Releasing
+
+Changes that users of the package should know about come with a changeset:
+
+```sh
+npx changeset        # pick the bump (patch, minor, major) and describe the change
+```
+
+Commit the generated file in `.changeset/` with the change. On `main`, the Release workflow
+keeps a "Release" pull request open that bumps the version and writes `CHANGELOG.md`.
+Merging it publishes the package to npm (trusted publishing, with provenance), tags the
+release and creates the GitHub release.
 
 ### Complement
 

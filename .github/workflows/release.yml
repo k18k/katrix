@@ -1,0 +1,37 @@
+name: Release
+
+# With changesets on main, opens (or updates) the "Version Packages" pull request that bumps the
+# version and writes CHANGELOG.md. Merging that pull request publishes the package to npm, tags the
+# release (vX.Y.Z) and creates the GitHub release. Publishing uses npm trusted publishing (OIDC):
+# no npm token is stored; npmjs.com trusts this workflow, which also adds provenance.
+on:
+  push:
+    branches: [main]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - id: changesets
+        uses: changesets/action@v1
+        with:
+          version: npm run version-packages
+          publish: npm run release
+          title: Release
+          commit: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

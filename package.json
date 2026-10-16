@@ -1,16 +1,22 @@
 {
-  "name": "@k18k/matrix-nodejs-homeserver",
+  "name": "matrix-nodejs-homeserver",
   "version": "0.1.1",
   "description": "A framework- and database-agnostic Matrix homeserver library for Node.js",
   "keywords": [
-    "chat",
+    "matrix",
     "homeserver",
-    "matrix"
+    "chat",
+    "e2ee",
+    "federation"
   ],
   "license": "PolyForm-Noncommercial-1.0.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/k18k/matrix-nodejs-homeserver.git"
+  },
+  "homepage": "https://github.com/k18k/matrix-nodejs-homeserver#readme",
+  "bugs": {
+    "url": "https://github.com/k18k/matrix-nodejs-homeserver/issues"
   },
   "files": [
     "dist",
@@ -30,8 +36,8 @@
     }
   },
   "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com/"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
@@ -41,12 +47,16 @@
     "build": "tsdown",
     "prepare": "npm run build",
     "start:example": "node examples/node-http.ts",
-    "start:multi-node-example": "node examples/multi-node.ts"
+    "start:multi-node-example": "node examples/multi-node.ts",
+    "changeset": "changeset",
+    "version-packages": "changeset version && oxfmt package.json",
+    "release": "changeset publish"
   },
   "dependencies": {
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@types/node": "^26.6.5",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
