@@ -455,6 +455,7 @@ Live status, updated after every Complement run (full or targeted) with
 
 | Run | Top-level | Subtests | Note |
 |---|---|---|---|
+| 9 | 214 / 214 | 851 / 851 | zod, procedures, M/UNSTABLE, SSO confirmation, outbound address policy, admin guard (ec5aa79) |
 | 8 | 214 / 214 | 851 / 851 | Complement runs in a Go container (no submodule, no local Go); account locking/suspension, policy servers, 3PIDs, legacy sync endpoints |
 | 7 | 214 / 214 | 851 / 851 | All Complement tests pass (previous full run: 211/214). Fallback keys stored apart from one-time keys; user directory public-room rules; MSC4311 create event required from v12 |
 | 6 | 189 / 214 | 803 / 851 | Partial-state joins (MSC3902): all subtests pass |
