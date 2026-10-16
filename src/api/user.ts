@@ -3,6 +3,19 @@ import { canonicalJson, isObject } from "../core/json.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { RequestContext, Router } from "../http/router.ts";
 import { requireUia } from "./uia.ts";
+import { z } from "zod";
+import { body, fail } from "../http/input.ts";
+
+const deleteDevicesBody = body({ devices: z.array(z.unknown(), fail("M_BAD_JSON", "devices must be a list")) });
+const keysQueryBody = body({
+  device_keys: z.record(
+    z.string(),
+    z.array(z.string(), fail("M_BAD_JSON", "device_keys values must be lists of device IDs")),
+    fail("M_BAD_JSON", "device_keys must be an object"),
+  ),
+  timeout: z.unknown().optional(),
+});
+const keysClaimBody = body({ one_time_keys: z.record(z.string(), z.unknown(), fail("M_BAD_JSON", "one_time_keys must be an object")) });
 
 const SERVER_MANAGED_TYPES = ["m.fully_read", "m.push_rules"];
 
@@ -149,10 +162,9 @@ export function registerUserRoutes(r: Router): void {
     await ctx.hs.auth.deleteDevice(s.userId, ctx.params.deviceId);
     return {};
   });
-  r.client("POST", "/delete_devices", async (ctx) => {
+  r.client("POST", "/delete_devices", { input: deleteDevicesBody }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
-    if (!Array.isArray(body.devices)) throw errors.badJson("devices must be a list");
+    const body = ctx.input;
     await requireUia(ctx.hs, body, [["m.login.password"]], s.userId);
     for (const d of body.devices) if (typeof d === "string") await ctx.hs.auth.deleteDevice(s.userId, d);
     return {};
@@ -160,25 +172,20 @@ export function registerUserRoutes(r: Router): void {
 
   // --- E2EE keys -------------------------------------------------------------
 
-  r.client("POST", "/keys/upload", async (ctx) => {
+  // The key payloads are checked by the key service.
+  r.client("POST", "/keys/upload", { input: body({}) }, async (ctx) => {
     const s = await ctx.auth();
-    return { one_time_key_counts: await ctx.hs.keys.upload(s.userId, s.deviceId, await ctx.json()) };
+    return { one_time_key_counts: await ctx.hs.keys.upload(s.userId, s.deviceId, ctx.input) };
   });
-  r.client("POST", "/keys/query", async (ctx) => {
+  r.client("POST", "/keys/query", { input: keysQueryBody }, async (ctx) => {
     const s = await ctx.auth();
     await ctx.rateLimit("keyQuery");
-    const body = await ctx.json();
-    if (!isObject(body.device_keys)) throw errors.badJson("device_keys must be an object");
-    for (const devices of Object.values(body.device_keys)) {
-      if (!Array.isArray(devices) || !devices.every((d) => typeof d === "string"))
-        throw errors.badJson("device_keys values must be lists of device IDs");
-    }
+    const body = ctx.input;
     return ctx.hs.keys.query(s.userId, body.device_keys, Math.min(Number(body.timeout ?? 10_000) || 10_000, 30_000));
   });
-  r.client("POST", "/keys/claim", async (ctx) => {
+  r.client("POST", "/keys/claim", { input: keysClaimBody }, async (ctx) => {
     await ctx.auth();
-    const body = await ctx.json();
-    if (!isObject(body.one_time_keys)) throw errors.badJson("one_time_keys must be an object");
+    const body = ctx.input;
     const local: Record<string, Record<string, string>> = {};
     const remote: Record<string, Record<string, string>> = {};
     for (const [userId, devices] of Object.entries(body.one_time_keys))
@@ -196,9 +203,10 @@ export function registerUserRoutes(r: Router): void {
     };
     return ctx.hs.keys.changesSince(s.userId, parse(ctx.query.get("from")), parse(ctx.query.get("to")));
   });
-  r.client("POST", "/keys/device_signing/upload", async (ctx) => {
+  // The keys themselves are checked by the key service.
+  r.client("POST", "/keys/device_signing/upload", { input: body({}) }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
+    const body: Record<string, any> = ctx.input;
     const existing = await ctx.hs.db.findOne("cross_signing_keys", [
       { field: "user_id", value: s.userId },
       { field: "key_type", value: "master" },
@@ -219,9 +227,9 @@ export function registerUserRoutes(r: Router): void {
     await ctx.hs.keys.uploadCrossSigning(s.userId, body);
     return {};
   });
-  r.client("POST", "/keys/signatures/upload", async (ctx) => {
+  r.client("POST", "/keys/signatures/upload", { input: body({}) }, async (ctx) => {
     const s = await ctx.auth();
-    return ctx.hs.keys.uploadSignatures(s.userId, await ctx.json());
+    return ctx.hs.keys.uploadSignatures(s.userId, ctx.input);
   });
 
   r.client("PUT", "/sendToDevice/:eventType/:txnId", async (ctx) => {

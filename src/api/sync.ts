@@ -5,6 +5,7 @@ import type { StoredEvent } from "../core/rooms.ts";
 import type { Session } from "../core/auth.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { body } from "../http/input.ts";
 import { matchesFilter, roomAllowed, validateSyncFilter, type SyncFilter } from "./filters.ts";
 import { loadRules } from "../core/pushrules.ts";
 import { fullProfile } from "../core/profile.ts";
@@ -484,10 +485,11 @@ async function touchPresence(hs: Homeserver, userId: string, presence: string): 
 export function registerSyncRoutes(r: Router): void {
   r.client("GET", "/sync", sync);
 
-  r.client("POST", "/user/:userId/filter", async (ctx) => {
+  // Filters are checked by validateSyncFilter, shared with filters given inline to /sync.
+  r.client("POST", "/user/:userId/filter", { input: body({}) }, async (ctx) => {
     const s = await ctx.auth();
     if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot create filters for other users");
-    const filter = validateSyncFilter(await ctx.json());
+    const filter = validateSyncFilter(ctx.input);
     const existing = await ctx.hs.db.findMany("filters", { where: [{ field: "user_id", value: s.userId }] });
     const filterId = String(existing.reduce((max, f) => Math.max(max, Number(f.filter_id) || 0), 0) + 1);
     await ctx.hs.db.create("filters", { user_id: s.userId, filter_id: filterId, filter });

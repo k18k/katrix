@@ -2,6 +2,7 @@ import { MatrixError, errors } from "../core/errors.ts";
 import { canonicalJson } from "../core/json.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { RequestContext } from "./router.ts";
+import { inputError } from "./input.ts";
 import type { Session } from "../core/auth.ts";
 
 const CORS_HEADERS: Record<string, string> = {
@@ -120,6 +121,7 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
       async optionalAuth() {
         return token() ? ctx.auth() : null;
       },
+      input: undefined,
       async rateLimit(action) {
         const s = token() ? await ctx.auth().catch(() => null) : null;
         if (s?.isAdmin || (s?.appservice && s.appservice.rate_limited === false)) return;
@@ -127,6 +129,30 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
       },
     };
 
+    if (matched.input) {
+      // The body is validated when the handler first reads `ctx.input`, not here: handlers
+      // authenticate first, so a request without a token still gets 401 rather than 400.
+      const schema = matched.input;
+      let raw: unknown;
+      let readError: unknown;
+      try {
+        raw = await ctx.json();
+      } catch (err) {
+        readError = err;
+      }
+      let parsed: { data: unknown } | null = null;
+      Object.defineProperty(ctx, "input", {
+        get() {
+          if (readError) throw readError;
+          if (!parsed) {
+            const result = schema.safeParse(raw);
+            if (!result.success) throw inputError(result.error);
+            parsed = { data: result.data };
+          }
+          return parsed.data;
+        },
+      });
+    }
     const result = await matched.handler(ctx);
     if (result instanceof Response) return withCors(result);
     return jsonResponse(result ?? {});

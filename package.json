@@ -40,6 +40,9 @@
     "start:example": "node examples/node-http.ts",
     "start:multi-node-example": "node examples/multi-node.ts"
   },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "oxfmt": "^0.73.0",

@@ -8,6 +8,8 @@ import type { StoredEvent } from "../core/rooms.ts";
 import { assertNotSuspended, type Session } from "../core/auth.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { z } from "zod";
+import { body, fail, lenient } from "../http/input.ts";
 import { matchesFilter, parseRoomEventFilter, type EventFilter } from "./filters.ts";
 
 export const parseToken = (token: string | null): number | null => {
@@ -227,14 +229,19 @@ async function ownEvent(hs: Homeserver, userId: string, eventId: unknown): Promi
   return typeof eventId === "string" && (await hs.rooms.getPdu(eventId))?.sender === userId;
 }
 
-async function sendMembership(ctx: RequestContext, membership: "leave" | "ban" | "unban" | "kick"): Promise<Record<string, never>> {
+const membershipBody = body({ user_id: lenient(z.string()), reason: lenient(z.string()) });
+
+async function sendMembership(
+  ctx: RequestContext<z.output<typeof membershipBody>>,
+  membership: "leave" | "ban" | "unban" | "kick",
+): Promise<Record<string, never>> {
   const s = await ctx.auth();
   const roomId = ctx.params.roomId;
   // Leaving (and rejecting invites) stays possible while suspended; moderating others does not.
   if (membership !== "leave") await assertNotSuspended(ctx.hs, s, roomId);
-  const body = await ctx.json();
+  const body = ctx.input;
   const hs = ctx.hs;
-  const reason = typeof body.reason === "string" ? body.reason : undefined;
+  const reason = body.reason;
   if (membership === "leave") {
     // For rooms this server is not in (remote invites/knocks), the membership row is authoritative.
     const row = await hs.db.findOne("memberships", [
@@ -251,17 +258,18 @@ async function sendMembership(ctx: RequestContext, membership: "leave" | "ban" |
     await hs.rooms.setMembership(roomId, s.userId, s.userId, "leave", reason);
     return {};
   }
-  if (!isValidUserId(body.user_id)) throw errors.invalidParam("Invalid user_id");
+  if (!body.user_id || !isValidUserId(body.user_id)) throw errors.invalidParam("Invalid user_id");
+  const target = body.user_id;
   await requireRoom(hs, roomId);
   if (membership === "unban") {
-    if ((await hs.rooms.membership(roomId, body.user_id)) !== "ban") throw errors.forbidden("User is not banned");
-    await hs.rooms.setMembership(roomId, s.userId, body.user_id, "leave", reason);
+    if ((await hs.rooms.membership(roomId, target)) !== "ban") throw errors.forbidden("User is not banned");
+    await hs.rooms.setMembership(roomId, s.userId, target, "leave", reason);
   } else if (membership === "kick") {
-    const current = await hs.rooms.membership(roomId, body.user_id);
+    const current = await hs.rooms.membership(roomId, target);
     if (current === "leave" || current === "ban") throw errors.forbidden("User is not in the room");
-    await hs.rooms.setMembership(roomId, s.userId, body.user_id, "leave", reason);
+    await hs.rooms.setMembership(roomId, s.userId, target, "leave", reason);
   } else {
-    await hs.rooms.setMembership(roomId, s.userId, body.user_id, "ban", reason);
+    await hs.rooms.setMembership(roomId, s.userId, target, "ban", reason);
   }
   await hs.audit.record({
     action: membership === "kick" ? "member_kick" : membership === "ban" ? "member_ban" : "member_unban",
@@ -461,12 +469,13 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
 }
 
 export function registerRoomRoutes(r: Router): void {
-  r.client("POST", "/createRoom", async (ctx) => {
+  // The room service checks the createRoom request in detail.
+  r.client("POST", "/createRoom", { input: body({}) }, async (ctx) => {
     const s = await ctx.auth();
     if (s.isGuest) throw errors.forbidden("Guests cannot create rooms");
     await assertNotSuspended(ctx.hs, s);
     await ctx.rateLimit("createRoom");
-    const created = await ctx.hs.rooms.createRoom(s.userId, await ctx.json());
+    const created = await ctx.hs.rooms.createRoom(s.userId, ctx.input);
     await ctx.hs.audit.record({ action: "room_create", actor: s.userId, target: created.room_id, ip: ctx.ip });
     return created;
   });
@@ -476,10 +485,12 @@ export function registerRoomRoutes(r: Router): void {
     return { joined_rooms: await ctx.hs.rooms.roomsForUser(s.userId) };
   });
 
-  const join = async (ctx: RequestContext, idOrAlias: string) => {
+  // Unknown keys of a join request become part of the membership event's content.
+  const joinBody = body({ reason: lenient(z.string()), third_party_signed: z.unknown().optional() });
+  const join = async (ctx: RequestContext<z.output<typeof joinBody>>, idOrAlias: string) => {
     const s = await ctx.auth();
     await ctx.rateLimit("join");
-    const body = await ctx.json();
+    const body = ctx.input;
     const { roomId, servers: resolvedServers } = await ctx.hs.rooms.resolveRoom(idOrAlias);
     await assertNotSuspended(ctx.hs, s, roomId);
     const { reason, membership, join_authorised_via_users_server, third_party_signed, ...custom } = body;
@@ -516,43 +527,43 @@ export function registerRoomRoutes(r: Router): void {
         }
       }
     }
-    await ctx.hs.rooms.join(s.userId, roomId, { reason: typeof reason === "string" ? reason : undefined, content: custom, servers });
+    await ctx.hs.rooms.join(s.userId, roomId, { reason, content: custom, servers });
     return { room_id: roomId };
   };
-  r.client("POST", "/rooms/:roomId/join", (ctx) => join(ctx, ctx.params.roomId));
-  r.client("POST", "/join/:roomIdOrAlias", (ctx) => join(ctx, ctx.params.roomIdOrAlias));
+  r.client("POST", "/rooms/:roomId/join", { input: joinBody }, (ctx) => join(ctx, ctx.params.roomId));
+  r.client("POST", "/join/:roomIdOrAlias", { input: joinBody }, (ctx) => join(ctx, ctx.params.roomIdOrAlias));
 
-  r.client("POST", "/knock/:roomIdOrAlias", async (ctx) => {
+  r.client("POST", "/knock/:roomIdOrAlias", { input: body({ reason: lenient(z.string()) }) }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
+    const body = ctx.input;
     const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.roomIdOrAlias);
     await assertNotSuspended(ctx.hs, s, roomId);
     const via = [...ctx.query.getAll("via"), ...ctx.query.getAll("server_name"), ...servers];
-    await ctx.hs.rooms.setMembership(roomId, s.userId, s.userId, "knock", typeof body.reason === "string" ? body.reason : undefined, via);
+    await ctx.hs.rooms.setMembership(roomId, s.userId, s.userId, "knock", body.reason, via);
     return { room_id: roomId };
   });
 
-  r.client("POST", "/rooms/:roomId/invite", async (ctx) => {
+  // Third-party invites (id_server, medium, address...) are checked in inviteByThreepid.
+  const inviteBody = body({ user_id: lenient(z.string()), reason: lenient(z.string()) });
+  r.client("POST", "/rooms/:roomId/invite", { input: inviteBody }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
+    const body = ctx.input;
     await assertNotSuspended(ctx.hs, s, ctx.params.roomId);
     await ctx.rateLimit("invite");
     if (body.id_server !== undefined || body.medium !== undefined) return inviteByThreepid(ctx, s, body);
-    if (!isValidUserId(body.user_id)) throw errors.invalidParam("Invalid user_id");
+    if (!body.user_id || !isValidUserId(body.user_id)) throw errors.invalidParam("Invalid user_id");
     await requireRoom(ctx.hs, ctx.params.roomId);
     const current = await ctx.hs.rooms.membership(ctx.params.roomId, body.user_id);
     if (current === "ban") throw errors.forbidden("User is banned");
     if (current === "join") throw errors.forbidden("User is already joined");
-    await ctx.hs.rooms.invite(ctx.params.roomId, s.userId, body.user_id, {
-      reason: typeof body.reason === "string" ? body.reason : undefined,
-    });
+    await ctx.hs.rooms.invite(ctx.params.roomId, s.userId, body.user_id, { reason: body.reason });
     return {};
   });
 
-  r.client("POST", "/rooms/:roomId/leave", (ctx) => sendMembership(ctx, "leave"));
-  r.client("POST", "/rooms/:roomId/kick", (ctx) => sendMembership(ctx, "kick"));
-  r.client("POST", "/rooms/:roomId/ban", (ctx) => sendMembership(ctx, "ban"));
-  r.client("POST", "/rooms/:roomId/unban", (ctx) => sendMembership(ctx, "unban"));
+  r.client("POST", "/rooms/:roomId/leave", { input: membershipBody }, (ctx) => sendMembership(ctx, "leave"));
+  r.client("POST", "/rooms/:roomId/kick", { input: membershipBody }, (ctx) => sendMembership(ctx, "kick"));
+  r.client("POST", "/rooms/:roomId/ban", { input: membershipBody }, (ctx) => sendMembership(ctx, "ban"));
+  r.client("POST", "/rooms/:roomId/unban", { input: membershipBody }, (ctx) => sendMembership(ctx, "unban"));
 
   r.client("POST", "/rooms/:roomId/forget", async (ctx) => {
     const s = await ctx.auth();
@@ -856,23 +867,26 @@ export function registerRoomRoutes(r: Router): void {
     await hs.federation.onReceipt(roomId, s.userId, type, eventId, Date.now(), threadId ?? "").catch(() => {});
   };
 
-  r.client("POST", "/rooms/:roomId/receipt/:receiptType/:eventId", async (ctx) => {
+  const receiptBody = body({
+    thread_id: z.string(fail("M_INVALID_PARAM", "Invalid thread_id")).min(1, "M_INVALID_PARAM: Invalid thread_id").optional(),
+  });
+  r.client("POST", "/rooms/:roomId/receipt/:receiptType/:eventId", { input: receiptBody }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
     if (!RECEIPT_TYPES.includes(ctx.params.receiptType)) throw errors.invalidParam("Unknown receipt type");
-    if (body.thread_id !== undefined && (typeof body.thread_id !== "string" || body.thread_id === ""))
-      throw errors.invalidParam("Invalid thread_id");
+    const body = ctx.input;
     await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
     await setReceipt(ctx.hs, s, ctx.params.roomId, ctx.params.receiptType, ctx.params.eventId, body.thread_id);
     return {};
   });
 
-  r.client("POST", "/rooms/:roomId/read_markers", async (ctx) => {
+  // Keys are receipt types; values that are not event IDs are ignored.
+  r.client("POST", "/rooms/:roomId/read_markers", { input: body({}) }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
+    const body: Record<string, unknown> = ctx.input;
     await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
     for (const type of RECEIPT_TYPES) {
-      if (typeof body[type] === "string") await setReceipt(ctx.hs, s, ctx.params.roomId, type, body[type]);
+      const eventId = body[type];
+      if (typeof eventId === "string") await setReceipt(ctx.hs, s, ctx.params.roomId, type, eventId);
     }
     return {};
   });
@@ -970,23 +984,35 @@ export function registerRoomRoutes(r: Router): void {
     return publicRooms(ctx, body);
   };
   r.client("GET", "/publicRooms", (ctx) => remoteOrLocal(ctx, {}));
-  r.client("POST", "/publicRooms", async (ctx) => {
+  // The directory query (limit, since, filter...) is read leniently by remoteOrLocal.
+  r.client("POST", "/publicRooms", { input: body({}) }, async (ctx) => {
     await ctx.auth();
-    return remoteOrLocal(ctx, await ctx.json());
+    return remoteOrLocal(ctx, ctx.input);
   });
 
-  r.client("POST", "/rooms/:roomId/upgrade", async (ctx) => {
+  const upgradeBody = body({
+    new_version: z.string(fail("M_BAD_JSON", "Missing new_version")),
+    additional_creators: z.unknown().optional(),
+  });
+  r.client("POST", "/rooms/:roomId/upgrade", { input: upgradeBody }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
-    if (typeof body.new_version !== "string") throw errors.badJson("Missing new_version");
+    const body = ctx.input;
     return { replacement_room: await upgradeRoom(ctx.hs, s, ctx.params.roomId, body.new_version, body.additional_creators) };
   });
 
   // --- Content reports ------------------------------------------------------------
-  const report = async (ctx: RequestContext) => {
+  const reportBody = body({
+    score: z
+      .number(fail("M_INVALID_PARAM", "score must be between -100 and 0"))
+      .int("M_INVALID_PARAM: score must be between -100 and 0")
+      .min(-100, "M_INVALID_PARAM: score must be between -100 and 0")
+      .max(0, "M_INVALID_PARAM: score must be between -100 and 0")
+      .optional(),
+    reason: z.string(fail("M_BAD_JSON", "reason must be a string")).optional(),
+  });
+  const report = async (ctx: RequestContext<z.output<typeof reportBody>>) => {
     const s = await ctx.auth();
     const hs = ctx.hs;
-    const body = await ctx.json();
     const roomId = ctx.params.roomId;
     await requireRoom(hs, roomId);
     if (ctx.params.eventId) {
@@ -997,9 +1023,8 @@ export function registerRoomRoutes(r: Router): void {
     } else if ((await hs.rooms.membership(roomId, s.userId)) !== "join") {
       throw errors.notFound("Room not found");
     }
-    if (body.score !== undefined && (!Number.isInteger(body.score) || body.score < -100 || body.score > 0))
-      throw errors.invalidParam("score must be between -100 and 0");
-    if (body.reason !== undefined && typeof body.reason !== "string") throw errors.badJson("reason must be a string");
+    // Validated only now: a report about an event the reporter cannot see is a 404 whatever the body.
+    const body = ctx.input;
     const id = await hs.cluster.nextId("event_reports");
     await hs.db.create("event_reports", {
       id,
@@ -1024,23 +1049,27 @@ export function registerRoomRoutes(r: Router): void {
     }
     return {};
   };
-  r.client("POST", "/users/:userId/report", async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    const body = await ctx.json();
-    if (typeof body.reason !== "string") throw errors.badJson("reason must be a string");
-    const userId = ctx.params.userId;
-    if (!isValidUserId(userId)) throw errors.invalidParam("Invalid user ID");
-    // Only local accounts can be checked; reports about remote users are kept as they are.
-    if (hs.isLocalUser(userId) && !(await hs.db.findOne("users", [{ field: "user_id", value: userId }])))
-      throw errors.notFound("Unknown user");
-    const id = await hs.cluster.nextId("user_reports");
-    await hs.db.create("user_reports", { id, ts: Date.now(), user_id: userId, reporter: s.userId, reason: body.reason, resolved: false });
-    await hs.audit.record({ action: "user_report", actor: s.userId, target: userId, details: { report_id: id } });
-    if (hs.adminRoom)
-      void hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch(() => {});
-    return {};
-  });
+  r.client(
+    "POST",
+    "/users/:userId/report",
+    { input: body({ reason: z.string(fail("M_BAD_JSON", "reason must be a string")) }) },
+    async (ctx) => {
+      const s = await ctx.auth();
+      const hs = ctx.hs;
+      const body = ctx.input;
+      const userId = ctx.params.userId;
+      if (!isValidUserId(userId)) throw errors.invalidParam("Invalid user ID");
+      // Only local accounts can be checked; reports about remote users are kept as they are.
+      if (hs.isLocalUser(userId) && !(await hs.db.findOne("users", [{ field: "user_id", value: userId }])))
+        throw errors.notFound("Unknown user");
+      const id = await hs.cluster.nextId("user_reports");
+      await hs.db.create("user_reports", { id, ts: Date.now(), user_id: userId, reporter: s.userId, reason: body.reason, resolved: false });
+      await hs.audit.record({ action: "user_report", actor: s.userId, target: userId, details: { report_id: id } });
+      if (hs.adminRoom)
+        void hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch(() => {});
+      return {};
+    },
+  );
 
   r.client(
     "GET",
@@ -1065,8 +1094,8 @@ export function registerRoomRoutes(r: Router): void {
     ["v1"],
   );
 
-  r.client("POST", "/rooms/:roomId/report/:eventId", report);
-  r.client("POST", "/rooms/:roomId/report", report);
+  r.client("POST", "/rooms/:roomId/report/:eventId", { input: reportBody }, report);
+  r.client("POST", "/rooms/:roomId/report", { input: reportBody }, report);
 
   r.client("GET", "/admin/whois/:userId", async (ctx) => {
     const s = await ctx.auth();

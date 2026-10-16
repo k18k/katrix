@@ -1,6 +1,18 @@
 import { errors } from "../core/errors.ts";
-import { isObject } from "../core/json.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { z } from "zod";
+import { body, fail, lenient } from "../http/input.ts";
+
+const required = fail("M_BAD_JSON", "user_id and content are required");
+const noticeBody = body({ user_id: z.string(required), content: z.looseObject({}, required), type: lenient(z.string()) });
+const optionalInt = (name: string) =>
+  z.number(fail("M_INVALID_PARAM", `${name} must be an integer`)).int(`M_INVALID_PARAM: ${name} must be an integer`);
+const registrationTokenBody = body({
+  token: z.string(fail("M_INVALID_PARAM", "Invalid token")).optional(),
+  uses_allowed: optionalInt("uses_allowed").nullable().optional(),
+  expiry_time: optionalInt("expiry_time").nullable().optional(),
+  length: optionalInt("length").optional(),
+});
 
 async function requireAdmin(ctx: RequestContext) {
   const s = await ctx.auth();
@@ -19,12 +31,11 @@ async function requireAdmin(ctx: RequestContext) {
 
 /** Admin HTTP API using Synapse-compatible paths, so existing tooling keeps working. */
 export function registerAdminRoutes(r: Router): void {
-  const notice = async (ctx: RequestContext) => {
+  const notice = async (ctx: RequestContext<z.output<typeof noticeBody>>) => {
     await requireAdmin(ctx);
-    const body = await ctx.json();
-    if (typeof body.user_id !== "string" || !isObject(body.content)) throw errors.badJson("user_id and content are required");
+    const body = ctx.input;
     const eventId = await ctx.hs.admin.sendServerNotice(body.user_id, body.content, {
-      type: typeof body.type === "string" ? body.type : undefined,
+      type: body.type,
       txnId: ctx.params.txnId,
     });
     return { event_id: eventId };
@@ -59,8 +70,8 @@ export function registerAdminRoutes(r: Router): void {
   r.get("/_matrix/client/v1/admin/suspend/:userId", suspend.get);
   r.put("/_matrix/client/v1/admin/suspend/:userId", suspend.put);
 
-  r.post("/_synapse/admin/v1/send_server_notice", notice);
-  r.put("/_synapse/admin/v1/send_server_notice/:txnId", notice);
+  r.post("/_synapse/admin/v1/send_server_notice", { input: noticeBody }, notice);
+  r.put("/_synapse/admin/v1/send_server_notice/:txnId", { input: noticeBody }, notice);
 
   r.get("/_synapse/admin/v2/users", async (ctx) => {
     await requireAdmin(ctx);
@@ -105,16 +116,19 @@ export function registerAdminRoutes(r: Router): void {
     if (body.deactivated === true) await ctx.hs.admin.deactivateUser(userId);
     return ctx.hs.admin.getUser(userId);
   });
-  r.post("/_synapse/admin/v1/deactivate/:userId", async (ctx) => {
+  r.post("/_synapse/admin/v1/deactivate/:userId", { input: body({ erase: lenient(z.boolean()) }) }, async (ctx) => {
     await requireAdmin(ctx);
-    const body = await ctx.json();
+    const body = ctx.input;
     await ctx.hs.admin.deactivateUser(ctx.params.userId, { erase: body.erase === true });
     return { id_server_unbind_result: "no-support" };
   });
-  r.post("/_synapse/admin/v1/reset_password/:userId", async (ctx) => {
+  const resetPasswordBody = body({
+    new_password: z.string(fail("M_MISSING_PARAM", "Missing new_password")),
+    logout_devices: lenient(z.boolean()),
+  });
+  r.post("/_synapse/admin/v1/reset_password/:userId", { input: resetPasswordBody }, async (ctx) => {
     await requireAdmin(ctx);
-    const body = await ctx.json();
-    if (typeof body.new_password !== "string") throw errors.missingParam("Missing new_password");
+    const body = ctx.input;
     await ctx.hs.admin.resetPassword(ctx.params.userId, body.new_password, body.logout_devices !== false);
     return {};
   });
@@ -123,9 +137,9 @@ export function registerAdminRoutes(r: Router): void {
     await requireAdmin(ctx);
     return { registration_tokens: await ctx.hs.admin.listRegistrationTokens() };
   });
-  r.post("/_synapse/admin/v1/registration_tokens/new", async (ctx) => {
+  r.post("/_synapse/admin/v1/registration_tokens/new", { input: registrationTokenBody }, async (ctx) => {
     await requireAdmin(ctx);
-    const body = await ctx.json();
+    const body = ctx.input;
     return ctx.hs.admin.createRegistrationToken({
       token: body.token,
       usesAllowed: body.uses_allowed,

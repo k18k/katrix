@@ -12,6 +12,24 @@ import { domainOf, serverAllowedByAcl } from "../federation/index.ts";
 import { parseXMatrix } from "../federation/client.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { z } from "zod";
+import { body, lenient } from "../http/input.ts";
+
+// Federation request bodies come from other servers: malformed optional parts are ignored, as before.
+const objectMap = lenient(z.record(z.string(), z.unknown()));
+const keyQueryBody = body({ server_keys: objectMap });
+const missingEventsBody = body({
+  earliest_events: lenient(z.array(z.string())),
+  latest_events: lenient(z.array(z.string())),
+  limit: z.unknown().optional(),
+  min_depth: z.unknown().optional(),
+});
+const userKeysQueryBody = body({ device_keys: objectMap });
+const userKeysClaimBody = body({ one_time_keys: objectMap });
+const publicRoomsBody = body({
+  limit: z.unknown().optional(),
+  filter: lenient(z.looseObject({ generic_search_term: lenient(z.string()) })),
+});
 import { canonicalJsonResponse } from "../http/handler.ts";
 import { roomDetails } from "./spaces.ts";
 
@@ -239,8 +257,13 @@ async function sendMembership(ctx: RequestContext, origin: string, membership: s
 }
 
 export function registerFederationRoutes(r: Router): void {
-  const fed = (method: "GET" | "PUT" | "POST", path: string, handler: (ctx: RequestContext, origin: string) => unknown) => {
-    r.add(method, `${F}${path}`, async (ctx) => handler(ctx, await authenticate(ctx)) as any);
+  const fed = <S extends z.ZodType | undefined = undefined>(
+    method: "GET" | "PUT" | "POST",
+    path: string,
+    handler: (ctx: RequestContext<S extends z.ZodType ? z.output<S> : unknown>, origin: string) => unknown,
+    options: { input?: S } = {},
+  ) => {
+    r.add(method, `${F}${path}`, async (ctx) => handler(ctx as any, await authenticate(ctx)) as any, options as { input?: z.ZodType });
   };
 
   // --- Keys -------------------------------------------------------------------
@@ -274,9 +297,8 @@ export function registerFederationRoutes(r: Router): void {
     }
     return { server_keys: out };
   };
-  r.post("/_matrix/key/v2/query", async (ctx) => {
-    const body = await ctx.json();
-    return canonicalJsonResponse(await notary(ctx, Object.keys(isObject(body.server_keys) ? body.server_keys : {})));
+  r.post("/_matrix/key/v2/query", { input: keyQueryBody }, async (ctx) => {
+    return canonicalJsonResponse(await notary(ctx, Object.keys(ctx.input.server_keys ?? {})));
   });
   r.get("/_matrix/key/v2/query/:serverName", async (ctx) => canonicalJsonResponse(await notary(ctx, [ctx.params.serverName])));
 
@@ -487,38 +509,43 @@ export function registerFederationRoutes(r: Router): void {
     return { origin: hs.serverName, origin_server_ts: Date.now(), pdus: out.map((p) => hs.federation.toFederationPdu(p, version)) };
   });
 
-  fed("POST", "/v1/get_missing_events/:roomId", async (ctx, origin) => {
-    const hs = ctx.hs;
-    const roomId = ctx.params.roomId;
-    const version = await roomOr404(hs, roomId);
-    const state = await checkAcl(hs, roomId, origin);
-    if (!FederationJoinGuard.serverInRoom(state, origin)) throw errors.forbidden("Your server is not in the room");
-    const body = await ctx.json();
-    const earliest = new Set<string>(Array.isArray(body.earliest_events) ? body.earliest_events : []);
-    const limit = Math.min(Number(body.limit ?? 10) || 10, 100);
-    const minDepth = Number(body.min_depth ?? 0) || 0;
-    const out: PDU[] = [];
-    const seen = new Set<string>(Array.isArray(body.latest_events) ? body.latest_events : []);
-    let frontier: string[] = [];
-    for (const id of seen) {
-      const ev = await hs.rooms.getEvent(id);
-      if (ev) frontier.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
-    }
-    while (frontier.length && out.length < limit) {
-      const next: string[] = [];
-      for (const id of frontier) {
-        if (seen.has(id) || earliest.has(id) || out.length >= limit) continue;
-        seen.add(id);
+  fed(
+    "POST",
+    "/v1/get_missing_events/:roomId",
+    async (ctx, origin) => {
+      const hs = ctx.hs;
+      const roomId = ctx.params.roomId;
+      const version = await roomOr404(hs, roomId);
+      const state = await checkAcl(hs, roomId, origin);
+      if (!FederationJoinGuard.serverInRoom(state, origin)) throw errors.forbidden("Your server is not in the room");
+      const body = ctx.input;
+      const earliest = new Set<string>(body.earliest_events ?? []);
+      const limit = Math.min(Number(body.limit ?? 10) || 10, 100);
+      const minDepth = Number(body.min_depth ?? 0) || 0;
+      const out: PDU[] = [];
+      const seen = new Set<string>(body.latest_events ?? []);
+      let frontier: string[] = [];
+      for (const id of seen) {
         const ev = await hs.rooms.getEvent(id);
-        if (!ev || ev.pdu.depth < minDepth) continue;
-        out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : (redact(ev.pdu as Record<string, any>, version) as PDU));
-        next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
+        if (ev) frontier.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
       }
-      frontier = next;
-    }
-    out.sort((a, b) => a.depth - b.depth);
-    return { events: out.map((p) => hs.federation.toFederationPdu(p, version)) };
-  });
+      while (frontier.length && out.length < limit) {
+        const next: string[] = [];
+        for (const id of frontier) {
+          if (seen.has(id) || earliest.has(id) || out.length >= limit) continue;
+          seen.add(id);
+          const ev = await hs.rooms.getEvent(id);
+          if (!ev || ev.pdu.depth < minDepth) continue;
+          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : (redact(ev.pdu as Record<string, any>, version) as PDU));
+          next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
+        }
+        frontier = next;
+      }
+      out.sort((a, b) => a.depth - b.depth);
+      return { events: out.map((p) => hs.federation.toFederationPdu(p, version)) };
+    },
+    { input: missingEventsBody },
+  );
 
   fed("GET", "/v1/timestamp_to_event/:roomId", async (ctx, origin) => {
     const hs = ctx.hs;
@@ -562,28 +589,39 @@ export function registerFederationRoutes(r: Router): void {
     return { [field]: profile[field] };
   });
 
-  fed("POST", "/unstable/event_relationships", async (ctx, origin) =>
-    relationshipsForServer(ctx.hs, origin, await ctx.json(), (ids) => authChainOf(ctx.hs, ids)),
+  fed(
+    "POST",
+    "/unstable/event_relationships",
+    async (ctx, origin) => relationshipsForServer(ctx.hs, origin, ctx.input, (ids) => authChainOf(ctx.hs, ids)),
+    { input: body({}) },
   );
 
-  fed("POST", "/v1/user/keys/query", async (ctx) => {
-    const body = await ctx.json();
-    const local: Record<string, string[]> = {};
-    for (const [userId, devices] of Object.entries(isObject(body.device_keys) ? body.device_keys : {})) {
-      if (ctx.hs.isLocalUser(userId)) local[userId] = Array.isArray(devices) ? devices : [];
-    }
-    const res = await ctx.hs.keys.query("", local);
-    return { device_keys: res.device_keys, master_keys: res.master_keys, self_signing_keys: res.self_signing_keys };
-  });
+  fed(
+    "POST",
+    "/v1/user/keys/query",
+    async (ctx) => {
+      const local: Record<string, string[]> = {};
+      for (const [userId, devices] of Object.entries(ctx.input.device_keys ?? {})) {
+        if (ctx.hs.isLocalUser(userId)) local[userId] = Array.isArray(devices) ? devices : [];
+      }
+      const res = await ctx.hs.keys.query("", local);
+      return { device_keys: res.device_keys, master_keys: res.master_keys, self_signing_keys: res.self_signing_keys };
+    },
+    { input: userKeysQueryBody },
+  );
 
-  fed("POST", "/v1/user/keys/claim", async (ctx) => {
-    const body = await ctx.json();
-    const local: Record<string, Record<string, string>> = {};
-    for (const [userId, devices] of Object.entries(isObject(body.one_time_keys) ? body.one_time_keys : {})) {
-      if (ctx.hs.isLocalUser(userId) && isObject(devices)) local[userId] = devices as Record<string, string>;
-    }
-    return { one_time_keys: await ctx.hs.keys.claim(local) };
-  });
+  fed(
+    "POST",
+    "/v1/user/keys/claim",
+    async (ctx) => {
+      const local: Record<string, Record<string, string>> = {};
+      for (const [userId, devices] of Object.entries(ctx.input.one_time_keys ?? {})) {
+        if (ctx.hs.isLocalUser(userId) && isObject(devices)) local[userId] = devices as Record<string, string>;
+      }
+      return { one_time_keys: await ctx.hs.keys.claim(local) };
+    },
+    { input: userKeysClaimBody },
+  );
 
   fed("GET", "/v1/user/devices/:userId", async (ctx) => {
     const hs = ctx.hs;
@@ -606,9 +644,9 @@ export function registerFederationRoutes(r: Router): void {
     return out;
   });
 
-  const publicRooms = async (ctx: RequestContext) => {
+  const publicRooms = async (ctx: RequestContext<any>) => {
     const hs = ctx.hs;
-    const body = ctx.method === "POST" ? await ctx.json() : {};
+    const body: z.output<typeof publicRoomsBody> = (ctx.method === "POST" ? ctx.input : undefined) ?? {};
     const limit = Number(body.limit ?? ctx.query.get("limit") ?? 0) || undefined;
     const rooms = await hs.db.findMany("rooms", { where: [{ field: "is_public", value: true }] });
     let chunk = await Promise.all(rooms.map((r) => roomDetails(hs, r.room_id)));
@@ -626,7 +664,7 @@ export function registerFederationRoutes(r: Router): void {
     return out;
   };
   fed("GET", "/v1/publicRooms", (ctx) => publicRooms(ctx));
-  fed("POST", "/v1/publicRooms", (ctx) => publicRooms(ctx));
+  fed("POST", "/v1/publicRooms", (ctx) => publicRooms(ctx), { input: publicRoomsBody });
 
   fed("GET", "/v1/hierarchy/:roomId", async (ctx, origin) => {
     const hs = ctx.hs;

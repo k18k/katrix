@@ -2,6 +2,11 @@ import { MatrixError, errors } from "../core/errors.ts";
 import { isObject } from "../core/json.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { z } from "zod";
+import { body, fail } from "../http/input.ts";
+
+const required = fail("M_BAD_JSON", "algorithm and auth_data are required");
+const createVersionBody = body({ algorithm: z.string(required), auth_data: z.looseObject({}, required) });
 
 /** Server-side room key backups (`/room_keys`). */
 
@@ -67,10 +72,9 @@ async function requireCurrentVersion(ctx: RequestContext, userId: string) {
 }
 
 export function registerBackupRoutes(r: Router): void {
-  r.client("POST", "/room_keys/version", async (ctx) => {
+  r.client("POST", "/room_keys/version", { input: createVersionBody }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
-    if (typeof body.algorithm !== "string" || !isObject(body.auth_data)) throw errors.badJson("algorithm and auth_data are required");
+    const body = ctx.input;
     const max = (await ctx.hs.db.findMany("backup_versions", { where: [{ field: "user_id", value: s.userId }] })).reduce(
       (m, v) => Math.max(m, v.version),
       0,

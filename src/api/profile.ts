@@ -5,6 +5,8 @@ import { isValidUserId } from "../core/ids.ts";
 import { isObject } from "../core/json.ts";
 import { BUILTIN_FIELDS, MAX_KEY_BYTES, MAX_PROFILE_BYTES, fullProfile, profileSize, setProfileField } from "../core/profile.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { z } from "zod";
+import { body, fail, lenient } from "../http/input.ts";
 
 async function remoteProfile(ctx: RequestContext, field?: string): Promise<Record<string, any>> {
   if (!isValidUserId(ctx.params.userId)) throw errors.invalidParam("Invalid user ID");
@@ -73,12 +75,12 @@ export function registerProfileRoutes(r: Router): void {
     return {};
   });
 
-  r.client("POST", "/user_directory/search", async (ctx) => {
+  const directoryBody = body({ search_term: z.string(fail("M_MISSING_PARAM", "Missing search_term")), limit: lenient(z.number().int()) });
+  r.client("POST", "/user_directory/search", { input: directoryBody }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
-    if (typeof body.search_term !== "string") throw errors.missingParam("Missing search_term");
+    const body = ctx.input;
     const term = body.search_term.toLowerCase();
-    const limit = Number.isInteger(body.limit) ? Math.min(body.limit, 50) : 10;
+    const limit = body.limit !== undefined ? Math.min(body.limit, 50) : 10;
     // Users are discoverable if they share a room with the searcher or are in a public room
     // (so the searcher only finds themselves through a public room, as in Synapse).
     const visible = await ctx.hs.rooms.usersSharingRooms(s.userId);

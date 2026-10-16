@@ -5,6 +5,7 @@ import { toClientEvent, type PDU } from "../core/events.ts";
 import { isObject } from "../core/json.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { Router } from "../http/router.ts";
+import { body } from "../http/input.ts";
 
 // MSC2836: threading via `m.relationship` with tree walks (`/event_relationships`).
 // Edges are indexed in `event_edges` as events are persisted or fetched. When a walk reaches
@@ -171,10 +172,11 @@ async function fetchRemote(hs: Homeserver, roomId: string, req: WalkRequest, rem
 }
 
 export function registerRelationshipRoutes(r: Router): void {
-  r.post("/_matrix/client/unstable/event_relationships", async (ctx) => {
+  // The request is checked by parseRequest, shared with the federation endpoint.
+  r.post("/_matrix/client/unstable/event_relationships", { input: body({}) }, async (ctx) => {
     const s = await ctx.auth();
     const hs = ctx.hs;
-    const req = parseRequest(await ctx.json());
+    const req = parseRequest(ctx.input);
     const roomOf = async () => req.room_id ?? (await hs.rooms.getPdu(req.event_id))?.room_id ?? null;
     const roomId = await roomOf();
     if (!roomId) throw errors.forbidden("Unknown event");

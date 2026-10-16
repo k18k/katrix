@@ -5,6 +5,16 @@ import { isObject } from "../core/json.ts";
 import type { Session } from "../core/auth.ts";
 import type { Homeserver } from "../homeserver.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { z } from "zod";
+import { body as bodySchema, lenient } from "../http/input.ts";
+
+// Malformed parts of a sliding sync request are ignored rather than refused, as before.
+const slidingSyncBody = bodySchema({
+  conn_id: lenient(z.string()),
+  lists: lenient(z.record(z.string(), z.unknown())),
+  room_subscriptions: lenient(z.record(z.string(), z.unknown())),
+  extensions: lenient(z.record(z.string(), z.unknown())),
+});
 import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "./sync.ts";
 
 /**
@@ -82,15 +92,15 @@ function matchesRequiredState(required: RequiredState, type: string, key: string
 }
 
 export function registerSlidingSyncRoutes(r: Router): void {
-  r.post("/_matrix/client/unstable/org.matrix.simplified_msc3575/sync", slidingSync);
-  r.post("/_matrix/client/v5/sync", slidingSync);
+  r.post("/_matrix/client/unstable/org.matrix.simplified_msc3575/sync", { input: slidingSyncBody }, slidingSync);
+  r.post("/_matrix/client/v5/sync", { input: slidingSyncBody }, slidingSync);
 }
 
-async function slidingSync(ctx: RequestContext) {
+async function slidingSync(ctx: RequestContext<z.output<typeof slidingSyncBody>>) {
   const hs = ctx.hs;
   const s = await ctx.auth();
-  const body = await ctx.json();
-  const connId = typeof body.conn_id === "string" ? body.conn_id : "";
+  const body = ctx.input;
+  const connId = body.conn_id ?? "";
   const posParam = ctx.query.get("pos");
   const timeout = Math.min(Math.max(Number.parseInt(ctx.query.get("timeout") ?? "0", 10) || 0, 0), hs.config.maxSyncTimeoutMs);
 

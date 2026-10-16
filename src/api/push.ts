@@ -1,7 +1,21 @@
 import { errors } from "../core/errors.ts";
-import { isObject } from "../core/json.ts";
 import { KINDS, loadRules, saveRules, withRulesLock, type Rule, type Ruleset } from "../core/pushrules.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { z } from "zod";
+import { body, fail, lenient } from "../http/input.ts";
+
+const pusherKey = z.string(fail("M_MISSING_PARAM", "Missing app_id or pushkey"));
+// `kind: null` deletes a pusher; otherwise kind, the display names, lang and data are required (checked below).
+const pusherBody = body({
+  app_id: pusherKey,
+  pushkey: pusherKey,
+  kind: lenient(z.string().nullable()),
+  app_display_name: lenient(z.string()),
+  device_display_name: lenient(z.string()),
+  lang: lenient(z.string()),
+  data: lenient(z.looseObject({ url: lenient(z.string()) })),
+  append: z.unknown().optional(),
+});
 
 function findRule(rules: Ruleset, kind: string, ruleId: string): Rule {
   if (!KINDS.includes(kind)) throw errors.invalidParam("Unknown rule kind");
@@ -97,10 +111,9 @@ export function registerPushRoutes(r: Router): void {
     const rows = await ctx.hs.db.findMany("pushers", { where: [{ field: "user_id", value: s.userId }] });
     return { pushers: rows.map((r) => r.pusher) };
   });
-  r.client("POST", "/pushers/set", async (ctx) => {
+  r.client("POST", "/pushers/set", { input: pusherBody }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
-    if (typeof body.app_id !== "string" || typeof body.pushkey !== "string") throw errors.missingParam("Missing app_id or pushkey");
+    const body = ctx.input;
     if (body.kind === null) {
       await ctx.hs.db.delete("pushers", [
         { field: "user_id", value: s.userId },
@@ -109,11 +122,11 @@ export function registerPushRoutes(r: Router): void {
       ]);
       return {};
     }
-    for (const k of ["kind", "app_display_name", "device_display_name", "lang"]) {
-      if (typeof body[k] !== "string") throw errors.missingParam(`Missing ${k}`);
+    for (const k of ["kind", "app_display_name", "device_display_name", "lang"] as const) {
+      if (body[k] === undefined) throw errors.missingParam(`Missing ${k}`);
     }
-    if (!isObject(body.data)) throw errors.missingParam("Missing data");
-    if (body.kind === "http" && typeof body.data.url !== "string") throw errors.invalidParam("data.url is required for http pushers");
+    if (!body.data) throw errors.missingParam("Missing data");
+    if (body.kind === "http" && body.data.url === undefined) throw errors.invalidParam("data.url is required for http pushers");
     if (!body.append) {
       const others = await ctx.hs.db.findMany("pushers", {
         where: [

@@ -2,6 +2,23 @@ import { MatrixError, errors } from "../core/errors.ts";
 import { canonicalAddress, isMedium, type ThreepidPurpose } from "../core/threepid.ts";
 import type { RequestContext, Router } from "../http/router.ts";
 import { requireUia } from "./uia.ts";
+import { z } from "zod";
+import { body, fail, lenient } from "../http/input.ts";
+
+const submitField = z.string(fail("M_MISSING_PARAM", "sid, client_secret and token are required"));
+const submitBody = body({ sid: submitField, client_secret: submitField, token: submitField });
+const bindField = (name: string) => z.string(fail("M_MISSING_PARAM", `Missing ${name}`));
+const bindBody = body({
+  client_secret: bindField("client_secret"),
+  id_access_token: bindField("id_access_token"),
+  id_server: bindField("id_server"),
+  sid: bindField("sid"),
+});
+const threepidBody = body({
+  medium: z.enum(["email", "msisdn"], fail("M_INVALID_PARAM", "Unsupported medium")),
+  address: z.string(fail("M_INVALID_PARAM", "Invalid address")),
+  id_server: z.string(fail("M_INVALID_PARAM", "id_server must be a string")).optional(),
+});
 
 // Third-party identifier management (spec "Adding Account Administrative Contact Information").
 
@@ -11,15 +28,16 @@ function notDelegated(ctx: RequestContext): void {
 }
 
 export function registerThreepidRoutes(r: Router): void {
-  const requestToken = (purpose: ThreepidPurpose, medium: "email" | "msisdn") => async (ctx: RequestContext) => {
+  // The fields are checked by the 3PID service, after it has checked that 3PIDs are enabled at all.
+  const requestToken = (purpose: ThreepidPurpose, medium: "email" | "msisdn") => async (ctx: RequestContext<Record<string, unknown>>) => {
     notDelegated(ctx);
     await ctx.rateLimit(purpose === "register" ? "register" : "login");
-    return ctx.hs.threepids.requestToken(purpose, medium, await ctx.json());
+    return ctx.hs.threepids.requestToken(purpose, medium, ctx.input);
   };
   for (const medium of ["email", "msisdn"] as const) {
-    r.client("POST", `/register/${medium}/requestToken`, requestToken("register", medium));
-    r.client("POST", `/account/password/${medium}/requestToken`, requestToken("password_reset", medium));
-    r.client("POST", `/account/3pid/${medium}/requestToken`, requestToken("add_threepid", medium));
+    r.client("POST", `/register/${medium}/requestToken`, { input: body({}) }, requestToken("register", medium));
+    r.client("POST", `/account/password/${medium}/requestToken`, { input: body({}) }, requestToken("password_reset", medium));
+    r.client("POST", `/account/3pid/${medium}/requestToken`, { input: body({}) }, requestToken("add_threepid", medium));
   }
 
   // The link in validation emails (GET), or a code typed into the client (POST to `submit_url`).
@@ -41,11 +59,8 @@ export function registerThreepidRoutes(r: Router): void {
       headers: { "content-type": "text/html; charset=utf-8" },
     });
   });
-  r.post(submitPath, async (ctx) => {
-    const body = await ctx.json();
-    if (typeof body.sid !== "string" || typeof body.client_secret !== "string" || typeof body.token !== "string") {
-      throw errors.missingParam("sid, client_secret and token are required");
-    }
+  r.post(submitPath, { input: submitBody }, async (ctx) => {
+    const body = ctx.input;
     await ctx.hs.threepids.submitToken(body.sid, body.client_secret, body.token);
     return { success: true };
   });
@@ -55,10 +70,10 @@ export function registerThreepidRoutes(r: Router): void {
     return { threepids: await ctx.hs.threepids.list(s.userId) };
   });
 
-  r.client("POST", "/account/3pid/add", async (ctx) => {
+  r.client("POST", "/account/3pid/add", { input: body({ sid: lenient(z.string()), client_secret: lenient(z.string()) }) }, async (ctx) => {
     notDelegated(ctx);
     const s = await ctx.auth();
-    const body = await ctx.json();
+    const body = ctx.input;
     await requireUia(ctx.hs, body, [["m.login.password"]], s.userId);
     const validated = await ctx.hs.threepids.validated({ sid: body.sid, client_secret: body.client_secret });
     if (!validated) throw new MatrixError(400, "M_THREEPID_AUTH_FAILED", "The address has not been validated");
@@ -66,12 +81,9 @@ export function registerThreepidRoutes(r: Router): void {
     return {};
   });
 
-  r.client("POST", "/account/3pid/bind", async (ctx) => {
+  r.client("POST", "/account/3pid/bind", { input: bindBody }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
-    for (const k of ["client_secret", "id_access_token", "id_server", "sid"]) {
-      if (typeof body[k] !== "string") throw errors.missingParam(`Missing ${k}`);
-    }
+    const body = ctx.input;
     const res = await ctx.hs.identityServers.bind(body.id_server, body.id_access_token, body.sid, body.client_secret, s.userId);
     // Remember the binding so that it can be removed when the address or account goes away.
     if (res && isMedium(res.medium) && typeof res.address === "string") {
@@ -85,26 +97,24 @@ export function registerThreepidRoutes(r: Router): void {
     return {};
   });
 
-  const parseThreepid = (body: Record<string, any>) => {
-    if (!isMedium(body.medium)) throw errors.invalidParam("Unsupported medium");
-    const address = typeof body.address === "string" ? canonicalAddress(body.medium, body.address) : null;
+  const parseThreepid = (body: z.output<typeof threepidBody>) => {
+    const address = canonicalAddress(body.medium, body.address);
     if (!address) throw errors.invalidParam("Invalid address");
-    if (body.id_server !== undefined && typeof body.id_server !== "string") throw errors.invalidParam("id_server must be a string");
-    return { medium: body.medium, address, idServer: body.id_server as string | undefined };
+    return { medium: body.medium, address, idServer: body.id_server };
   };
 
-  r.client("POST", "/account/3pid/delete", async (ctx) => {
+  r.client("POST", "/account/3pid/delete", { input: threepidBody }, async (ctx) => {
     notDelegated(ctx);
     const s = await ctx.auth();
-    const { medium, address, idServer } = parseThreepid(await ctx.json());
+    const { medium, address, idServer } = parseThreepid(ctx.input);
     const result = await ctx.hs.threepids.unbindAll(s.userId, medium, address, idServer);
     await ctx.hs.threepids.remove(s.userId, medium, address);
     return { id_server_unbind_result: result };
   });
 
-  r.client("POST", "/account/3pid/unbind", async (ctx) => {
+  r.client("POST", "/account/3pid/unbind", { input: threepidBody }, async (ctx) => {
     const s = await ctx.auth();
-    const { medium, address, idServer } = parseThreepid(await ctx.json());
+    const { medium, address, idServer } = parseThreepid(ctx.input);
     return { id_server_unbind_result: await ctx.hs.threepids.unbindAll(s.userId, medium, address, idServer) };
   });
 

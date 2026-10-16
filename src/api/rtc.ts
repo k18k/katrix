@@ -1,6 +1,8 @@
 import { createHmac } from "node:crypto";
 import { errors } from "../core/errors.ts";
 import type { RequestContext, Router } from "../http/router.ts";
+import { z } from "zod";
+import { body, fail } from "../http/input.ts";
 
 export interface TurnOptions {
   uris: string[];
@@ -54,11 +56,9 @@ export function registerRtcRoutes(r: Router): void {
     const s = await ctx.auth();
     return { delayed_events: await ctx.hs.delayedEvents.list(s.userId) };
   });
-  r.post(`${base}/:delayId`, async (ctx) => {
+  r.post(`${base}/:delayId`, { input: body({ action: z.string(fail("M_MISSING_PARAM", "Missing action")) }) }, async (ctx) => {
     const s = await ctx.auth();
-    const body = await ctx.json();
-    if (typeof body.action !== "string") throw errors.missingParam("Missing action");
-    await ctx.hs.delayedEvents.update(s.userId, ctx.params.delayId, body.action);
+    await ctx.hs.delayedEvents.update(s.userId, ctx.params.delayId, ctx.input.action);
     return {};
   });
   r.post(`${base}/:delayId/:action`, async (ctx) => {

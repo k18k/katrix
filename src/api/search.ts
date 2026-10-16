@@ -1,8 +1,9 @@
-import { errors } from "../core/errors.ts";
 import { getState } from "../core/authrules.ts";
 import { isObject } from "../core/json.ts";
 import type { StoredEvent } from "../core/rooms.ts";
 import type { Router } from "../http/router.ts";
+import { z } from "zod";
+import { body, fail } from "../http/input.ts";
 import { matchesFilter, type EventFilter } from "./filters.ts";
 import { paginate, topoToken } from "./rooms.ts";
 
@@ -13,14 +14,28 @@ function valueAt(obj: any, path: string): unknown {
 }
 
 export function registerSearchRoutes(r: Router): void {
-  r.client("POST", "/search", async (ctx) => {
+  const missingTerm = fail("M_BAD_JSON", "Missing search_categories.room_events.search_term");
+  const searchBody = body({
+    search_categories: z.looseObject(
+      {
+        room_events: z.looseObject(
+          {
+            search_term: z.string(missingTerm),
+            keys: z.unknown().optional(),
+            filter: z.unknown().optional(),
+            order_by: z.unknown().optional(),
+          },
+          missingTerm,
+        ),
+      },
+      missingTerm,
+    ),
+  });
+  r.client("POST", "/search", { input: searchBody }, async (ctx) => {
     const s = await ctx.auth();
     const hs = ctx.hs;
-    const body = await ctx.json();
-    const criteria = body.search_categories?.room_events;
-    if (!isObject(criteria) || typeof criteria.search_term !== "string")
-      throw errors.badJson("Missing search_categories.room_events.search_term");
-    const terms = criteria.search_term.toLowerCase().split(/\s+/).filter(Boolean);
+    const criteria: Record<string, any> = ctx.input.search_categories.room_events;
+    const terms: string[] = criteria.search_term.toLowerCase().split(/\s+/).filter(Boolean);
     const keys: string[] = Array.isArray(criteria.keys) && criteria.keys.length ? criteria.keys : DEFAULT_KEYS;
     const filter: EventFilter = isObject(criteria.filter) ? criteria.filter : {};
     const limit = Math.min(filter.limit ?? 10, 100);

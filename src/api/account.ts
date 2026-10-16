@@ -8,6 +8,33 @@ import type { RequestContext, Router } from "../http/router.ts";
 import { requireUia } from "./uia.ts";
 import { canonicalAddress, isMedium } from "../core/threepid.ts";
 import { toMsisdn } from "../core/phone.ts";
+import { z } from "zod";
+import { body, fail, lenient } from "../http/input.ts";
+
+// Fields shared by login and registration requests.
+const deviceFields = {
+  device_id: lenient(z.string()),
+  initial_device_display_name: lenient(z.string()),
+  refresh_token: lenient(z.boolean()),
+  inhibit_login: lenient(z.boolean()),
+};
+const loginBody = body({ type: lenient(z.string()), token: lenient(z.string()), password: lenient(z.string()), ...deviceFields });
+const registerBody = body({
+  type: lenient(z.string()),
+  auth: lenient(z.looseObject({ type: lenient(z.string()) })),
+  username: z.string(fail("M_INVALID_PARAM", "username must be a string")).optional(),
+  password: z.string(fail("M_INVALID_PARAM", "password must be a string")).optional(),
+  ...deviceFields,
+});
+const passwordBody = body({ new_password: lenient(z.string()), logout_devices: lenient(z.boolean()) });
+const sharedSecretRegisterBody = body({
+  nonce: lenient(z.string()),
+  username: z.string(fail("M_INVALID_PARAM", "Invalid username/password")),
+  password: z.string(fail("M_INVALID_PARAM", "Invalid username/password")),
+  admin: lenient(z.boolean()),
+  mac: lenient(z.string()),
+  displayname: lenient(z.string()),
+});
 
 function loginFlows(hs: Homeserver): Record<string, unknown>[] {
   // With delegated OAuth, clients must use the authorization server instead.
@@ -156,9 +183,9 @@ export function registerAccountRoutes(r: Router): void {
     return Response.redirect(await ctx.hs.sso.finishLogin(ctx.params.idpId, ctx.query), 302);
   });
 
-  r.client("POST", "/login", async (ctx) => {
+  r.client("POST", "/login", { input: loginBody }, async (ctx) => {
     await ctx.rateLimit("login");
-    const body = await ctx.json();
+    const body = ctx.input;
     const hs = ctx.hs;
     if (hs.oauth) throw errors.unrecognized("Log in through the OAuth provider");
     if (body.type === "m.login.application_service") {
@@ -168,13 +195,13 @@ export function registerAccountRoutes(r: Router): void {
       if (!hs.appservices.isInterestedUser(reg, userId)) throw errors.forbidden("User is not in the application service's namespace");
       if (!(await hs.db.findOne("users", [{ field: "user_id", value: userId }]))) throw errors.forbidden("Unknown user");
       const session = await hs.auth.createSession(userId, {
-        deviceId: typeof body.device_id === "string" ? body.device_id : undefined,
+        deviceId: body.device_id,
         displayName: body.initial_device_display_name,
       });
       return { ...session, home_server: hs.serverName };
     }
     if (body.type === "m.login.token") {
-      if (typeof body.token !== "string") throw errors.missingParam("Missing token");
+      if (body.token === undefined) throw errors.missingParam("Missing token");
       const userId = await hs.auth.consumeLoginToken(body.token).catch(async (err) => {
         await hs.audit.record({ action: "login_failed", actor: null, ip: ctx.ip, outcome: "failure", details: { type: "m.login.token" } });
         throw err;
@@ -182,7 +209,7 @@ export function registerAccountRoutes(r: Router): void {
       const user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
       if (!user || user.deactivated) throw errors.userDeactivated();
       const session = await hs.auth.createSession(userId, {
-        deviceId: typeof body.device_id === "string" ? body.device_id : undefined,
+        deviceId: body.device_id,
         displayName: body.initial_device_display_name,
         refreshToken: body.refresh_token === true,
       });
@@ -198,7 +225,7 @@ export function registerAccountRoutes(r: Router): void {
     }
     if (body.type !== "m.login.password" || !hs.userAuth.passwordLoginEnabled) throw errors.unknown("Unsupported login type");
     const userId = await resolveLoginUser(hs, body);
-    if (typeof body.password !== "string") throw errors.missingParam("Missing password");
+    if (body.password === undefined) throw errors.missingParam("Missing password");
     let user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
     const ok = await hs.userAuth.checkPassword({
       userId,
@@ -225,7 +252,7 @@ export function registerAccountRoutes(r: Router): void {
     }
     if (user!.deactivated) throw errors.userDeactivated();
     const session = await hs.auth.createSession(userId, {
-      deviceId: typeof body.device_id === "string" ? body.device_id : undefined,
+      deviceId: body.device_id,
       displayName: body.initial_device_display_name,
       refreshToken: body.refresh_token === true,
     });
@@ -240,9 +267,9 @@ export function registerAccountRoutes(r: Router): void {
     return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
   });
 
-  r.client("POST", "/refresh", async (ctx) => {
-    const body = await ctx.json();
-    if (typeof body.refresh_token !== "string") throw errors.missingParam("Missing refresh_token");
+  r.client("POST", "/refresh", { input: body({ refresh_token: lenient(z.string()) }) }, async (ctx) => {
+    const body = ctx.input;
+    if (body.refresh_token === undefined) throw errors.missingParam("Missing refresh_token");
     const { access_token, refresh_token, expires_in_ms } = await ctx.hs.auth.refresh(body.refresh_token);
     return { access_token, refresh_token, expires_in_ms };
   });
@@ -287,9 +314,9 @@ export function registerAccountRoutes(r: Router): void {
     ["v1"],
   );
 
-  r.client("POST", "/register", async (ctx) => {
+  r.client("POST", "/register", { input: registerBody }, async (ctx) => {
     const hs = ctx.hs;
-    const body = await ctx.json();
+    const body = ctx.input;
     const kind = ctx.query.get("kind") ?? "user";
     if (kind === "guest") {
       if (!hs.userAuth.guestAccessEnabled) throw errors.forbidden("Guest access is disabled");
@@ -302,7 +329,7 @@ export function registerAccountRoutes(r: Router): void {
     if (body.type === "m.login.application_service" || body.auth?.type === "m.login.application_service") {
       const s = await ctx.auth();
       if (!s.appservice) throw errors.forbidden("An application service token is required");
-      if (typeof body.username !== "string") throw errors.missingParam("Missing username");
+      if (body.username === undefined) throw errors.missingParam("Missing username");
       const localpart = body.username.toLowerCase();
       const userId = `@${localpart}:${hs.serverName}`;
       if (!hs.appservices.isInterestedUser(s.appservice, userId))
@@ -313,7 +340,7 @@ export function registerAccountRoutes(r: Router): void {
       if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
       return {
         ...(await hs.auth.createSession(userId, {
-          deviceId: typeof body.device_id === "string" ? body.device_id : undefined,
+          deviceId: body.device_id,
           displayName: body.initial_device_display_name,
         })),
         home_server: hs.serverName,
@@ -324,13 +351,11 @@ export function registerAccountRoutes(r: Router): void {
     rejectIfDelegated(hs);
     if (!(await hs.registrationAllowed())) throw errors.forbidden("Registration is disabled");
     await ctx.rateLimit("register");
-    if (body.password !== undefined && typeof body.password !== "string") throw errors.invalidParam("password must be a string");
-    if (body.username !== undefined && typeof body.username !== "string") throw errors.invalidParam("username must be a string");
     const localpart =
       body.username !== undefined ? await validateNewUsername(hs, body.username.toLowerCase()) : await generateLocalpart(hs);
     if (hs.appservices.exclusiveUserOwner(`@${localpart}:${hs.serverName}`))
       throw errors.exclusive("This user ID is reserved by an application service");
-    if (typeof body.password === "string") {
+    if (body.password !== undefined) {
       const problem = await hs.userAuth.validatePassword(body.password);
       if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
     }
@@ -351,17 +376,17 @@ export function registerAccountRoutes(r: Router): void {
     });
     if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
     const session = await hs.auth.createSession(userId, {
-      deviceId: typeof body.device_id === "string" ? body.device_id : undefined,
+      deviceId: body.device_id,
       displayName: body.initial_device_display_name,
       refreshToken: body.refresh_token === true,
     });
     return { ...session, home_server: hs.serverName };
   });
 
-  r.client("POST", "/account/password", async (ctx) => {
+  r.client("POST", "/account/password", { input: passwordBody }, async (ctx) => {
     const hs = ctx.hs;
     rejectIfDelegated(hs);
-    const body = await ctx.json();
+    const body = ctx.input;
     // Without an access token, the password is reset by proving ownership of an address of the account.
     let s: { userId: string; deviceId: string | null };
     if (ctx.accessToken()) {
@@ -374,7 +399,7 @@ export function registerAccountRoutes(r: Router): void {
       if (!owner) throw new MatrixError(400, "M_THREEPID_NOT_FOUND", "No account uses this address");
       s = { userId: owner, deviceId: null };
     }
-    if (typeof body.new_password !== "string" || !body.new_password) throw errors.missingParam("Missing new_password");
+    if (!body.new_password) throw errors.missingParam("Missing new_password");
     const problem = await hs.userAuth.validatePassword(body.new_password);
     if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
     await hs.db.update("users", [{ field: "user_id", value: s.userId }], {
@@ -390,12 +415,11 @@ export function registerAccountRoutes(r: Router): void {
     return {};
   });
 
-  r.client("POST", "/account/deactivate", async (ctx) => {
+  r.client("POST", "/account/deactivate", { input: body({}) }, async (ctx) => {
     const hs = ctx.hs;
     rejectIfDelegated(hs);
-    const body = await ctx.json();
     const s = await ctx.auth();
-    await requireUia(hs, body, [["m.login.password"]], s.userId);
+    await requireUia(hs, ctx.input, [["m.login.password"]], s.userId);
     for (const membership of ["join", "invite", "knock"]) {
       for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
         try {
@@ -425,26 +449,25 @@ export function registerAccountRoutes(r: Router): void {
     await ctx.hs.cluster.set(`regnonce:${nonce}`, true, 60_000);
     return { nonce };
   });
-  r.post("/_synapse/admin/v1/register", async (ctx) => {
+  r.post("/_synapse/admin/v1/register", { input: sharedSecretRegisterBody }, async (ctx) => {
     const hs = ctx.hs;
     const secret = hs.config.registrationSharedSecret;
     if (!secret) throw errors.unrecognized();
-    const body = await ctx.json();
-    if (typeof body.nonce !== "string" || !(await hs.cluster.get(`regnonce:${body.nonce}`))) throw errors.unknown("Unrecognised nonce");
+    const body = ctx.input;
+    if (body.nonce === undefined || !(await hs.cluster.get(`regnonce:${body.nonce}`))) throw errors.unknown("Unrecognised nonce");
     await hs.cluster.delete(`regnonce:${body.nonce}`);
-    if (typeof body.username !== "string" || typeof body.password !== "string") throw errors.invalidParam("Invalid username/password");
     const admin = body.admin === true;
     const expected = createHmac("sha1", secret)
       .update(`${body.nonce}\u0000${body.username}\u0000${body.password}\u0000${admin ? "admin" : "notadmin"}`)
       .digest("hex");
-    const given = Buffer.from(String(body.mac ?? ""), "utf8");
+    const given = Buffer.from(body.mac ?? "", "utf8");
     if (given.length !== expected.length || !timingSafeEqual(given, Buffer.from(expected, "utf8")))
       throw errors.forbidden("HMAC incorrect");
     const localpart = await validateNewUsername(hs, body.username.toLowerCase());
     const userId = await createUser(hs, localpart, {
       password: body.password,
       admin,
-      displayname: typeof body.displayname === "string" ? body.displayname : undefined,
+      displayname: body.displayname,
     });
     const session = await hs.auth.createSession(userId);
     await hs.audit.record({ action: "register", actor: "server", target: userId, ip: ctx.ip, details: { shared_secret: true, admin } });
