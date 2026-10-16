@@ -1,4 +1,4 @@
-import type { ClusterAdapter } from "./cluster.ts";
+import type { ClusterAdapter } from "#core/cluster.ts";
 
 /**
  * Wakes long-polling `/sync` requests when something relevant happens. Notifications

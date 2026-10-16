@@ -1,5 +1,5 @@
-import { errors } from "../core/errors.ts";
-import type { Router } from "../http/router.ts";
+import { errors } from "#core/errors.ts";
+import type { Router } from "#http/router.ts";
 
 export function registerAppServiceRoutes(r: Router): void {
   r.client(

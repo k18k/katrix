@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MatrixError } from "../core/errors.ts";
+import { MatrixError } from "#core/errors.ts";
 
 // Request body schemas (zod). A route declares `{ input: schema }` and its handler receives the
 // parsed body as `ctx.input`. Matrix requires servers to ignore unknown keys, so body schemas are

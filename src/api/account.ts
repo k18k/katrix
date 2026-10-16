@@ -1,15 +1,15 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { MatrixError, errors } from "../core/errors.ts";
-import { randomString } from "../core/crypto.ts";
-import { LOCALPART_RE } from "../core/ids.ts";
-import { isObject } from "../core/json.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
-import { requireUia } from "./uia.ts";
-import { canonicalAddress, isMedium } from "../core/threepid.ts";
-import { toMsisdn } from "../core/phone.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { randomString } from "#core/crypto.ts";
+import { LOCALPART_RE } from "#core/ids.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
+import { requireUia } from "#api/uia.ts";
+import { canonicalAddress, isMedium } from "#core/threepid.ts";
+import { toMsisdn } from "#core/phone.ts";
 import { z } from "zod";
-import { body, fail, lenient } from "../http/input.ts";
+import { body, fail, lenient } from "#http/input.ts";
 
 // Fields shared by login and registration requests.
 const deviceFields = {

@@ -1,9 +1,9 @@
-import { errors } from "../core/errors.ts";
-import { signJson } from "../core/crypto.ts";
-import { SUPPORTED_ROOM_VERSIONS } from "../core/events.ts";
-import type { Router } from "../http/router.ts";
-import { canonicalJsonResponse } from "../http/handler.ts";
-import { wellKnown } from "./account.ts";
+import { errors } from "#core/errors.ts";
+import { signJson } from "#core/crypto.ts";
+import { SUPPORTED_ROOM_VERSIONS } from "#core/events.ts";
+import type { Router } from "#http/router.ts";
+import { canonicalJsonResponse } from "#http/handler.ts";
+import { wellKnown } from "#api/account.ts";
 
 export const SPEC_VERSIONS = [
   "r0.0.1",

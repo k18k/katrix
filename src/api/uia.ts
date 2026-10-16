@@ -1,7 +1,7 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { randomString } from "../core/crypto.ts";
-import { isObject } from "../core/json.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { randomString } from "#core/crypto.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 interface UiaSession {
   completed: string[];
@@ -79,7 +79,7 @@ export async function requireUia(
         session.completed.add(auth.type);
         break;
       case "m.login.registration_token": {
-        const { registrationTokenValid } = await import("./account.ts");
+        const { registrationTokenValid } = await import("#api/account.ts");
         if (typeof auth.token !== "string" || !(await registrationTokenValid(hs, auth.token))) {
           throw challenge({ errcode: "M_FORBIDDEN", error: "Invalid registration token" });
         }

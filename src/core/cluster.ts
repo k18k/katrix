@@ -1,4 +1,4 @@
-import { randomString } from "./crypto.ts";
+import { randomString } from "#core/crypto.ts";
 
 /**
  * Coordination between homeserver instances sharing one database. The default

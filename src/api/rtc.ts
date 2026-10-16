@@ -1,8 +1,8 @@
 import { createHmac } from "node:crypto";
-import { errors } from "../core/errors.ts";
-import type { RequestContext, Router } from "../http/router.ts";
+import { errors } from "#core/errors.ts";
+import type { RequestContext, Router } from "#http/router.ts";
 import { z } from "zod";
-import { body, fail } from "../http/input.ts";
+import { body, fail } from "#http/input.ts";
 
 export interface TurnOptions {
   uris: string[];

@@ -1,6 +1,6 @@
-import { isObject } from "./json.ts";
-import { globMatch } from "./glob.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { isObject } from "#core/json.ts";
+import { globMatch } from "#core/glob.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 export const INVITE_CONFIG_TYPE = "org.matrix.msc4155.invite_permission_config";
 

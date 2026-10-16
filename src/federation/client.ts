@@ -1,11 +1,11 @@
 import { resolveSrv } from "node:dns/promises";
 import { Agent, request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
-import { MatrixError } from "../core/errors.ts";
-import { canonicalJson } from "../core/json.ts";
-import { unpaddedBase64 } from "../core/crypto.ts";
+import { MatrixError } from "#core/errors.ts";
+import { canonicalJson } from "#core/json.ts";
+import { unpaddedBase64 } from "#core/crypto.ts";
 import { sign } from "node:crypto";
-import type { Homeserver } from "../homeserver.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 interface Resolved {
   /** Host to connect to (IP or hostname). */

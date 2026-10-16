@@ -1,10 +1,10 @@
-import { errors } from "../core/errors.ts";
-import { canonicalJson, isObject } from "../core/json.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
-import { requireUia } from "./uia.ts";
+import { errors } from "#core/errors.ts";
+import { canonicalJson, isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
+import { requireUia } from "#api/uia.ts";
 import { z } from "zod";
-import { body, fail } from "../http/input.ts";
+import { body, fail } from "#http/input.ts";
 
 const deleteDevicesBody = body({ devices: z.array(z.unknown(), fail("M_BAD_JSON", "devices must be a list")) });
 const keysQueryBody = body({

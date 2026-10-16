@@ -1,7 +1,7 @@
-import { errors } from "../core/errors.ts";
-import type { RequestContext, Router } from "../http/router.ts";
+import { errors } from "#core/errors.ts";
+import type { RequestContext, Router } from "#http/router.ts";
 import { z } from "zod";
-import { body, fail, lenient } from "../http/input.ts";
+import { body, fail, lenient } from "#http/input.ts";
 
 const required = fail("M_BAD_JSON", "user_id and content are required");
 const noticeBody = body({ user_id: z.string(required), content: z.looseObject({}, required), type: lenient(z.string()) });

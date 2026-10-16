@@ -1,5 +1,5 @@
-import { isObject } from "./json.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 export type Rule = Record<string, any>;
 export type Ruleset = Record<string, Rule[]>;

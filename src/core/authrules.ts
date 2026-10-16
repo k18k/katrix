@@ -1,8 +1,8 @@
-import { errors } from "./errors.ts";
-import { roomVersionFeatures, stateKey, versionNum, type PDU } from "./events.ts";
-import { isObject } from "./json.ts";
-import { publicKeyFromBase64, verifyJsonSignature } from "./crypto.ts";
-import { isValidUserId } from "./ids.ts";
+import { errors } from "#core/errors.ts";
+import { roomVersionFeatures, stateKey, versionNum, type PDU } from "#core/events.ts";
+import { isObject } from "#core/json.ts";
+import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
+import { isValidUserId } from "#core/ids.ts";
 
 export type StateMap = Map<string, PDU>;
 

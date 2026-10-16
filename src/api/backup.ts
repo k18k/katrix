@@ -1,9 +1,9 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { isObject } from "../core/json.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
 import { z } from "zod";
-import { body, fail } from "../http/input.ts";
+import { body, fail } from "#http/input.ts";
 
 const required = fail("M_BAD_JSON", "algorithm and auth_data are required");
 const createVersionBody = body({ algorithm: z.string(required), auth_data: z.looseObject({}, required) });

@@ -1,5 +1,5 @@
-import { authEventKeys, checkAuth, powerLevels, userLevel, type StateMap } from "./authrules.ts";
-import { eventIdOf, roomVersionFeatures, stateKey, type PDU } from "./events.ts";
+import { authEventKeys, checkAuth, powerLevels, userLevel, type StateMap } from "#core/authrules.ts";
+import { eventIdOf, roomVersionFeatures, stateKey, type PDU } from "#core/events.ts";
 
 /** Event lookup used by state resolution (timeline events and outliers). */
 export type EventSource = (eventIds: string[]) => Promise<Map<string, PDU>>;

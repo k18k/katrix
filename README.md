@@ -363,6 +363,10 @@ npm run build                    # tsdown → dist/ (what the published package 
 node examples/node-http.ts       # development runs the TypeScript sources directly (type stripping)
 ```
 
+Inside `src`, modules import each other through the package's
+[subpath imports](https://nodejs.org/api/packages.html#subpath-imports): `#core/errors.ts` is
+`src/core/errors.ts`. The build turns them back into relative imports.
+
 Node does not strip types from files inside `node_modules`, so the package ships `dist/`,
 built by tsdown: one `.js` and one `.d.ts` per source module. `npm pack`, `npm publish` and
 installs from GitHub build it through the `prepare` script. Recent npm versions ask you to

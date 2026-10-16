@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { getState } from "../core/authrules.ts";
-import { errors } from "../core/errors.ts";
-import { toClientEvent, type PDU } from "../core/events.ts";
-import { isObject } from "../core/json.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { Router } from "../http/router.ts";
-import { body } from "../http/input.ts";
+import { getState } from "#core/authrules.ts";
+import { errors } from "#core/errors.ts";
+import { toClientEvent, type PDU } from "#core/events.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { Router } from "#http/router.ts";
+import { body } from "#http/input.ts";
 
 // MSC2836: threading via `m.relationship` with tree walks (`/event_relationships`).
 // Edges are indexed in `event_edges` as events are persisted or fetched. When a walk reaches

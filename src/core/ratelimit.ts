@@ -1,4 +1,4 @@
-import { MatrixError } from "./errors.ts";
+import { MatrixError } from "#core/errors.ts";
 
 /** A rate limiter keyed by an arbitrary string. Implement this to share limits across instances (e.g. Redis). */
 export interface RateLimiter {

@@ -1,9 +1,9 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { canonicalJson } from "../core/json.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext } from "./router.ts";
-import { inputError } from "./input.ts";
-import type { Session } from "../core/auth.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { canonicalJson } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext } from "#http/router.ts";
+import { inputError } from "#http/input.ts";
+import type { Session } from "#core/auth.ts";
 
 const CORS_HEADERS: Record<string, string> = {
   "access-control-allow-origin": "*",

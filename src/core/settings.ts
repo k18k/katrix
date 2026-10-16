@@ -1,4 +1,4 @@
-import type { Homeserver } from "../homeserver.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 /** Runtime server settings changed by admins (stored in the database, shared across instances). */
 export class SettingsService {

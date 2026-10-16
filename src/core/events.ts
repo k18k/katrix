@@ -1,5 +1,5 @@
-import { canonicalJson, isObject } from "./json.ts";
-import { randomString, sha256, signJson, unpaddedBase64, urlSafeBase64, type SigningKey } from "./crypto.ts";
+import { canonicalJson, isObject } from "#core/json.ts";
+import { randomString, sha256, signJson, unpaddedBase64, urlSafeBase64, type SigningKey } from "#core/crypto.ts";
 
 export interface PDU {
   event_id?: string;

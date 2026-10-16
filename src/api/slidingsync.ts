@@ -1,12 +1,12 @@
-import { MatrixError } from "../core/errors.ts";
-import { getState } from "../core/authrules.ts";
-import { splitStateKey, toClientEvent, type PDU } from "../core/events.ts";
-import { isObject } from "../core/json.ts";
-import type { Session } from "../core/auth.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
+import { MatrixError } from "#core/errors.ts";
+import { getState } from "#core/authrules.ts";
+import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
+import { isObject } from "#core/json.ts";
+import type { Session } from "#core/auth.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
 import { z } from "zod";
-import { body as bodySchema, lenient } from "../http/input.ts";
+import { body as bodySchema, lenient } from "#http/input.ts";
 
 // Malformed parts of a sliding sync request are ignored rather than refused, as before.
 const slidingSyncBody = bodySchema({
@@ -15,7 +15,7 @@ const slidingSyncBody = bodySchema({
   room_subscriptions: lenient(z.record(z.string(), z.unknown())),
   extensions: lenient(z.record(z.string(), z.unknown())),
 });
-import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "./sync.ts";
+import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "#api/sync.ts";
 
 /**
  * Simplified sliding sync (MSC4186), as used by Element X.
@@ -401,14 +401,14 @@ async function buildExtensions(
       else if (roomIds.includes(r.room_id) || since !== null) (rooms[r.room_id] ??= []).push(ev);
     }
     if (since === null && !global.some((e) => e.type === "m.push_rules")) {
-      const { loadRules } = await import("../core/pushrules.ts");
+      const { loadRules } = await import("#core/pushrules.ts");
       global.push({ type: "m.push_rules", content: { global: await loadRules(hs, userId) } });
     }
     out.account_data = { global, rooms };
   }
 
   if (ext["io.element.msc4308.thread_subscriptions"]?.enabled) {
-    const { threadSubscriptionsExtension } = await import("./threadsubs.ts");
+    const { threadSubscriptionsExtension } = await import("#api/threadsubs.ts");
     out["io.element.msc4308.thread_subscriptions"] = await threadSubscriptionsExtension(
       hs,
       userId,

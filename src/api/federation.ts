@@ -1,19 +1,19 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { fullProfile } from "../core/profile.ts";
-import { relationshipsForServer } from "./relationships.ts";
-import { authEventKeys, checkAuth, getState, membershipOf, powerLevels, userLevel, type StateMap } from "../core/authrules.ts";
-import { SUPPORTED_ROOM_VERSIONS, eventIdOf, redact, roomVersionFeatures, splitStateKey, stateKey, type PDU } from "../core/events.ts";
-import { isObject } from "../core/json.ts";
-import { isValidUserId } from "../core/ids.ts";
-import { inviteDecision } from "../core/invitefilter.ts";
-import { randomToken, signJson, verifyJsonSignature } from "../core/crypto.ts";
-import type { StoredEvent } from "../core/rooms.ts";
-import { domainOf, serverAllowedByAcl } from "../federation/index.ts";
-import { parseXMatrix } from "../federation/client.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { fullProfile } from "#core/profile.ts";
+import { relationshipsForServer } from "#api/relationships.ts";
+import { authEventKeys, checkAuth, getState, membershipOf, powerLevels, userLevel, type StateMap } from "#core/authrules.ts";
+import { SUPPORTED_ROOM_VERSIONS, eventIdOf, redact, roomVersionFeatures, splitStateKey, stateKey, type PDU } from "#core/events.ts";
+import { isObject } from "#core/json.ts";
+import { isValidUserId } from "#core/ids.ts";
+import { inviteDecision } from "#core/invitefilter.ts";
+import { randomToken, signJson, verifyJsonSignature } from "#core/crypto.ts";
+import type { StoredEvent } from "#core/rooms.ts";
+import { domainOf, serverAllowedByAcl } from "#federation/index.ts";
+import { parseXMatrix } from "#federation/client.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
 import { z } from "zod";
-import { body, lenient } from "../http/input.ts";
+import { body, lenient } from "#http/input.ts";
 
 // Federation request bodies come from other servers: malformed optional parts are ignored, as before.
 const objectMap = lenient(z.record(z.string(), z.unknown()));
@@ -30,8 +30,8 @@ const publicRoomsBody = body({
   limit: z.unknown().optional(),
   filter: lenient(z.looseObject({ generic_search_term: lenient(z.string()) })),
 });
-import { canonicalJsonResponse } from "../http/handler.ts";
-import { roomDetails } from "./spaces.ts";
+import { canonicalJsonResponse } from "#http/handler.ts";
+import { roomDetails } from "#api/spaces.ts";
 
 const F = "/_matrix/federation";
 

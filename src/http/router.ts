@@ -1,7 +1,7 @@
-import { errors } from "../core/errors.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { Session } from "../core/auth.ts";
-import type { RateLimitAction } from "../core/ratelimit.ts";
+import { errors } from "#core/errors.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { Session } from "#core/auth.ts";
+import type { RateLimitAction } from "#core/ratelimit.ts";
 import type { z } from "zod";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";

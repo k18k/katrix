@@ -1,8 +1,8 @@
-import { errors } from "../core/errors.ts";
-import { KINDS, loadRules, saveRules, withRulesLock, type Rule, type Ruleset } from "../core/pushrules.ts";
-import type { RequestContext, Router } from "../http/router.ts";
+import { errors } from "#core/errors.ts";
+import { KINDS, loadRules, saveRules, withRulesLock, type Rule, type Ruleset } from "#core/pushrules.ts";
+import type { RequestContext, Router } from "#http/router.ts";
 import { z } from "zod";
-import { body, fail, lenient } from "../http/input.ts";
+import { body, fail, lenient } from "#http/input.ts";
 
 const pusherKey = z.string(fail("M_MISSING_PARAM", "Missing app_id or pushkey"));
 // `kind: null` deletes a pusher; otherwise kind, the display names, lang and data are required (checked below).

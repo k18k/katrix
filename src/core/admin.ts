@@ -1,8 +1,8 @@
-import { errors } from "./errors.ts";
-import { randomString } from "./crypto.ts";
-import { LOCALPART_RE, isValidUserId } from "./ids.ts";
-import type { Homeserver } from "../homeserver.ts";
-import { createUser } from "../api/account.ts";
+import { errors } from "#core/errors.ts";
+import { randomString } from "#core/crypto.ts";
+import { LOCALPART_RE, isValidUserId } from "#core/ids.ts";
+import type { Homeserver } from "#homeserver.ts";
+import { createUser } from "#api/account.ts";
 
 export interface ServerNoticesOptions {
   /** Localpart of the user that sends server notices. Default: "server". */

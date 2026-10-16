@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "./types.ts";
+import type { DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "#storage/types.ts";
 
 export type SqlDialect = "sqlite" | "postgres" | "mysql";
 

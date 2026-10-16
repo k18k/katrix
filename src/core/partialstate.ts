@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
-import { eventIdOf, roomVersionFeatures, stateKey } from "./events.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { eventIdOf, roomVersionFeatures, stateKey } from "#core/events.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 // MSC3902 "faster joins": a remote join with `omit_members=true` returns the room's state
 // without most membership events. The room is usable right away (sending, receiving, lazy

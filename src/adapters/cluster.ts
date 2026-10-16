@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { ClusterAdapter } from "../core/cluster.ts";
+import type { ClusterAdapter } from "#core/cluster.ts";
 
-export { localCluster, type ClusterAdapter } from "../core/cluster.ts";
+export { localCluster, type ClusterAdapter } from "#core/cluster.ts";
 
 /** Per-process queue so each instance holds at most one remote lock per key. */
 function localQueue() {

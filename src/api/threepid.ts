@@ -1,9 +1,9 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { canonicalAddress, isMedium, type ThreepidPurpose } from "../core/threepid.ts";
-import type { RequestContext, Router } from "../http/router.ts";
-import { requireUia } from "./uia.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { canonicalAddress, isMedium, type ThreepidPurpose } from "#core/threepid.ts";
+import type { RequestContext, Router } from "#http/router.ts";
+import { requireUia } from "#api/uia.ts";
 import { z } from "zod";
-import { body, fail, lenient } from "../http/input.ts";
+import { body, fail, lenient } from "#http/input.ts";
 
 const submitField = z.string(fail("M_MISSING_PARAM", "sid, client_secret and token are required"));
 const submitBody = body({ sid: submitField, client_secret: submitField, token: submitField });

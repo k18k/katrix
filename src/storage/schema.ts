@@ -1,4 +1,4 @@
-import type { Schema } from "./types.ts";
+import type { Schema } from "#storage/types.ts";
 
 const s = { type: "string" } as const;
 const sn = { type: "string", required: false } as const;

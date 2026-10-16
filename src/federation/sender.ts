@@ -1,5 +1,5 @@
-import { randomString } from "../core/crypto.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { randomString } from "#core/crypto.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 const MAX_PDUS = 50;
 const MAX_EDUS = 100;

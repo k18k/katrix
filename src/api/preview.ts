@@ -1,9 +1,9 @@
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
-import { errors } from "../core/errors.ts";
-import { randomString } from "../core/crypto.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
+import { errors } from "#core/errors.ts";
+import { randomString } from "#core/crypto.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
 
 const MAX_BYTES = 1024 * 1024;
 

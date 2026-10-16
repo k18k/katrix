@@ -1,15 +1,15 @@
-import { errors } from "../core/errors.ts";
-import { getState } from "../core/authrules.ts";
-import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "../core/events.ts";
-import type { StoredEvent } from "../core/rooms.ts";
-import type { Session } from "../core/auth.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
-import { body } from "../http/input.ts";
-import { matchesFilter, roomAllowed, validateSyncFilter, type SyncFilter } from "./filters.ts";
-import { loadRules } from "../core/pushrules.ts";
-import { fullProfile } from "../core/profile.ts";
-import { inviteDecision } from "../core/invitefilter.ts";
+import { errors } from "#core/errors.ts";
+import { getState } from "#core/authrules.ts";
+import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "#core/events.ts";
+import type { StoredEvent } from "#core/rooms.ts";
+import type { Session } from "#core/auth.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
+import { body } from "#http/input.ts";
+import { matchesFilter, roomAllowed, validateSyncFilter, type SyncFilter } from "#api/filters.ts";
+import { loadRules } from "#core/pushrules.ts";
+import { fullProfile } from "#core/profile.ts";
+import { inviteDecision } from "#core/invitefilter.ts";
 
 interface SyncToken {
   pos: number;

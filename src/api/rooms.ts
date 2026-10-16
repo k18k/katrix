@@ -1,16 +1,16 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { getState, membershipOf, ownerOfStateKey, powerLevels, roomCreators, userLevel, type StateMap } from "../core/authrules.ts";
-import { validatePowerLevelContent } from "../core/rooms.ts";
-import { SUPPORTED_ROOM_VERSIONS, roomVersionFeatures, splitStateKey, toClientEvent, type PDU } from "../core/events.ts";
-import { isValidAlias, isValidRoomId, isValidUserId, parseId } from "../core/ids.ts";
-import { isObject } from "../core/json.ts";
-import type { StoredEvent } from "../core/rooms.ts";
-import { assertNotSuspended, type Session } from "../core/auth.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { getState, membershipOf, ownerOfStateKey, powerLevels, roomCreators, userLevel, type StateMap } from "#core/authrules.ts";
+import { validatePowerLevelContent } from "#core/rooms.ts";
+import { SUPPORTED_ROOM_VERSIONS, roomVersionFeatures, splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
+import { isValidAlias, isValidRoomId, isValidUserId, parseId } from "#core/ids.ts";
+import { isObject } from "#core/json.ts";
+import type { StoredEvent } from "#core/rooms.ts";
+import { assertNotSuspended, type Session } from "#core/auth.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
 import { z } from "zod";
-import { body, fail, lenient } from "../http/input.ts";
-import { matchesFilter, parseRoomEventFilter, type EventFilter } from "./filters.ts";
+import { body, fail, lenient } from "#http/input.ts";
+import { matchesFilter, parseRoomEventFilter, type EventFilter } from "#api/filters.ts";
 
 export const parseToken = (token: string | null): number | null => {
   if (token === null || token === "") return null;

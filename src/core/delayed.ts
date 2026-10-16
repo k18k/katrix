@@ -1,6 +1,6 @@
-import { errors, MatrixError } from "./errors.ts";
-import { randomString } from "./crypto.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { errors, MatrixError } from "#core/errors.ts";
+import { randomString } from "#core/crypto.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 export interface DelayedEventsOptions {
   /** Maximum delay a client may request, in ms. Default: 24 hours. */

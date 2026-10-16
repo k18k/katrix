@@ -1,10 +1,10 @@
 import type { KeyObject } from "node:crypto";
-import { getState } from "./authrules.ts";
-import { domainOf } from "../federation/index.ts";
-import { MatrixError } from "./errors.ts";
-import { publicKeyFromBase64, verifyJsonSignature } from "./crypto.ts";
-import { redact, type PDU } from "./events.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { getState } from "#core/authrules.ts";
+import { domainOf } from "#federation/index.ts";
+import { MatrixError } from "#core/errors.ts";
+import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
+import { redact, type PDU } from "#core/events.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 // Policy Servers (spec v1.18): a room may name a server (`m.room.policy`) that checks events before
 // they are sent. Local events get its signature before they leave this server; remote events
