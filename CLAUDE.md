@@ -16,10 +16,9 @@ Keep the exploit details out of the comment (no ready-made payloads); the issue 
 
 ## Changes users should know about get a changeset
 
-A change that users of the package would notice gets a changeset in `.changeset/` in the same commit: a feature, a fix, a behaviour change or a security fix. Write it with `npx changeset`, or as a file by hand. Pick the bump by its effect on users:
-- `patch`: fixes;
-- `minor`: new features, and breaking changes while the version is 0.x;
-- `major`: breaking changes from 1.0 on.
+A change that users of the package would notice gets a changeset in `.changeset/` in the same commit: a feature, a fix, a behaviour change or a security fix. Write it with `npx changeset`, or as a file by hand.
+
+Until 1.0, every changeset is a `patch` (releases go 0.3.2, 0.3.3, …) and backward compatibility is not kept: options, exports and adapters may change or go without deprecation. Say plainly in the changeset when a change breaks existing code. From 1.0 on, pick the bump by its effect on users: `patch` for fixes, `minor` for features, `major` for breaking changes.
 
 Describe the effect in a sentence or two, for users rather than for maintainers. Link the issue when there is one.
 
