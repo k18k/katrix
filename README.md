@@ -524,7 +524,7 @@ Latest results: 1000 users online in 25 rooms (40 per room), 50 messages/s, 30 s
 
 | Setup | req/s | send | /sync | join | delivery | messages delivered | failed |
 |---|---|---|---|---|---|---|---|
-| SQLite, 1 process | 1004 | 0.65 s / 1.0 s | 0.71 s / 1.5 s | 52 ms / 0.33 s | 0.83 s / 1.25 s | 23,070 | 0% |
+| SQLite, 1 process | 662 | 97 ms / 0.16 s | 0.87 s / 1.6 s | 10 ms / 91 ms | 1.64 s / 2.70 s | 53,935 | 0% |
 | Postgres, no cluster | 670 | 15 ms / 19 ms | 1.1 s / 1.8 s | 14 ms / 23 ms | 1.76 s / 2.31 s | 58,667 | 0% |
 | Postgres, cluster, 1 node | 593 | 27 ms / 38 ms | 1.3 s / 2.0 s | 36 ms / 51 ms | 1.96 s / 2.57 s | 58,493 | 0% |
 | Postgres, cluster, 5 nodes | 871 | 60 ms / 88 ms | 0.50 s / 1.1 s | 62 ms / 119 ms | 0.70 s / 1.09 s | 59,298 | 0% |
@@ -546,10 +546,12 @@ Since 0.3.2 (#38–#45), Postgres delivery time fell by about 55% on one node an
 - presence and device-list changes are found through a stream index (#44);
 - batched reads take half as long to plan (#45).
 
+On SQLite, commits no longer wait for an fsync (#46). Database calls also yield to the event
+loop (#47): before that, a wave of syncs could hold it for seconds, sends took 0.74 s and the
+server took in only about 40% of the messages the scenario sends.
+
 With every user receiving about two messages a second, delivery time is how long it takes a
 process to rebuild every user's `/sync` in turn: about 750 per second per Postgres node here.
-On SQLite, the database calls run on the main thread, so syncs and sends compete for it: sends
-are slower than on Postgres, and fewer messages are sent than the scenario asks for.
 <!-- loadtest-results:end -->
 
 ## License
