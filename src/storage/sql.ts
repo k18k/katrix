@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "#storage/types.ts";
+import type { BatchQuery, DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "#storage/types.ts";
 
 export type SqlDialect = "sqlite" | "postgres" | "mysql";
 
@@ -196,6 +196,36 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
         const rows = await executor.query(sql, params);
         return rows.map((r) => fromDb(model, r));
       },
+      // One round trip for several reads (Postgres): each read becomes a subquery whose rows come
+      // back as JSON, tagged with the read's index and their position in it.
+      ...(dialect === "postgres"
+        ? {
+            async findManyBatch(queries: BatchQuery[]) {
+              if (queries.length === 0) return [];
+              const params: unknown[] = [];
+              const parts = queries.map(({ model, opts = {} }, i) => {
+                // The sort column is needed outside the subquery to number the rows.
+                const fields =
+                  opts.fields?.length && opts.sortBy && !opts.fields.includes(opts.sortBy.field)
+                    ? [...opts.fields, opts.sortBy.field]
+                    : opts.fields;
+                const columns = fields?.length ? fields.map(q).join(", ") : "*";
+                let inner = `SELECT ${columns} FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
+                const order = opts.sortBy ? `${q(opts.sortBy.field)} ${opts.sortBy.direction === "asc" ? "ASC" : "DESC"}` : "";
+                if (order) inner += ` ORDER BY ${order}`;
+                if (opts.limit !== undefined) inner += ` LIMIT ${Math.max(0, Math.floor(opts.limit))}`;
+                return `SELECT ${i} AS i, row_number() OVER (${order ? `ORDER BY ${order.replace(/^"/, 'b."')}` : ""}) AS n, to_jsonb(b) AS r FROM (${inner}) b`;
+              });
+              const rows = await executor.query(`${parts.join(" UNION ALL ")} ORDER BY i, n`, params);
+              const out: Row[][] = queries.map(() => []);
+              for (const row of rows) {
+                const r = typeof row.r === "string" ? JSON.parse(row.r) : row.r;
+                out[Number(row.i)].push(fromDb(queries[Number(row.i)].model, r));
+              }
+              return out;
+            },
+          }
+        : {}),
       async update(model, where, data) {
         const fields = Object.keys(data).filter((k) => data[k] !== undefined);
         if (fields.length === 0) return 0;

@@ -27,6 +27,12 @@ export interface WhereClause {
 
 export type Row = Record<string, any>;
 
+/** One read of a `findManyBatch`. */
+export interface BatchQuery {
+  model: string;
+  opts?: FindManyOptions;
+}
+
 export interface FindManyOptions {
   where?: WhereClause[];
   /**
@@ -44,6 +50,12 @@ export interface FindManyOptions {
  * All `where` clauses are combined with AND.
  */
 export interface DatabaseAdapter {
+  /**
+   * Several independent reads in one go: the results in the same order as the queries. Optional;
+   * an adapter that talks to a database server can send them in one round trip. Without it,
+   * callers run the reads separately (see `readBatch`).
+   */
+  findManyBatch?(queries: BatchQuery[]): Promise<Row[][]>;
   /** Create tables / collections for the given schema. Must be idempotent. */
   migrate?(schema: Schema): Promise<void>;
   create(model: string, data: Row): Promise<void>;

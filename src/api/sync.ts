@@ -4,7 +4,9 @@ import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "#co
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
-import type { Row } from "#storage/types.ts";
+import type { BatchQuery, Row } from "#storage/types.ts";
+import { readBatch } from "#storage/batch.ts";
+import { Semaphore } from "#core/semaphore.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
@@ -285,56 +287,120 @@ export async function roomSummary(hs: Homeserver, roomId: string, userId: string
  * so a sync cost as many queries as the user had rooms, each time a long-poll woke up. These few
  * queries find the rooms that changed, and only those are built.
  */
+/** One-time key counts by algorithm, as /sync reports them (signed_curve25519 always present). */
+function countAlgorithms(rows: Row[]): Record<string, number> {
+  const counts: Record<string, number> = { signed_curve25519: 0 };
+  for (const r of rows) counts[r.algorithm] = (counts[r.algorithm] ?? 0) + 1;
+  return counts;
+}
+
 async function changesSince(
   hs: Homeserver,
   p: SyncParams,
   memberships: Row[],
   since: number,
-): Promise<{ touched: Set<string>; receipts: Map<string, Row[]>; accountData: Map<string, Row[]> }> {
-  const rooms = memberships.filter((m) => m.membership === "join").map((m) => m.room_id as string);
+  accountRows: Row[],
+): Promise<{ touched: Set<string>; receipts: Map<string, Row[]>; accountData: Map<string, Row[]>; memberChanges: Row[] }> {
+  const joined = memberships.filter((m) => m.membership === "join").map((m) => m.room_id as string);
+  const anyMembership = [...new Set(memberships.map((m) => m.room_id as string))];
   const range = [
     { field: "stream", operator: "gt" as const, value: since },
     { field: "stream", operator: "lte" as const, value: p.to },
   ];
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/34: these reads go to the database
+  // together. IN lists are chunked, so a user in thousands of rooms stays within parameter limits.
+  const chunks = <T>(list: T[]) => Array.from({ length: Math.ceil(list.length / 500) }, (_, i) => list.slice(i * 500, i * 500 + 500));
+  const inRooms = (chunk: string[]) => ({ field: "room_id", operator: "in" as const, value: chunk });
+  const queries: BatchQuery[] = [];
+  for (const chunk of chunks(joined)) {
+    queries.push({ model: "events", opts: { where: [inRooms(chunk), ...range], fields: ["room_id"] } });
+    queries.push({ model: "receipts", opts: { where: [inRooms(chunk), ...range] } });
+    // Rooms whose state became complete are sent again as if newly joined (MSC3902).
+    queries.push({
+      model: "partial_state_rooms",
+      opts: { where: [inRooms(chunk), { field: "completed_stream", operator: "gt", value: since }], fields: ["room_id"] },
+    });
+  }
+  // Membership changes in the user's rooms (presence, profiles and device lists use them).
+  for (const chunk of chunks(anyMembership))
+    queries.push({ model: "memberships", opts: { where: [inRooms(chunk), { field: "stream", operator: "gt", value: since }] } });
+  const results = await readBatch(hs.db, queries);
   const touched = new Set<string>();
   const receipts = new Map<string, Row[]>();
-  // IN lists in chunks, so a user in thousands of rooms stays within the databases' parameter limits.
-  for (let i = 0; i < rooms.length; i += 500) {
-    const chunk = rooms.slice(i, i + 500);
-    const inRooms = { field: "room_id", operator: "in" as const, value: chunk };
-    for (const r of await hs.db.findMany("events", { where: [inRooms, ...range], fields: ["room_id"] })) touched.add(r.room_id);
-    for (const r of await hs.db.findMany("receipts", { where: [inRooms, ...range] })) {
+  const joinedChunks = Math.ceil(joined.length / 500);
+  for (let c = 0; c < joinedChunks; c++) {
+    const [events, receiptRows, completed] = results.slice(c * 3, c * 3 + 3);
+    for (const r of events) touched.add(r.room_id);
+    for (const r of receiptRows) {
       touched.add(r.room_id);
       receipts.set(r.room_id, [...(receipts.get(r.room_id) ?? []), r]);
     }
-    // Rooms whose state became complete are sent again as if newly joined (MSC3902).
-    for (const r of await hs.db.findMany("partial_state_rooms", {
-      where: [inRooms, { field: "completed_stream", operator: "gt", value: since }],
-      fields: ["room_id"],
-    }))
-      touched.add(r.room_id);
+    for (const r of completed) touched.add(r.room_id);
   }
+  const memberChanges = results.slice(joinedChunks * 3).flat();
   const accountData = new Map<string, Row[]>();
-  for (const r of await hs.db.findMany("account_data", {
-    where: [
-      { field: "user_id", value: p.session.userId },
-      { field: "stream", operator: "gt", value: since },
-    ],
-  })) {
+  for (const r of accountRows) {
     if (r.room_id) touched.add(r.room_id);
     accountData.set(r.room_id, [...(accountData.get(r.room_id) ?? []), r]);
   }
-  return { touched, receipts, accountData };
+  return { touched, receipts, accountData, memberChanges };
 }
 
 async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<string, any>; empty: boolean; nextToDevice: number }> {
   const userId = p.session.userId;
   const since = p.since?.pos ?? null;
-  const memberships = await hs.db.findMany("memberships", { where: [{ field: "user_id", value: userId }] });
-  const changes = since !== null && !p.fullState ? await changesSince(hs, p, memberships, since) : null;
+  const incremental = since !== null && !p.fullState;
+  const deviceWhere = [
+    { field: "user_id", value: userId },
+    { field: "device_id", value: p.session.deviceId },
+  ];
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/34: the reads that need only the user
+  // and the token, in one round trip. Acknowledging to-device messages (a delete of positions up
+  // to the previous token) runs alongside: it touches none of the rows read here.
+  const acknowledged = p.since
+    ? hs.db.delete("to_device", [...deviceWhere, { field: "stream", operator: "lte", value: p.since.toDevice }])
+    : Promise.resolve(0);
+  const [memberships, ignoredRows, toDeviceRows, oneTimeKeyRows, fallbackRows, accountRows = []] = await readBatch(hs.db, [
+    { model: "memberships", opts: { where: [{ field: "user_id", value: userId }] } },
+    {
+      model: "account_data",
+      opts: {
+        where: [
+          { field: "user_id", value: userId },
+          { field: "room_id", value: "" },
+          { field: "type", value: M.IGNORED_USER_LIST },
+        ],
+      },
+    },
+    {
+      model: "to_device",
+      opts: {
+        where: [...deviceWhere, { field: "stream", operator: "gt", value: p.since?.toDevice ?? 0 }],
+        sortBy: { field: "stream", direction: "asc" },
+        limit: 100,
+      },
+    },
+    { model: "one_time_keys", opts: { where: [...deviceWhere, { field: "fallback", value: false }], fields: ["algorithm"] } },
+    { model: "fallback_keys", opts: { where: [...deviceWhere, { field: "used", value: false }], fields: ["algorithm"] } },
+    ...(incremental
+      ? [
+          {
+            model: "account_data",
+            opts: {
+              where: [
+                { field: "user_id", value: userId },
+                { field: "stream", operator: "gt" as const, value: since },
+              ],
+            },
+          },
+        ]
+      : []),
+  ]);
+  p = { ...p, ignored: new Set(Object.keys(ignoredRows[0]?.content?.ignored_users ?? {})) };
+  const changes = incremental ? await changesSince(hs, p, memberships, since, accountRows) : null;
   // Membership changes since the token in the user's rooms: needed for presence, profiles and
   // device lists alike, so read once for this request.
-  let memberChangesRead: Promise<Row[]> | null = null;
+  let memberChangesRead: Promise<Row[]> | null = changes ? Promise.resolve(changes.memberChanges) : null;
   const memberChanges = () => (memberChangesRead ??= hs.rooms.membershipChangesSince(userId, since ?? 0, memberships));
   const join: Record<string, any> = {};
   const invite: Record<string, any> = {};
@@ -435,17 +501,8 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   }
   if (globalAccountData.length) empty = false;
 
-  // To-device: acknowledge everything up to the previous token, then deliver new messages.
-  const deviceWhere = [
-    { field: "user_id", value: userId },
-    { field: "device_id", value: p.session.deviceId },
-  ];
-  if (p.since) await hs.db.delete("to_device", [...deviceWhere, { field: "stream", operator: "lte", value: p.since.toDevice }]);
-  const toDeviceRows = await hs.db.findMany("to_device", {
-    where: [...deviceWhere, { field: "stream", operator: "gt", value: p.since?.toDevice ?? 0 }],
-    sortBy: { field: "stream", direction: "asc" },
-    limit: 100,
-  });
+  // To-device: everything up to the previous token is acknowledged (above); deliver new messages.
+  await acknowledged;
   const toDevice = toDeviceRows.filter((r) => r.stream <= p.to);
   const nextToDevice = toDevice.length ? toDevice[toDevice.length - 1].stream : (p.since?.toDevice ?? 0);
   if (toDevice.length) empty = false;
@@ -488,8 +545,8 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     presence: { events: presenceEvents },
     account_data: { events: globalAccountData },
     to_device: { events: toDevice.map((r) => ({ sender: r.sender, type: r.type, content: r.content })) },
-    device_one_time_keys_count: await hs.keys.oneTimeKeyCounts(userId, p.session.deviceId),
-    device_unused_fallback_key_types: await hs.keys.unusedFallbackKeyTypes(userId, p.session.deviceId),
+    device_one_time_keys_count: countAlgorithms(oneTimeKeyRows),
+    device_unused_fallback_key_types: [...new Set(fallbackRows.map((r) => r.algorithm as string))],
   };
   if (profileUpdates) body[UNSTABLE.ORG.MATRIX.MSC4429.USERS] = profileUpdates;
   if (since !== null) {
@@ -498,6 +555,17 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     if (lists.changed.length || lists.left.length) empty = false;
   }
   return { body, empty, nextToDevice };
+}
+
+// https://github.com/k18k/matrix-nodejs-homeserver/issues/35: a message wakes every member's
+// /sync at once, and each queued its reads for the database pool together, ahead of any send or
+// join that arrived meanwhile. Only maxConcurrentSyncs responses are built at once per process;
+// the others wait here, which costs nothing, and other requests keep getting connections.
+const slots = new WeakMap<Homeserver, Semaphore>();
+function syncSlots(hs: Homeserver): Semaphore {
+  let s = slots.get(hs);
+  if (!s) slots.set(hs, (s = new Semaphore(hs.config.maxConcurrentSyncs)));
+  return s;
 }
 
 async function sync(ctx: RequestContext) {
@@ -513,17 +581,15 @@ async function sync(ctx: RequestContext) {
   const deadline = Date.now() + timeout;
   for (;;) {
     const to = await hs.streams.position();
-    const ignoredRow = await hs.db.findOne("account_data", [
-      { field: "user_id", value: session.userId },
-      { field: "room_id", value: "" },
-      { field: "type", value: M.IGNORED_USER_LIST },
-    ]);
-    const ignored = new Set(Object.keys(ignoredRow?.content?.ignored_users ?? {}));
+    // buildSync reads the ignored-users list with its other reads (#34).
+    const ignored = new Set<string>();
     const stable = ctx.query.get("use_state_after") === "true";
     const unstable = ctx.query.get(UNSTABLE.ORG.MATRIX.MSC4222.USE_STATE_AFTER) === "true";
     const useStateAfter = stable || unstable;
     const stateAfterKey = stable ? "state_after" : UNSTABLE.ORG.MATRIX.MSC4222.STATE_AFTER;
-    const { body, empty } = await buildSync(hs, { session, ignored, since, to, filter, fullState, useStateAfter, stateAfterKey });
+    const { body, empty } = await syncSlots(hs).run(() =>
+      buildSync(hs, { session, ignored, since, to, filter, fullState, useStateAfter, stateAfterKey }),
+    );
     const remaining = deadline - Date.now();
     if (!since || !empty || remaining <= 0 || fullState) return body;
     // Something happened while we were building the response: rebuild immediately.
