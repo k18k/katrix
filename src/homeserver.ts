@@ -25,6 +25,7 @@ import { AppServiceService, type AppServiceRegistration } from "#core/appservice
 import { memoryRateLimiter, RateLimits, type RateLimitAction, type RateLimiter, type RateLimitRule } from "#core/ratelimit.ts";
 import { resolveUserAuth, type ResolvedUserAuth, type UserAuthAdapter } from "#adapters/auth.ts";
 import { memoryMedia, type MediaAdapter, type Thumbnailer } from "#adapters/media.ts";
+import { coalesceReads } from "#storage/batch.ts";
 import { memoryAdapter } from "#storage/memory.ts";
 import { schema } from "#storage/schema.ts";
 import type { DatabaseAdapter } from "#storage/types.ts";
@@ -260,7 +261,9 @@ export class Homeserver extends EventEmitter {
 
     const db = options.databaseAdapter as DatabaseAdapter | undefined;
     if (db && typeof db.findOne === "function") {
-      this.db = db;
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/43: reads issued together by
+      // concurrent requests go to the database as one statement.
+      this.db = coalesceReads(db);
     } else {
       this.logger.warn("No database adapter given; using in-memory storage (data is lost on restart)");
       this.db = memoryAdapter();

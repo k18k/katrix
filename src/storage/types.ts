@@ -27,6 +27,15 @@ export interface WhereClause {
 
 export type Row = Record<string, any>;
 
+/** How a `findManyBatch` is run. */
+export interface BatchOptions {
+  /**
+   * The combination of reads is a one-off (as when unrelated reads are coalesced), so preparing
+   * the statement for reuse would only fill the database's statement cache. Default true.
+   */
+  prepare?: boolean;
+}
+
 /** One read of a `findManyBatch`. */
 export interface BatchQuery {
   model: string;
@@ -55,7 +64,7 @@ export interface DatabaseAdapter {
    * an adapter that talks to a database server can send them in one round trip. Without it,
    * callers run the reads separately (see `readBatch`).
    */
-  findManyBatch?(queries: BatchQuery[]): Promise<Row[][]>;
+  findManyBatch?(queries: BatchQuery[], options?: BatchOptions): Promise<Row[][]>;
   /** Create tables / collections for the given schema. Must be idempotent. */
   migrate?(schema: Schema): Promise<void>;
   create(model: string, data: Row): Promise<void>;

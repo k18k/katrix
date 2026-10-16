@@ -1,12 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import type { BatchQuery, DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "#storage/types.ts";
+import type { BatchOptions, BatchQuery, DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "#storage/types.ts";
 
 export type SqlDialect = "sqlite" | "postgres" | "mysql";
 
 export interface SqlExecutor {
-  /** Run a query that returns rows. */
-  query(sql: string, params: unknown[]): Promise<Row[]>;
+  /** Run a query that returns rows; `prepare: false` when the statement is not worth preparing for reuse. */
+  query(sql: string, params: unknown[], options?: { prepare?: boolean }): Promise<Row[]>;
   /** Run a statement; resolve with the number of affected rows. */
   execute(sql: string, params: unknown[]): Promise<number>;
 }
@@ -247,7 +247,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
       // back as JSON, tagged with the read's index and their position in it.
       ...(dialect === "postgres"
         ? {
-            async findManyBatch(queries: BatchQuery[]) {
+            async findManyBatch(queries: BatchQuery[], options?: BatchOptions) {
               if (queries.length === 0) return [];
               const params: unknown[] = [];
               const parts = queries.map(({ model, opts = {} }, i) => {
@@ -263,7 +263,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
                 if (opts.limit !== undefined) inner += limitClause(opts.limit, params);
                 return `SELECT ${i} AS i, row_number() OVER (${order ? `ORDER BY ${order.replace(/^"/, 'b."')}` : ""}) AS n, to_jsonb(b) AS r FROM (${inner}) b`;
               });
-              const rows = await executor.query(`${parts.join(" UNION ALL ")} ORDER BY i, n`, params);
+              const rows = await executor.query(`${parts.join(" UNION ALL ")} ORDER BY i, n`, params, options);
               const out: Row[][] = queries.map(() => []);
               for (const row of rows) {
                 const r = typeof row.r === "string" ? JSON.parse(row.r) : row.r;
@@ -429,18 +429,19 @@ function statementNamer(enabled: boolean): StatementNamer {
 const isStalePlan = (err: unknown) => (err as { code?: string })?.code === "0A000" && /cached plan/.test(String((err as Error).message));
 
 const pgExecutor = (conn: PgQueryable, namer: StatementNamer): SqlExecutor => {
-  const run = async (sql: string, params: unknown[]) => {
+  const run = async (sql: string, params: unknown[], prepare = true) => {
+    const name = () => (prepare ? namer.name(sql) : undefined);
     try {
-      return await conn.query({ text: sql, values: params, name: namer.name(sql) });
+      return await conn.query({ text: sql, values: params, name: name() });
     } catch (err) {
       if (!isStalePlan(err)) throw err;
       namer.reset();
-      return conn.query({ text: sql, values: params, name: namer.name(sql) });
+      return conn.query({ text: sql, values: params, name: name() });
     }
   };
   return {
-    async query(sql, params) {
-      return (await run(sql, params)).rows;
+    async query(sql, params, options) {
+      return (await run(sql, params, options?.prepare)).rows;
     },
     async execute(sql, params) {
       return (await run(sql, params)).rowCount ?? 0;
