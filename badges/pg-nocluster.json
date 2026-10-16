@@ -1,1 +1,1 @@
-{"schemaVersion":1,"label":"load · Postgres","message":"439 req/s · delivery p95 4.3 s","color":"yellow"}
+{"schemaVersion":1,"label":"load · Postgres","message":"551 req/s · delivery p95 – · 100.0% failed","color":"red"}
