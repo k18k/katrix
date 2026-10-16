@@ -20,16 +20,23 @@ import { M, UNSTABLE } from "#core/m.ts";
 interface SyncToken {
   pos: number;
   toDevice: number;
+  /**
+   * The response with this token delivered to-device messages, so a sync with it acknowledges
+   * them. https://github.com/k18k/matrix-nodejs-homeserver/issues/42: every sync ran the delete,
+   * though almost none had anything to acknowledge. Deletes cover all positions up to `toDevice`,
+   * so messages delivered under an unmarked token go with the next acknowledgement.
+   */
+  ack?: boolean;
 }
 
 function parseSyncToken(raw: string | null): SyncToken | null {
   if (!raw) return null;
-  const m = /^s(\d+)(?:_(\d+))?$/.exec(raw);
+  const m = /^s(\d+)(?:_(\d+))?(_a)?$/.exec(raw);
   if (!m) throw errors.invalidParam("Invalid since token");
-  return { pos: Number(m[1]), toDevice: Number(m[2] ?? m[1]) };
+  return { pos: Number(m[1]), toDevice: Number(m[2] ?? m[1]), ack: !!m[3] };
 }
 
-const formatToken = (t: SyncToken) => `s${t.pos}_${t.toDevice}`;
+const formatToken = (t: SyncToken) => `s${t.pos}_${t.toDevice}${t.ack ? "_a" : ""}`;
 
 async function loadFilter(hs: Homeserver, userId: string, raw: string | null): Promise<SyncFilter> {
   if (!raw) return {};
@@ -406,7 +413,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   // https://github.com/k18k/matrix-nodejs-homeserver/issues/34: the reads that need only the user
   // and the token, in one round trip. Acknowledging to-device messages (a delete of positions up
   // to the previous token) runs alongside: it touches none of the rows read here.
-  const acknowledged = p.since
+  const acknowledged = p.since?.ack
     ? hs.db.delete("to_device", [...deviceWhere, { field: "stream", operator: "lte", value: p.since.toDevice }])
     : Promise.resolve(0);
   const [memberships, ignoredRows, toDeviceRows, oneTimeKeyRows, fallbackRows, accountRows = []] = await readBatch(hs.db, [
@@ -625,7 +632,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   if (profileUpdates) empty = false;
 
   const body: Record<string, any> = {
-    next_batch: formatToken({ pos: p.to, toDevice: nextToDevice }),
+    next_batch: formatToken({ pos: p.to, toDevice: nextToDevice, ack: toDevice.length > 0 }),
     // Empty sections are omitted, as clients (and Synapse) expect.
     rooms: Object.fromEntries(Object.entries({ join, invite, leave, knock }).filter(([, v]) => Object.keys(v).length)),
     presence: { events: presenceEvents },
