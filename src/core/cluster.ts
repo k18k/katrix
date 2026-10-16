@@ -124,15 +124,27 @@ export class StreamManager {
   private cluster: ClusterAdapter;
   private instanceId: string;
   private inflight = new Set<number>();
-  private published: { busy: boolean; pos: number } = { busy: false, pos: 0 };
-  private transition: Promise<void> = Promise.resolve();
+  /** Allocations waiting for a publish that covers them. */
+  private reserving = 0;
+  /** Allocations whose publish is done, asking the sequence for their position now. */
+  private allocating = 0;
+  /** The position of the last published busy state: below every position still being allocated. */
+  private lastPos = 0;
   private heartbeat: ReturnType<typeof setInterval>;
   private positionCache: { value: number; at: number } | null = null;
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/30: every allocation from idle and every
+  // completion used to append to one chain of round trips (read the sequence, write the state),
+  // so all stream writes of an instance completed one at a time. Publishes are now shared: a
+  // caller waits for the next publish that starts after its change, and everyone who changed
+  // state before that publish started rides on it (group commit). Publishes still run one after
+  // another, so a newer state is never overwritten by an older one.
+  private publishing: Promise<void> = Promise.resolve();
+  private nextPublish: Promise<void> | null = null;
 
   constructor(cluster: ClusterAdapter, instanceId: string) {
     this.cluster = cluster;
     this.instanceId = instanceId;
-    this.heartbeat = setInterval(() => void this.publishState().catch(() => {}), WRITER_TTL_MS / 3);
+    this.heartbeat = setInterval(() => void this.flush().catch(() => {}), WRITER_TTL_MS / 3);
     this.heartbeat.unref?.();
   }
 
@@ -140,21 +152,49 @@ export class StreamManager {
     return `writer:${this.instanceId}`;
   }
 
-  private async publishState(): Promise<void> {
-    await this.cluster.set(this.key(), this.published, WRITER_TTL_MS);
+  /** Publish this writer's state as it is when the publish starts; concurrent callers share it. */
+  private flush(): Promise<void> {
+    if (this.nextPublish) return this.nextPublish;
+    const run = async () => {
+      // From here on, changes need a later publish. The reservations so far are covered by this
+      // one: once it is out, they go on to take their positions.
+      this.nextPublish = null;
+      const covered = this.reserving;
+      const earlier = this.allocating;
+      this.reserving = 0;
+      this.allocating += covered;
+      // The published position must be below every position not yet persisted:
+      // - in flight: below the lowest one;
+      // - allocations covered by an earlier publish may be taking positions right now: that
+      //   publish's position is below them;
+      // - the ones covered now take theirs after this publish: the sequence as it is now.
+      const bounds: number[] = [];
+      if (this.inflight.size) bounds.push(Math.min(...this.inflight) - 1);
+      if (earlier) bounds.push(this.lastPos);
+      if (covered) bounds.push(await this.cluster.currentId("stream"));
+      const state = bounds.length ? { busy: true, pos: Math.min(...bounds) } : { busy: false, pos: 0 };
+      if (state.busy) this.lastPos = state.pos;
+      await this.cluster.set(this.key(), state, WRITER_TTL_MS);
+    };
+    const p = this.publishing.then(run, run);
+    this.nextPublish = p;
+    this.publishing = p.catch(() => {});
+    return p;
   }
 
   /** Allocate a position. The caller must call `done()` once its writes are committed. */
   async allocate(): Promise<StreamLease> {
-    // Become "busy" (with a conservative position) before allocating, so readers never overtake us.
-    await (this.transition = this.transition.then(async () => {
-      if (!this.published.busy) {
-        this.published = { busy: true, pos: await this.cluster.currentId("stream") };
-        await this.publishState();
-      }
-    }));
-    const id = await this.cluster.nextId("stream");
-    this.inflight.add(id);
+    // Be published as busy (with a position below anything we allocate) before allocating, so
+    // readers never overtake us. The publish moves this reservation to `allocating`.
+    this.reserving++;
+    let id: number;
+    try {
+      await this.flush();
+      id = await this.cluster.nextId("stream");
+      this.inflight.add(id);
+    } finally {
+      this.allocating--;
+    }
     let finished = false;
     const timer = setTimeout(() => void lease.done(), 60_000);
     timer.unref?.();
@@ -165,12 +205,7 @@ export class StreamManager {
         finished = true;
         clearTimeout(timer);
         this.inflight.delete(id);
-        await (this.transition = this.transition.then(async () => {
-          this.published = this.inflight.size
-            ? { busy: true, pos: Math.min(...this.inflight) - 1 }
-            : { busy: false, pos: await this.cluster.currentId("stream") };
-          await this.publishState();
-        }));
+        await this.flush();
         this.positionCache = null;
       },
     };
