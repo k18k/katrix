@@ -236,6 +236,9 @@ export class PushService {
         { field: "room_id", value: roomId },
         { field: "stream", operator: "gt", value: unthreaded },
       ],
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/36: whole rows (with each one's
+      // JSON actions) were read on every sync to be counted; the counts need these three columns.
+      fields: ["stream", "thread_id", "highlight"],
     });
     const room = { notification_count: 0, highlight_count: 0 };
     const threads: Record<string, { notification_count: number; highlight_count: number }> = {};

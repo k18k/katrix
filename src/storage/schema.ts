@@ -107,7 +107,8 @@ export const schema: Schema = {
     fields: { user_id: s, room_id: s, event_id: s, stream: n, highlight: b, thread_id: s, actions: j, ts: n },
     primaryKey: ["user_id", "event_id"],
     indexes: [
-      ["user_id", "room_id"],
+      // Unread counts read a user's notifications in a room after a position (#36).
+      ["user_id", "room_id", "stream"],
       ["user_id", "stream"],
     ],
   },
