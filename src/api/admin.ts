@@ -30,10 +30,18 @@ async function requireAdmin(ctx: RequestContext) {
   return s;
 }
 
+// https://github.com/k18k/matrix-nodejs-homeserver/issues/24: routes with a body schema checked the
+// body before their handler checked for an admin, so a non-admin got a body error (400) instead of
+// 403, and learned what the endpoint expects. They check for an admin as the procedure's guard,
+// which runs before the body.
+const adminGuard = async (ctx: RequestContext) => {
+  await requireAdmin(ctx);
+  return {};
+};
+
 /** Admin HTTP API using Synapse-compatible paths, so existing tooling keeps working. */
 export function registerAdminRoutes(r: Router): void {
   const notice = async (ctx: ProcedureContext<"none", z.output<typeof noticeBody>>) => {
-    await requireAdmin(ctx);
     const body = ctx.input;
     const eventId = await ctx.hs.admin.sendServerNotice(body.user_id, body.content, {
       type: body.type,
@@ -71,8 +79,8 @@ export function registerAdminRoutes(r: Router): void {
   r.get("/_matrix/client/v1/admin/suspend/:userId", procedure({ handler: suspend.get }));
   r.put("/_matrix/client/v1/admin/suspend/:userId", procedure({ handler: suspend.put }));
 
-  r.post("/_synapse/admin/v1/send_server_notice", procedure({ input: noticeBody, handler: notice }));
-  r.put("/_synapse/admin/v1/send_server_notice/:txnId", procedure({ input: noticeBody, handler: notice }));
+  r.post("/_synapse/admin/v1/send_server_notice", procedure({ guard: adminGuard, input: noticeBody, handler: notice }));
+  r.put("/_synapse/admin/v1/send_server_notice/:txnId", procedure({ guard: adminGuard, input: noticeBody, handler: notice }));
 
   r.get(
     "/_synapse/admin/v2/users",
@@ -135,9 +143,9 @@ export function registerAdminRoutes(r: Router): void {
   r.post(
     "/_synapse/admin/v1/deactivate/:userId",
     procedure({
+      guard: adminGuard,
       input: body({ erase: lenient(z.boolean()) }),
       handler: async (ctx) => {
-        await requireAdmin(ctx);
         const body = ctx.input;
         await ctx.hs.admin.deactivateUser(ctx.params.userId, { erase: body.erase === true });
         return { id_server_unbind_result: "no-support" };
@@ -151,9 +159,9 @@ export function registerAdminRoutes(r: Router): void {
   r.post(
     "/_synapse/admin/v1/reset_password/:userId",
     procedure({
+      guard: adminGuard,
       input: resetPasswordBody,
       handler: async (ctx) => {
-        await requireAdmin(ctx);
         const body = ctx.input;
         await ctx.hs.admin.resetPassword(ctx.params.userId, body.new_password, body.logout_devices !== false);
         return {};
@@ -173,9 +181,9 @@ export function registerAdminRoutes(r: Router): void {
   r.post(
     "/_synapse/admin/v1/registration_tokens/new",
     procedure({
+      guard: adminGuard,
       input: registrationTokenBody,
       handler: async (ctx) => {
-        await requireAdmin(ctx);
         const body = ctx.input;
         return ctx.hs.admin.createRegistrationToken({
           token: body.token,
