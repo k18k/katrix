@@ -1,45 +1,19 @@
 import { lookup } from "node:dns/promises";
-import { BlockList, isIP } from "node:net";
+import { isIP } from "node:net";
 import { errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
+import { isPrivateAddress } from "#core/outbound.ts";
 
 const MAX_BYTES = 1024 * 1024;
-
-const privateRanges = new BlockList();
-for (const [net, prefix] of [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["224.0.0.0", 4],
-  ["240.0.0.0", 4],
-] as const) {
-  privateRanges.addSubnet(net, prefix, "ipv4");
-}
-for (const [net, prefix] of [
-  ["::", 128],
-  ["::1", 128],
-  ["fc00::", 7],
-  ["fe80::", 10],
-  ["ff00::", 8],
-  ["::ffff:0:0", 96],
-] as const) {
-  privateRanges.addSubnet(net, prefix, "ipv6");
-}
 
 async function assertPublicHost(hostname: string): Promise<void> {
   const host = hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(host) ? [{ address: host, family: isIP(host) }] : await lookup(host, { all: true });
-  for (const { address, family } of addresses) {
-    if (privateRanges.check(address, family === 6 ? "ipv6" : "ipv4")) throw errors.forbidden("URL resolves to a private address");
+  for (const { address } of addresses) {
+    if (isPrivateAddress(address)) throw errors.forbidden("URL resolves to a private address");
   }
 }
 

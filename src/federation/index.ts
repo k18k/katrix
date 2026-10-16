@@ -25,6 +25,7 @@ import { FederationClient } from "#federation/client.ts";
 import { KeyRing } from "#federation/keyring.ts";
 import { TransactionSender } from "#federation/sender.ts";
 import { M } from "#core/m.ts";
+import { publicGet } from "#core/outbound.ts";
 
 export interface FederationOptions {
   /** Enable federation (talking to other homeservers). Default: false, so that a server only joins the network on purpose. */
@@ -37,6 +38,11 @@ export interface FederationOptions {
   allowedServers?: string[];
   /** Never federate with these servers. */
   blockedServers?: string[];
+  /**
+   * Let addresses that remote servers name (such as a media file's location) be private ones:
+   * localhost, LAN and other non-public ranges. Default: false. For test networks.
+   */
+  allowPrivateAddresses?: boolean;
 }
 
 export const domainOf = (id: string) => id.slice(id.indexOf(":") + 1);
@@ -1170,7 +1176,11 @@ export class FederationService {
   // ---------------------------------------------------------------------------
 
   /** Download remote media (authenticated federation endpoint, falling back to the legacy one). */
-  async fetchMedia(server: string, mediaId: string): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
+  async fetchMedia(
+    server: string,
+    mediaId: string,
+    maxBytes: number,
+  ): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
     this.requireEnabled();
     const res = await this.client.requestRaw(server, "GET", `/_matrix/federation/v1/media/download/${encodeURIComponent(mediaId)}`, {
       timeoutMs: 60_000,
@@ -1178,7 +1188,8 @@ export class FederationService {
     if (res.status === 200) {
       const ct = String(res.headers["content-type"] ?? "");
       const m = /boundary=("?)([^";]+)\1/.exec(ct);
-      if (ct.startsWith("multipart/") && m) return parseMultipartMedia(res.body, m[2], this);
+      if (ct.startsWith("multipart/") && m)
+        return parseMultipartMedia(res.body, m[2], { maxBytes, allowPrivateAddresses: this.options.allowPrivateAddresses === true });
     }
     const legacy = await this.client.requestRaw(
       server,
@@ -1247,7 +1258,7 @@ function filenameFromDisposition(header: string | undefined): string | null {
 async function parseMultipartMedia(
   body: Buffer,
   boundary: string,
-  fed: FederationService,
+  limits: { maxBytes: number; allowPrivateAddresses: boolean },
 ): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
   const delimiter = Buffer.from(`--${boundary}`);
   const parts: Buffer[] = [];
@@ -1269,15 +1280,23 @@ async function parseMultipartMedia(
     if (i > 0) headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
   }
   if (headers.location) {
-    const res = await fetch(headers.location, { signal: AbortSignal.timeout(60_000) });
-    if (!res.ok) throw errors.notFound("Remote media redirect failed");
+    // Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/20): SSRF, CWE-918. The
+    // location comes from the remote server, and was fetched with redirects and no address
+    // check, so a remote server could have this server read internal addresses and hand the
+    // responses to a local user. It is fetched over http(s) only, from public addresses checked
+    // on each connection and redirect, and with the media size limit.
+    const res = await publicGet(headers.location, {
+      maxBytes: limits.maxBytes,
+      allowPrivateAddresses: limits.allowPrivateAddresses,
+      timeoutMs: 60_000,
+    });
+    if (res.status !== 200) throw errors.notFound("Remote media redirect failed");
     return {
-      data: new Uint8Array(await res.arrayBuffer()),
-      contentType: res.headers.get("content-type"),
-      filename: filenameFromDisposition(res.headers.get("content-disposition") ?? undefined),
+      data: new Uint8Array(res.body),
+      contentType: (res.headers["content-type"] as string | undefined) ?? null,
+      filename: filenameFromDisposition(res.headers["content-disposition"] as string | undefined),
     };
   }
-  void fed;
   return {
     data: new Uint8Array(data),
     contentType: headers["content-type"] ?? null,

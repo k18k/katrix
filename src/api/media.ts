@@ -48,7 +48,7 @@ async function remoteMedia(ctx: RequestContext): Promise<{ data: Uint8Array; con
   }
   let fetched;
   try {
-    fetched = await hs.federation.fetchMedia(serverName, mediaId);
+    fetched = await hs.federation.fetchMedia(serverName, mediaId, maxUpload(hs));
   } catch (err) {
     if (err instanceof MatrixError) throw err;
     throw new MatrixError(502, "M_UNKNOWN", "Could not fetch remote media");
