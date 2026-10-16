@@ -8,6 +8,7 @@ import type { StoredEvent } from "#core/rooms.ts";
 import { assertNotSuspended, type Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
 import { matchesFilter, parseRoomEventFilter, type EventFilter } from "#api/filters.ts";
@@ -232,10 +233,10 @@ async function ownEvent(hs: Homeserver, userId: string, eventId: unknown): Promi
 const membershipBody = body({ user_id: lenient(z.string()), reason: lenient(z.string()) });
 
 async function sendMembership(
-  ctx: RequestContext<z.output<typeof membershipBody>>,
+  ctx: ProcedureContext<"user", z.output<typeof membershipBody>>,
   membership: "leave" | "ban" | "unban" | "kick",
 ): Promise<Record<string, never>> {
-  const s = await ctx.auth();
+  const s = ctx.session;
   const roomId = ctx.params.roomId;
   // Leaving (and rejecting invites) stays possible while suspended; moderating others does not.
   if (membership !== "leave") await assertNotSuspended(ctx.hs, s, roomId);
@@ -470,26 +471,40 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
 
 export function registerRoomRoutes(r: Router): void {
   // The room service checks the createRoom request in detail.
-  r.client("POST", "/createRoom", { input: body({}) }, async (ctx) => {
-    const s = await ctx.auth();
-    if (s.isGuest) throw errors.forbidden("Guests cannot create rooms");
-    await assertNotSuspended(ctx.hs, s);
-    await ctx.rateLimit("createRoom");
-    const created = await ctx.hs.rooms.createRoom(s.userId, ctx.input);
-    await ctx.hs.audit.record({ action: "room_create", actor: s.userId, target: created.room_id, ip: ctx.ip });
-    return created;
-  });
+  r.client(
+    "POST",
+    "/createRoom",
+    procedure({
+      auth: "user",
+      input: body({}),
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (s.isGuest) throw errors.forbidden("Guests cannot create rooms");
+        await assertNotSuspended(ctx.hs, s);
+        await ctx.rateLimit("createRoom");
+        const created = await ctx.hs.rooms.createRoom(s.userId, ctx.input);
+        await ctx.hs.audit.record({ action: "room_create", actor: s.userId, target: created.room_id, ip: ctx.ip });
+        return created;
+      },
+    }),
+  );
 
-  r.client("GET", "/joined_rooms", async (ctx) => {
-    const s = await ctx.auth();
-    return { joined_rooms: await ctx.hs.rooms.roomsForUser(s.userId) };
-  });
+  r.client(
+    "GET",
+    "/joined_rooms",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        return { joined_rooms: await ctx.hs.rooms.roomsForUser(s.userId) };
+      },
+    }),
+  );
 
   // Unknown keys of a join request become part of the membership event's content.
   const joinBody = body({ reason: lenient(z.string()), third_party_signed: z.unknown().optional() });
-  const join = async (ctx: RequestContext<z.output<typeof joinBody>>, idOrAlias: string) => {
-    const s = await ctx.auth();
-    await ctx.rateLimit("join");
+  const join = async (ctx: ProcedureContext<"user", z.output<typeof joinBody>>, idOrAlias: string) => {
+    const s = ctx.session;
     const body = ctx.input;
     const { roomId, servers: resolvedServers } = await ctx.hs.rooms.resolveRoom(idOrAlias);
     await assertNotSuspended(ctx.hs, s, roomId);
@@ -530,95 +545,145 @@ export function registerRoomRoutes(r: Router): void {
     await ctx.hs.rooms.join(s.userId, roomId, { reason, content: custom, servers });
     return { room_id: roomId };
   };
-  r.client("POST", "/rooms/:roomId/join", { input: joinBody }, (ctx) => join(ctx, ctx.params.roomId));
-  r.client("POST", "/join/:roomIdOrAlias", { input: joinBody }, (ctx) => join(ctx, ctx.params.roomIdOrAlias));
+  r.client(
+    "POST",
+    "/rooms/:roomId/join",
+    procedure({ auth: "user", rateLimit: "join", input: joinBody, handler: (ctx) => join(ctx, ctx.params.roomId) }),
+  );
+  r.client(
+    "POST",
+    "/join/:roomIdOrAlias",
+    procedure({ auth: "user", rateLimit: "join", input: joinBody, handler: (ctx) => join(ctx, ctx.params.roomIdOrAlias) }),
+  );
 
-  r.client("POST", "/knock/:roomIdOrAlias", { input: body({ reason: lenient(z.string()) }) }, async (ctx) => {
-    const s = await ctx.auth();
-    const body = ctx.input;
-    const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.roomIdOrAlias);
-    await assertNotSuspended(ctx.hs, s, roomId);
-    const via = [...ctx.query.getAll("via"), ...ctx.query.getAll("server_name"), ...servers];
-    await ctx.hs.rooms.setMembership(roomId, s.userId, s.userId, "knock", body.reason, via);
-    return { room_id: roomId };
-  });
+  r.client(
+    "POST",
+    "/knock/:roomIdOrAlias",
+    procedure({
+      auth: "user",
+      input: body({ reason: lenient(z.string()) }),
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = ctx.input;
+        const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.roomIdOrAlias);
+        await assertNotSuspended(ctx.hs, s, roomId);
+        const via = [...ctx.query.getAll("via"), ...ctx.query.getAll("server_name"), ...servers];
+        await ctx.hs.rooms.setMembership(roomId, s.userId, s.userId, "knock", body.reason, via);
+        return { room_id: roomId };
+      },
+    }),
+  );
 
   // Third-party invites (id_server, medium, address...) are checked in inviteByThreepid.
   const inviteBody = body({ user_id: lenient(z.string()), reason: lenient(z.string()) });
-  r.client("POST", "/rooms/:roomId/invite", { input: inviteBody }, async (ctx) => {
-    const s = await ctx.auth();
-    const body = ctx.input;
-    await assertNotSuspended(ctx.hs, s, ctx.params.roomId);
-    await ctx.rateLimit("invite");
-    if (body.id_server !== undefined || body.medium !== undefined) return inviteByThreepid(ctx, s, body);
-    if (!body.user_id || !isValidUserId(body.user_id)) throw errors.invalidParam("Invalid user_id");
-    await requireRoom(ctx.hs, ctx.params.roomId);
-    const current = await ctx.hs.rooms.membership(ctx.params.roomId, body.user_id);
-    if (current === "ban") throw errors.forbidden("User is banned");
-    if (current === "join") throw errors.forbidden("User is already joined");
-    await ctx.hs.rooms.invite(ctx.params.roomId, s.userId, body.user_id, { reason: body.reason });
-    return {};
-  });
+  r.client(
+    "POST",
+    "/rooms/:roomId/invite",
+    procedure({
+      auth: "user",
+      input: inviteBody,
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = ctx.input;
+        await assertNotSuspended(ctx.hs, s, ctx.params.roomId);
+        await ctx.rateLimit("invite");
+        if (body.id_server !== undefined || body.medium !== undefined) return inviteByThreepid(ctx, s, body);
+        if (!body.user_id || !isValidUserId(body.user_id)) throw errors.invalidParam("Invalid user_id");
+        await requireRoom(ctx.hs, ctx.params.roomId);
+        const current = await ctx.hs.rooms.membership(ctx.params.roomId, body.user_id);
+        if (current === "ban") throw errors.forbidden("User is banned");
+        if (current === "join") throw errors.forbidden("User is already joined");
+        await ctx.hs.rooms.invite(ctx.params.roomId, s.userId, body.user_id, { reason: body.reason });
+        return {};
+      },
+    }),
+  );
 
-  r.client("POST", "/rooms/:roomId/leave", { input: membershipBody }, (ctx) => sendMembership(ctx, "leave"));
-  r.client("POST", "/rooms/:roomId/kick", { input: membershipBody }, (ctx) => sendMembership(ctx, "kick"));
-  r.client("POST", "/rooms/:roomId/ban", { input: membershipBody }, (ctx) => sendMembership(ctx, "ban"));
-  r.client("POST", "/rooms/:roomId/unban", { input: membershipBody }, (ctx) => sendMembership(ctx, "unban"));
+  r.client(
+    "POST",
+    "/rooms/:roomId/leave",
+    procedure({ auth: "user", input: membershipBody, handler: (ctx) => sendMembership(ctx, "leave") }),
+  );
+  r.client(
+    "POST",
+    "/rooms/:roomId/kick",
+    procedure({ auth: "user", input: membershipBody, handler: (ctx) => sendMembership(ctx, "kick") }),
+  );
+  r.client("POST", "/rooms/:roomId/ban", procedure({ auth: "user", input: membershipBody, handler: (ctx) => sendMembership(ctx, "ban") }));
+  r.client(
+    "POST",
+    "/rooms/:roomId/unban",
+    procedure({ auth: "user", input: membershipBody, handler: (ctx) => sendMembership(ctx, "unban") }),
+  );
 
-  r.client("POST", "/rooms/:roomId/forget", async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    const row = await hs.db.findOne("memberships", [
-      { field: "room_id", value: ctx.params.roomId },
-      { field: "user_id", value: s.userId },
-    ]);
-    if (!row) throw errors.notFound("Not a member of this room");
-    if (row.membership === "join" || row.membership === "invite" || row.membership === "knock") {
-      throw errors.unknown("You must leave the room before forgetting it");
-    }
-    await hs.db.update(
-      "memberships",
-      [
-        { field: "room_id", value: ctx.params.roomId },
-        { field: "user_id", value: s.userId },
-      ],
-      { forgotten: true },
-    );
-    return {};
-  });
+  r.client(
+    "POST",
+    "/rooms/:roomId/forget",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const row = await hs.db.findOne("memberships", [
+          { field: "room_id", value: ctx.params.roomId },
+          { field: "user_id", value: s.userId },
+        ]);
+        if (!row) throw errors.notFound("Not a member of this room");
+        if (row.membership === "join" || row.membership === "invite" || row.membership === "knock") {
+          throw errors.unknown("You must leave the room before forgetting it");
+        }
+        await hs.db.update(
+          "memberships",
+          [
+            { field: "room_id", value: ctx.params.roomId },
+            { field: "user_id", value: s.userId },
+          ],
+          { forgotten: true },
+        );
+        return {};
+      },
+    }),
+  );
 
-  r.client("PUT", "/rooms/:roomId/send/:eventType/:txnId", async (ctx) => {
-    const s = await ctx.auth();
-    await ctx.rateLimit("message");
-    const content = await ctx.json();
-    await requireRoom(ctx.hs, ctx.params.roomId);
-    // Redactions sent through /send follow the same rule as /redact: own events only while suspended.
-    if (!(s.suspended && ctx.params.eventType === "m.room.redaction" && (await ownEvent(ctx.hs, s.userId, content?.redacts)))) {
-      await assertNotSuspended(ctx.hs, s, ctx.params.roomId);
-    }
-    const delay = ctx.query.get("org.matrix.msc4140.delay");
-    if (delay !== null) {
-      return {
-        delay_id: await ctx.hs.delayedEvents.schedule({
-          userId: s.userId,
-          deviceId: s.deviceId,
-          roomId: ctx.params.roomId,
-          type: ctx.params.eventType,
-          content,
-          delayMs: Number(delay),
-          txnId: ctx.params.txnId,
-        }),
-      };
-    }
-    const ts = s.appservice && ctx.query.get("ts") ? Number(ctx.query.get("ts")) : undefined;
-    const eventId = await ctx.hs.rooms.sendEvent(
-      ctx.params.roomId,
-      s.userId,
-      { type: ctx.params.eventType, content },
-      { txnId: ctx.params.txnId, deviceId: s.deviceId || undefined, ts },
-    );
-    return { event_id: eventId };
-  });
+  r.client(
+    "PUT",
+    "/rooms/:roomId/send/:eventType/:txnId",
+    procedure({
+      auth: "user",
+      rateLimit: "message",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const content = await ctx.json();
+        await requireRoom(ctx.hs, ctx.params.roomId);
+        // Redactions sent through /send follow the same rule as /redact: own events only while suspended.
+        if (!(s.suspended && ctx.params.eventType === "m.room.redaction" && (await ownEvent(ctx.hs, s.userId, content?.redacts)))) {
+          await assertNotSuspended(ctx.hs, s, ctx.params.roomId);
+        }
+        const delay = ctx.query.get("org.matrix.msc4140.delay");
+        if (delay !== null) {
+          return {
+            delay_id: await ctx.hs.delayedEvents.schedule({
+              userId: s.userId,
+              deviceId: s.deviceId,
+              roomId: ctx.params.roomId,
+              type: ctx.params.eventType,
+              content,
+              delayMs: Number(delay),
+              txnId: ctx.params.txnId,
+            }),
+          };
+        }
+        const ts = s.appservice && ctx.query.get("ts") ? Number(ctx.query.get("ts")) : undefined;
+        const eventId = await ctx.hs.rooms.sendEvent(
+          ctx.params.roomId,
+          s.userId,
+          { type: ctx.params.eventType, content },
+          { txnId: ctx.params.txnId, deviceId: s.deviceId || undefined, ts },
+        );
+        return { event_id: eventId };
+      },
+    }),
+  );
 
   const putState = async (ctx: RequestContext) => {
     const s = await ctx.auth();
@@ -652,8 +717,8 @@ export function registerRoomRoutes(r: Router): void {
     const eventId = await ctx.hs.rooms.sendEvent(roomId, s.userId, { type, state_key: key, content }, { ts });
     return { event_id: eventId };
   };
-  r.client("PUT", "/rooms/:roomId/state/:eventType", putState);
-  r.client("PUT", "/rooms/:roomId/state/:eventType/:stateKey", putState);
+  r.client("PUT", "/rooms/:roomId/state/:eventType", procedure({ handler: putState }));
+  r.client("PUT", "/rooms/:roomId/state/:eventType/:stateKey", procedure({ handler: putState }));
 
   const getStateEvent = async (ctx: RequestContext) => {
     const s = await ctx.auth();
@@ -664,182 +729,239 @@ export function registerRoomRoutes(r: Router): void {
       return ctx.hs.rooms.formatEvent({ pdu: ev, stream: 0, snapshot: 0, txnId: null, txnToken: null });
     return ev.content;
   };
-  r.client("GET", "/rooms/:roomId/state/:eventType", getStateEvent);
-  r.client("GET", "/rooms/:roomId/state/:eventType/:stateKey", getStateEvent);
+  r.client("GET", "/rooms/:roomId/state/:eventType", procedure({ handler: getStateEvent }));
+  r.client("GET", "/rooms/:roomId/state/:eventType/:stateKey", procedure({ handler: getStateEvent }));
 
-  r.client("GET", "/rooms/:roomId/state", async (ctx) => {
-    const s = await ctx.auth();
-    const state = await visibleState(ctx.hs, ctx.params.roomId, s.userId);
-    return [...state.values()].map((ev) => toClientEvent(ev)) as unknown as Record<string, unknown>;
-  });
+  r.client(
+    "GET",
+    "/rooms/:roomId/state",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const state = await visibleState(ctx.hs, ctx.params.roomId, s.userId);
+        return [...state.values()].map((ev) => toClientEvent(ev)) as unknown as Record<string, unknown>;
+      },
+    }),
+  );
 
-  r.client("GET", "/rooms/:roomId/members", async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    // The member list is only known once a partial-state join has completed (MSC3902).
-    await hs.partialState.waitForFullState(ctx.params.roomId, ctx.request.signal);
-    let state = await visibleState(hs, ctx.params.roomId, s.userId);
-    const at = parseToken(ctx.query.get("at"));
-    if (at !== null) {
-      const rows = await hs.db.findMany("events", {
-        where: [
-          { field: "room_id", value: ctx.params.roomId },
-          { field: "stream", operator: "lte", value: at },
-        ],
-        sortBy: { field: "stream", direction: "desc" },
-        limit: 1,
-      });
-      if (rows[0]) {
-        state = await hs.rooms.stateAtSnapshot(rows[0].state_snapshot);
-      } else {
-        // Tokens from before the room existed resolve to the room's initial state (creator joined).
-        const first = await hs.db.findMany("events", {
-          where: [{ field: "room_id", value: ctx.params.roomId }],
-          sortBy: { field: "stream", direction: "asc" },
-          limit: 2,
+  r.client(
+    "GET",
+    "/rooms/:roomId/members",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        // The member list is only known once a partial-state join has completed (MSC3902).
+        await hs.partialState.waitForFullState(ctx.params.roomId, ctx.request.signal);
+        let state = await visibleState(hs, ctx.params.roomId, s.userId);
+        const at = parseToken(ctx.query.get("at"));
+        if (at !== null) {
+          const rows = await hs.db.findMany("events", {
+            where: [
+              { field: "room_id", value: ctx.params.roomId },
+              { field: "stream", operator: "lte", value: at },
+            ],
+            sortBy: { field: "stream", direction: "desc" },
+            limit: 1,
+          });
+          if (rows[0]) {
+            state = await hs.rooms.stateAtSnapshot(rows[0].state_snapshot);
+          } else {
+            // Tokens from before the room existed resolve to the room's initial state (creator joined).
+            const first = await hs.db.findMany("events", {
+              where: [{ field: "room_id", value: ctx.params.roomId }],
+              sortBy: { field: "stream", direction: "asc" },
+              limit: 2,
+            });
+            if (first.length) state = await hs.rooms.stateAtSnapshot(first[first.length - 1].state_snapshot);
+          }
+        }
+        const membership = ctx.query.get("membership");
+        const notMembership = ctx.query.get("not_membership");
+        const chunk = [];
+        for (const [k, ev] of state) {
+          if (splitStateKey(k)[0] !== "m.room.member") continue;
+          const m = ev.content?.membership;
+          if (membership && m !== membership) continue;
+          if (notMembership && m === notMembership) continue;
+          chunk.push(toClientEvent(ev));
+        }
+        return { chunk };
+      },
+    }),
+  );
+
+  r.client(
+    "GET",
+    "/rooms/:roomId/joined_members",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        await requireRoom(ctx.hs, ctx.params.roomId);
+        await ctx.hs.partialState.waitForFullState(ctx.params.roomId, ctx.request.signal);
+        const { joined: isJoined, worldReadable } = await ctx.hs.rooms.canPeek(ctx.params.roomId, s.userId);
+        if (!isJoined && !worldReadable) throw errors.forbidden("You are not joined to this room");
+        const state = await ctx.hs.rooms.currentState(ctx.params.roomId);
+        const joined: Record<string, any> = {};
+        for (const [k, ev] of state) {
+          const [type, key] = splitStateKey(k);
+          if (type !== "m.room.member" || ev.content?.membership !== "join") continue;
+          joined[key] = { display_name: ev.content.displayname ?? null, avatar_url: ev.content.avatar_url ?? null };
+        }
+        return { joined };
+      },
+    }),
+  );
+
+  r.client(
+    "GET",
+    "/rooms/:roomId/messages",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const roomId = ctx.params.roomId;
+        await visibleState(hs, roomId, s.userId);
+        const dir = ctx.query.get("dir") ?? "b";
+        if (dir !== "b" && dir !== "f") throw errors.invalidParam("dir must be 'b' or 'f'");
+        const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 1), 1000);
+        const filter = parseRoomEventFilter(ctx);
+        const fromRaw = ctx.query.get("from");
+        const from: PageToken | null =
+          parsePageToken(fromRaw) ?? (dir === "b" ? { depth: null, stream: await hs.streams.position() } : null);
+        const to = parsePageToken(ctx.query.get("to"));
+        let { events, end } = await paginate(hs, s.userId, roomId, { from, to, dir, limit: filter?.limit ?? limit, filter });
+        // Reached a gap (e.g. history before we joined) or the start of our copy: ask other servers.
+        for (let attempt = 0; attempt < 3 && dir === "b"; attempt++) {
+          const gapEvent = await findGapBefore(hs, roomId, events, end);
+          const fetched = gapEvent
+            ? await backfillGap(hs, roomId, gapEvent)
+            : end === null && events.length < (filter?.limit ?? limit) && (await backfillIfNeeded(hs, roomId));
+          if (!fetched) break;
+          ({ events, end } = await paginate(hs, s.userId, roomId, { from, to, dir, limit: filter?.limit ?? limit, filter }));
+        }
+        const out: Record<string, any> = {
+          chunk: events.map((e) => hs.rooms.formatEvent(e, viewerOf(s))),
+          start: fromRaw ?? (from ? (from.depth === null ? `s${from.stream}` : `t${from.depth}_${from.stream}`) : "t0_0"),
+        };
+        if (end !== null) out.end = end;
+        else if (events.length) out.end = topoToken(events[events.length - 1]);
+        if (filter?.lazy_load_members) {
+          const current = await hs.rooms.currentState(roomId);
+          const senders = new Set(events.map((e) => e.pdu.sender));
+          out.state = [...senders]
+            .map((u) => getState(current, "m.room.member", u))
+            .filter(Boolean)
+            .map((e) => toClientEvent(e!));
+        }
+        return out;
+      },
+    }),
+  );
+
+  r.client(
+    "GET",
+    "/rooms/:roomId/event/:eventId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        await requireRoom(hs, ctx.params.roomId);
+        const ev = await hs.rooms.getEvent(ctx.params.eventId);
+        if (!ev || ev.pdu.room_id !== ctx.params.roomId) throw errors.notFound("Event not found");
+        const visible = await hs.rooms.filterVisible(s.userId, ctx.params.roomId, [ev]);
+        if (visible.length === 0) throw errors.notFound("Event not found");
+        return hs.rooms.formatEvent(ev, viewerOf(s)) as unknown as Record<string, unknown>;
+      },
+    }),
+  );
+
+  r.client(
+    "GET",
+    "/rooms/:roomId/context/:eventId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const roomId = ctx.params.roomId;
+        await requireRoom(hs, roomId);
+        const ev = await hs.rooms.getEvent(ctx.params.eventId);
+        if (!ev || ev.pdu.room_id !== roomId || (await hs.rooms.filterVisible(s.userId, roomId, [ev])).length === 0) {
+          throw errors.notFound("Event not found");
+        }
+        const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 0), 100);
+        const filter = parseRoomEventFilter(ctx);
+        const here = { depth: ev.pdu.depth, stream: ev.stream };
+        const before = await paginate(hs, s.userId, roomId, {
+          from: here,
+          to: null,
+          dir: "b",
+          limit: Math.floor(limit / 2) || (limit ? 1 : 0),
+          filter,
         });
-        if (first.length) state = await hs.rooms.stateAtSnapshot(first[first.length - 1].state_snapshot);
-      }
-    }
-    const membership = ctx.query.get("membership");
-    const notMembership = ctx.query.get("not_membership");
-    const chunk = [];
-    for (const [k, ev] of state) {
-      if (splitStateKey(k)[0] !== "m.room.member") continue;
-      const m = ev.content?.membership;
-      if (membership && m !== membership) continue;
-      if (notMembership && m === notMembership) continue;
-      chunk.push(toClientEvent(ev));
-    }
-    return { chunk };
-  });
+        const after = await paginate(hs, s.userId, roomId, { from: here, to: null, dir: "f", limit: Math.ceil(limit / 2), filter });
+        const beforeEvents = limit ? before.events : [];
+        const afterEvents = limit ? after.events : [];
+        const state = await hs.rooms.stateAtSnapshot(ev.snapshot);
+        return {
+          event: hs.rooms.formatEvent(ev, viewerOf(s)),
+          events_before: beforeEvents.map((e) => hs.rooms.formatEvent(e, viewerOf(s))),
+          events_after: afterEvents.map((e) => hs.rooms.formatEvent(e, viewerOf(s))),
+          start: topoToken(beforeEvents.length ? beforeEvents[beforeEvents.length - 1] : ev),
+          end: topoToken(afterEvents.length ? afterEvents[afterEvents.length - 1] : ev),
+          state: [...state.values()].map((e) => toClientEvent(e)),
+        };
+      },
+    }),
+  );
 
-  r.client("GET", "/rooms/:roomId/joined_members", async (ctx) => {
-    const s = await ctx.auth();
-    await requireRoom(ctx.hs, ctx.params.roomId);
-    await ctx.hs.partialState.waitForFullState(ctx.params.roomId, ctx.request.signal);
-    const { joined: isJoined, worldReadable } = await ctx.hs.rooms.canPeek(ctx.params.roomId, s.userId);
-    if (!isJoined && !worldReadable) throw errors.forbidden("You are not joined to this room");
-    const state = await ctx.hs.rooms.currentState(ctx.params.roomId);
-    const joined: Record<string, any> = {};
-    for (const [k, ev] of state) {
-      const [type, key] = splitStateKey(k);
-      if (type !== "m.room.member" || ev.content?.membership !== "join") continue;
-      joined[key] = { display_name: ev.content.displayname ?? null, avatar_url: ev.content.avatar_url ?? null };
-    }
-    return { joined };
-  });
+  r.client(
+    "PUT",
+    "/rooms/:roomId/redact/:eventId/:txnId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = await ctx.json();
+        const roomId = ctx.params.roomId;
+        await requireRoom(ctx.hs, roomId);
+        if (!(await ownEvent(ctx.hs, s.userId, ctx.params.eventId))) await assertNotSuspended(ctx.hs, s, roomId);
+        await ctx.hs.rooms.checkRedactionAllowed(roomId, s.userId, ctx.params.eventId);
+        const content: Record<string, any> = {};
+        if (typeof body.reason === "string") content.reason = body.reason;
+        const eventId = await ctx.hs.rooms.sendEvent(
+          roomId,
+          s.userId,
+          { type: "m.room.redaction", content, redacts: ctx.params.eventId },
+          { txnId: ctx.params.txnId, deviceId: s.deviceId },
+        );
+        return { event_id: eventId };
+      },
+    }),
+  );
 
-  r.client("GET", "/rooms/:roomId/messages", async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    const roomId = ctx.params.roomId;
-    await visibleState(hs, roomId, s.userId);
-    const dir = ctx.query.get("dir") ?? "b";
-    if (dir !== "b" && dir !== "f") throw errors.invalidParam("dir must be 'b' or 'f'");
-    const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 1), 1000);
-    const filter = parseRoomEventFilter(ctx);
-    const fromRaw = ctx.query.get("from");
-    const from: PageToken | null = parsePageToken(fromRaw) ?? (dir === "b" ? { depth: null, stream: await hs.streams.position() } : null);
-    const to = parsePageToken(ctx.query.get("to"));
-    let { events, end } = await paginate(hs, s.userId, roomId, { from, to, dir, limit: filter?.limit ?? limit, filter });
-    // Reached a gap (e.g. history before we joined) or the start of our copy: ask other servers.
-    for (let attempt = 0; attempt < 3 && dir === "b"; attempt++) {
-      const gapEvent = await findGapBefore(hs, roomId, events, end);
-      const fetched = gapEvent
-        ? await backfillGap(hs, roomId, gapEvent)
-        : end === null && events.length < (filter?.limit ?? limit) && (await backfillIfNeeded(hs, roomId));
-      if (!fetched) break;
-      ({ events, end } = await paginate(hs, s.userId, roomId, { from, to, dir, limit: filter?.limit ?? limit, filter }));
-    }
-    const out: Record<string, any> = {
-      chunk: events.map((e) => hs.rooms.formatEvent(e, viewerOf(s))),
-      start: fromRaw ?? (from ? (from.depth === null ? `s${from.stream}` : `t${from.depth}_${from.stream}`) : "t0_0"),
-    };
-    if (end !== null) out.end = end;
-    else if (events.length) out.end = topoToken(events[events.length - 1]);
-    if (filter?.lazy_load_members) {
-      const current = await hs.rooms.currentState(roomId);
-      const senders = new Set(events.map((e) => e.pdu.sender));
-      out.state = [...senders]
-        .map((u) => getState(current, "m.room.member", u))
-        .filter(Boolean)
-        .map((e) => toClientEvent(e!));
-    }
-    return out;
-  });
-
-  r.client("GET", "/rooms/:roomId/event/:eventId", async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    await requireRoom(hs, ctx.params.roomId);
-    const ev = await hs.rooms.getEvent(ctx.params.eventId);
-    if (!ev || ev.pdu.room_id !== ctx.params.roomId) throw errors.notFound("Event not found");
-    const visible = await hs.rooms.filterVisible(s.userId, ctx.params.roomId, [ev]);
-    if (visible.length === 0) throw errors.notFound("Event not found");
-    return hs.rooms.formatEvent(ev, viewerOf(s)) as unknown as Record<string, unknown>;
-  });
-
-  r.client("GET", "/rooms/:roomId/context/:eventId", async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    const roomId = ctx.params.roomId;
-    await requireRoom(hs, roomId);
-    const ev = await hs.rooms.getEvent(ctx.params.eventId);
-    if (!ev || ev.pdu.room_id !== roomId || (await hs.rooms.filterVisible(s.userId, roomId, [ev])).length === 0) {
-      throw errors.notFound("Event not found");
-    }
-    const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 0), 100);
-    const filter = parseRoomEventFilter(ctx);
-    const here = { depth: ev.pdu.depth, stream: ev.stream };
-    const before = await paginate(hs, s.userId, roomId, {
-      from: here,
-      to: null,
-      dir: "b",
-      limit: Math.floor(limit / 2) || (limit ? 1 : 0),
-      filter,
-    });
-    const after = await paginate(hs, s.userId, roomId, { from: here, to: null, dir: "f", limit: Math.ceil(limit / 2), filter });
-    const beforeEvents = limit ? before.events : [];
-    const afterEvents = limit ? after.events : [];
-    const state = await hs.rooms.stateAtSnapshot(ev.snapshot);
-    return {
-      event: hs.rooms.formatEvent(ev, viewerOf(s)),
-      events_before: beforeEvents.map((e) => hs.rooms.formatEvent(e, viewerOf(s))),
-      events_after: afterEvents.map((e) => hs.rooms.formatEvent(e, viewerOf(s))),
-      start: topoToken(beforeEvents.length ? beforeEvents[beforeEvents.length - 1] : ev),
-      end: topoToken(afterEvents.length ? afterEvents[afterEvents.length - 1] : ev),
-      state: [...state.values()].map((e) => toClientEvent(e)),
-    };
-  });
-
-  r.client("PUT", "/rooms/:roomId/redact/:eventId/:txnId", async (ctx) => {
-    const s = await ctx.auth();
-    const body = await ctx.json();
-    const roomId = ctx.params.roomId;
-    await requireRoom(ctx.hs, roomId);
-    if (!(await ownEvent(ctx.hs, s.userId, ctx.params.eventId))) await assertNotSuspended(ctx.hs, s, roomId);
-    await ctx.hs.rooms.checkRedactionAllowed(roomId, s.userId, ctx.params.eventId);
-    const content: Record<string, any> = {};
-    if (typeof body.reason === "string") content.reason = body.reason;
-    const eventId = await ctx.hs.rooms.sendEvent(
-      roomId,
-      s.userId,
-      { type: "m.room.redaction", content, redacts: ctx.params.eventId },
-      { txnId: ctx.params.txnId, deviceId: s.deviceId },
-    );
-    return { event_id: eventId };
-  });
-
-  r.client("PUT", "/rooms/:roomId/typing/:userId", async (ctx) => {
-    const s = await ctx.auth();
-    if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot set typing for another user");
-    const body = await ctx.json();
-    if (typeof body.typing !== "boolean") throw errors.badJson("typing must be a boolean");
-    await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
-    await ctx.hs.typing.setTyping(ctx.params.roomId, s.userId, body.typing, Number(body.timeout) || 30000);
-    return {};
-  });
+  r.client(
+    "PUT",
+    "/rooms/:roomId/typing/:userId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot set typing for another user");
+        const body = await ctx.json();
+        if (typeof body.typing !== "boolean") throw errors.badJson("typing must be a boolean");
+        await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
+        await ctx.hs.typing.setTyping(ctx.params.roomId, s.userId, body.typing, Number(body.timeout) || 30000);
+        return {};
+      },
+    }),
+  );
 
   const RECEIPT_TYPES = ["m.read", "m.read.private", "m.fully_read"];
   const setReceipt = async (hs: Homeserver, s: Session, roomId: string, type: string, eventId: string, threadId?: string) => {
@@ -870,108 +992,164 @@ export function registerRoomRoutes(r: Router): void {
   const receiptBody = body({
     thread_id: z.string(fail("M_INVALID_PARAM", "Invalid thread_id")).min(1, "M_INVALID_PARAM: Invalid thread_id").optional(),
   });
-  r.client("POST", "/rooms/:roomId/receipt/:receiptType/:eventId", { input: receiptBody }, async (ctx) => {
-    const s = await ctx.auth();
-    if (!RECEIPT_TYPES.includes(ctx.params.receiptType)) throw errors.invalidParam("Unknown receipt type");
-    const body = ctx.input;
-    await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
-    await setReceipt(ctx.hs, s, ctx.params.roomId, ctx.params.receiptType, ctx.params.eventId, body.thread_id);
-    return {};
-  });
+  r.client(
+    "POST",
+    "/rooms/:roomId/receipt/:receiptType/:eventId",
+    procedure({
+      auth: "user",
+      input: receiptBody,
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (!RECEIPT_TYPES.includes(ctx.params.receiptType)) throw errors.invalidParam("Unknown receipt type");
+        const body = ctx.input;
+        await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
+        await setReceipt(ctx.hs, s, ctx.params.roomId, ctx.params.receiptType, ctx.params.eventId, body.thread_id);
+        return {};
+      },
+    }),
+  );
 
   // Keys are receipt types; values that are not event IDs are ignored.
-  r.client("POST", "/rooms/:roomId/read_markers", { input: body({}) }, async (ctx) => {
-    const s = await ctx.auth();
-    const body: Record<string, unknown> = ctx.input;
-    await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
-    for (const type of RECEIPT_TYPES) {
-      const eventId = body[type];
-      if (typeof eventId === "string") await setReceipt(ctx.hs, s, ctx.params.roomId, type, eventId);
-    }
-    return {};
-  });
+  r.client(
+    "POST",
+    "/rooms/:roomId/read_markers",
+    procedure({
+      auth: "user",
+      input: body({}),
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body: Record<string, unknown> = ctx.input;
+        await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
+        for (const type of RECEIPT_TYPES) {
+          const eventId = body[type];
+          if (typeof eventId === "string") await setReceipt(ctx.hs, s, ctx.params.roomId, type, eventId);
+        }
+        return {};
+      },
+    }),
+  );
 
   // --- Aliases & directory ---------------------------------------------------
 
-  r.client("GET", "/directory/room/:alias", async (ctx) => {
-    if (!isValidAlias(ctx.params.alias)) throw errors.invalidParam("Invalid alias");
-    const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.alias);
-    const inRoom = (await ctx.hs.rooms.exists(roomId))
-      ? [...(await ctx.hs.federation.roomDestinations(roomId, await ctx.hs.rooms.currentState(roomId)))]
-      : [];
-    return { room_id: roomId, servers: [...new Set([...servers, ...inRoom])] };
-  });
+  r.client(
+    "GET",
+    "/directory/room/:alias",
+    procedure({
+      handler: async (ctx) => {
+        if (!isValidAlias(ctx.params.alias)) throw errors.invalidParam("Invalid alias");
+        const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.alias);
+        const inRoom = (await ctx.hs.rooms.exists(roomId))
+          ? [...(await ctx.hs.federation.roomDestinations(roomId, await ctx.hs.rooms.currentState(roomId)))]
+          : [];
+        return { room_id: roomId, servers: [...new Set([...servers, ...inRoom])] };
+      },
+    }),
+  );
 
-  r.client("PUT", "/directory/room/:alias", async (ctx) => {
-    const s = await ctx.auth();
-    const body = await ctx.json();
-    const alias = ctx.params.alias;
-    if (!isValidAlias(alias) || /\s/.test(alias)) throw errors.invalidParam("Invalid alias");
-    if (parseId(alias, "#")!.server !== ctx.hs.serverName) throw errors.invalidParam("Alias must be on this server");
-    if (!isValidRoomId(body.room_id)) throw errors.invalidParam("Invalid room_id");
-    if (!(await ctx.hs.rooms.exists(body.room_id))) throw errors.notFound("Room not found");
-    const owner = ctx.hs.appservices.exclusiveAliasOwner(alias);
-    if (owner && s.appservice !== owner) throw errors.exclusive("This alias is reserved by an application service");
-    if (await ctx.hs.db.findOne("room_aliases", [{ field: "alias", value: alias }])) {
-      throw new MatrixError(409, "M_UNKNOWN", "Room alias already exists");
-    }
-    await ctx.hs.db.create("room_aliases", { alias, room_id: body.room_id, creator: s.userId });
-    return {};
-  });
+  r.client(
+    "PUT",
+    "/directory/room/:alias",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = await ctx.json();
+        const alias = ctx.params.alias;
+        if (!isValidAlias(alias) || /\s/.test(alias)) throw errors.invalidParam("Invalid alias");
+        if (parseId(alias, "#")!.server !== ctx.hs.serverName) throw errors.invalidParam("Alias must be on this server");
+        if (!isValidRoomId(body.room_id)) throw errors.invalidParam("Invalid room_id");
+        if (!(await ctx.hs.rooms.exists(body.room_id))) throw errors.notFound("Room not found");
+        const owner = ctx.hs.appservices.exclusiveAliasOwner(alias);
+        if (owner && s.appservice !== owner) throw errors.exclusive("This alias is reserved by an application service");
+        if (await ctx.hs.db.findOne("room_aliases", [{ field: "alias", value: alias }])) {
+          throw new MatrixError(409, "M_UNKNOWN", "Room alias already exists");
+        }
+        await ctx.hs.db.create("room_aliases", { alias, room_id: body.room_id, creator: s.userId });
+        return {};
+      },
+    }),
+  );
 
-  r.client("DELETE", "/directory/room/:alias", async (ctx) => {
-    const s = await ctx.auth();
-    const row = await ctx.hs.db.findOne("room_aliases", [{ field: "alias", value: ctx.params.alias }]);
-    if (!row) throw errors.notFound("Room alias not found");
-    if (!(await canDeleteAlias(ctx.hs, s, row))) throw errors.forbidden("You may not delete this alias");
-    await ctx.hs.db.delete("room_aliases", [{ field: "alias", value: ctx.params.alias }]);
-    // Remove the alias from the room's canonical alias event, too.
-    const canonical = getState(await ctx.hs.rooms.currentState(row.room_id), "m.room.canonical_alias");
-    if (canonical) {
-      const content = { ...canonical.content };
-      let changed = false;
-      if (content.alias === ctx.params.alias) {
-        delete content.alias;
-        changed = true;
-      }
-      if (Array.isArray(content.alt_aliases) && content.alt_aliases.includes(ctx.params.alias)) {
-        content.alt_aliases = content.alt_aliases.filter((a: string) => a !== ctx.params.alias);
-        changed = true;
-      }
-      if (changed) {
-        await ctx.hs.rooms.sendEvent(row.room_id, s.userId, { type: "m.room.canonical_alias", state_key: "", content }).catch(() => {});
-      }
-    }
-    return {};
-  });
+  r.client(
+    "DELETE",
+    "/directory/room/:alias",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const row = await ctx.hs.db.findOne("room_aliases", [{ field: "alias", value: ctx.params.alias }]);
+        if (!row) throw errors.notFound("Room alias not found");
+        if (!(await canDeleteAlias(ctx.hs, s, row))) throw errors.forbidden("You may not delete this alias");
+        await ctx.hs.db.delete("room_aliases", [{ field: "alias", value: ctx.params.alias }]);
+        // Remove the alias from the room's canonical alias event, too.
+        const canonical = getState(await ctx.hs.rooms.currentState(row.room_id), "m.room.canonical_alias");
+        if (canonical) {
+          const content = { ...canonical.content };
+          let changed = false;
+          if (content.alias === ctx.params.alias) {
+            delete content.alias;
+            changed = true;
+          }
+          if (Array.isArray(content.alt_aliases) && content.alt_aliases.includes(ctx.params.alias)) {
+            content.alt_aliases = content.alt_aliases.filter((a: string) => a !== ctx.params.alias);
+            changed = true;
+          }
+          if (changed) {
+            await ctx.hs.rooms.sendEvent(row.room_id, s.userId, { type: "m.room.canonical_alias", state_key: "", content }).catch(() => {});
+          }
+        }
+        return {};
+      },
+    }),
+  );
 
-  r.client("GET", "/rooms/:roomId/aliases", async (ctx) => {
-    const s = await ctx.auth();
-    await visibleState(ctx.hs, ctx.params.roomId, s.userId);
-    const rows = await ctx.hs.db.findMany("room_aliases", { where: [{ field: "room_id", value: ctx.params.roomId }] });
-    return { aliases: rows.map((r) => r.alias) };
-  });
+  r.client(
+    "GET",
+    "/rooms/:roomId/aliases",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        await visibleState(ctx.hs, ctx.params.roomId, s.userId);
+        const rows = await ctx.hs.db.findMany("room_aliases", { where: [{ field: "room_id", value: ctx.params.roomId }] });
+        return { aliases: rows.map((r) => r.alias) };
+      },
+    }),
+  );
 
-  r.client("GET", "/directory/list/room/:roomId", async (ctx) => {
-    const row = await ctx.hs.db.findOne("rooms", [{ field: "room_id", value: ctx.params.roomId }]);
-    if (!row) throw errors.notFound("Room not found");
-    return { visibility: row.is_public ? "public" : "private" };
-  });
+  r.client(
+    "GET",
+    "/directory/list/room/:roomId",
+    procedure({
+      handler: async (ctx) => {
+        const row = await ctx.hs.db.findOne("rooms", [{ field: "room_id", value: ctx.params.roomId }]);
+        if (!row) throw errors.notFound("Room not found");
+        return { visibility: row.is_public ? "public" : "private" };
+      },
+    }),
+  );
 
-  r.client("PUT", "/directory/list/room/:roomId", async (ctx) => {
-    const s = await ctx.auth();
-    const body = await ctx.json();
-    if (!["public", "private"].includes(body.visibility)) throw errors.invalidParam("Invalid visibility");
-    const version = await ctx.hs.rooms.roomVersion(ctx.params.roomId);
-    if (!version) throw errors.notFound("Room not found");
-    const state = await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
-    const pl = powerLevels(state, version);
-    if (!s.isAdmin && userLevel(pl, s.userId) < (pl.events["m.room.canonical_alias"] ?? pl.state_default)) {
-      throw errors.forbidden("Insufficient power level");
-    }
-    await ctx.hs.db.update("rooms", [{ field: "room_id", value: ctx.params.roomId }], { is_public: body.visibility === "public" });
-    return {};
-  });
+  r.client(
+    "PUT",
+    "/directory/list/room/:roomId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = await ctx.json();
+        if (!["public", "private"].includes(body.visibility)) throw errors.invalidParam("Invalid visibility");
+        const version = await ctx.hs.rooms.roomVersion(ctx.params.roomId);
+        if (!version) throw errors.notFound("Room not found");
+        const state = await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
+        const pl = powerLevels(state, version);
+        if (!s.isAdmin && userLevel(pl, s.userId) < (pl.events["m.room.canonical_alias"] ?? pl.state_default)) {
+          throw errors.forbidden("Insufficient power level");
+        }
+        await ctx.hs.db.update("rooms", [{ field: "room_id", value: ctx.params.roomId }], { is_public: body.visibility === "public" });
+        return {};
+      },
+    }),
+  );
 
   const remoteOrLocal = async (ctx: RequestContext, body: Record<string, any>) => {
     const server = ctx.query.get("server");
@@ -983,22 +1161,37 @@ export function registerRoomRoutes(r: Router): void {
     }
     return publicRooms(ctx, body);
   };
-  r.client("GET", "/publicRooms", (ctx) => remoteOrLocal(ctx, {}));
+  r.client("GET", "/publicRooms", procedure({ handler: (ctx) => remoteOrLocal(ctx, {}) }));
   // The directory query (limit, since, filter...) is read leniently by remoteOrLocal.
-  r.client("POST", "/publicRooms", { input: body({}) }, async (ctx) => {
-    await ctx.auth();
-    return remoteOrLocal(ctx, ctx.input);
-  });
+  r.client(
+    "POST",
+    "/publicRooms",
+    procedure({
+      auth: "user",
+      input: body({}),
+      handler: async (ctx) => {
+        return remoteOrLocal(ctx, ctx.input);
+      },
+    }),
+  );
 
   const upgradeBody = body({
     new_version: z.string(fail("M_BAD_JSON", "Missing new_version")),
     additional_creators: z.unknown().optional(),
   });
-  r.client("POST", "/rooms/:roomId/upgrade", { input: upgradeBody }, async (ctx) => {
-    const s = await ctx.auth();
-    const body = ctx.input;
-    return { replacement_room: await upgradeRoom(ctx.hs, s, ctx.params.roomId, body.new_version, body.additional_creators) };
-  });
+  r.client(
+    "POST",
+    "/rooms/:roomId/upgrade",
+    procedure({
+      auth: "user",
+      input: upgradeBody,
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = ctx.input;
+        return { replacement_room: await upgradeRoom(ctx.hs, s, ctx.params.roomId, body.new_version, body.additional_creators) };
+      },
+    }),
+  );
 
   // --- Content reports ------------------------------------------------------------
   const reportBody = body({
@@ -1010,8 +1203,8 @@ export function registerRoomRoutes(r: Router): void {
       .optional(),
     reason: z.string(fail("M_BAD_JSON", "reason must be a string")).optional(),
   });
-  const report = async (ctx: RequestContext<z.output<typeof reportBody>>) => {
-    const s = await ctx.auth();
+  const report = async (ctx: ProcedureContext<"user", z.output<typeof reportBody>>) => {
+    const s = ctx.session;
     const hs = ctx.hs;
     const roomId = ctx.params.roomId;
     await requireRoom(hs, roomId);
@@ -1023,7 +1216,6 @@ export function registerRoomRoutes(r: Router): void {
     } else if ((await hs.rooms.membership(roomId, s.userId)) !== "join") {
       throw errors.notFound("Room not found");
     }
-    // Validated only now: a report about an event the reporter cannot see is a 404 whatever the body.
     const body = ctx.input;
     const id = await hs.cluster.nextId("event_reports");
     await hs.db.create("event_reports", {
@@ -1052,136 +1244,167 @@ export function registerRoomRoutes(r: Router): void {
   r.client(
     "POST",
     "/users/:userId/report",
-    { input: body({ reason: z.string(fail("M_BAD_JSON", "reason must be a string")) }) },
-    async (ctx) => {
-      const s = await ctx.auth();
-      const hs = ctx.hs;
-      const body = ctx.input;
-      const userId = ctx.params.userId;
-      if (!isValidUserId(userId)) throw errors.invalidParam("Invalid user ID");
-      // Only local accounts can be checked; reports about remote users are kept as they are.
-      if (hs.isLocalUser(userId) && !(await hs.db.findOne("users", [{ field: "user_id", value: userId }])))
-        throw errors.notFound("Unknown user");
-      const id = await hs.cluster.nextId("user_reports");
-      await hs.db.create("user_reports", { id, ts: Date.now(), user_id: userId, reporter: s.userId, reason: body.reason, resolved: false });
-      await hs.audit.record({ action: "user_report", actor: s.userId, target: userId, details: { report_id: id } });
-      if (hs.adminRoom)
-        void hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch(() => {});
-      return {};
-    },
+    procedure({
+      auth: "user",
+      input: body({ reason: z.string(fail("M_BAD_JSON", "reason must be a string")) }),
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const body = ctx.input;
+        const userId = ctx.params.userId;
+        if (!isValidUserId(userId)) throw errors.invalidParam("Invalid user ID");
+        // Only local accounts can be checked; reports about remote users are kept as they are.
+        if (hs.isLocalUser(userId) && !(await hs.db.findOne("users", [{ field: "user_id", value: userId }])))
+          throw errors.notFound("Unknown user");
+        const id = await hs.cluster.nextId("user_reports");
+        await hs.db.create("user_reports", {
+          id,
+          ts: Date.now(),
+          user_id: userId,
+          reporter: s.userId,
+          reason: body.reason,
+          resolved: false,
+        });
+        await hs.audit.record({ action: "user_report", actor: s.userId, target: userId, details: { report_id: id } });
+        if (hs.adminRoom)
+          void hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch(() => {});
+        return {};
+      },
+    }),
   );
 
   r.client(
     "GET",
     "/mutual_rooms",
-    async (ctx) => {
-      const s = await ctx.auth();
-      const other = ctx.query.get("user_id");
-      if (other === null) throw errors.missingParam("Missing user_id");
-      if (!isValidUserId(other)) throw errors.invalidParam("Invalid user_id");
-      if (other === s.userId) throw errors.invalidParam("user_id must not be your own");
-      const theirs = new Set(await ctx.hs.rooms.roomsForUser(other));
-      const joined = (await ctx.hs.rooms.roomsForUser(s.userId)).filter((r) => theirs.has(r)).sort();
-      // Paginated by room ID: `from` is the last room ID of the previous batch.
-      const from = ctx.query.get("from");
-      const start = from === null ? 0 : joined.findIndex((r) => r > from);
-      if (from !== null && !isValidRoomId(from)) throw errors.invalidParam("Invalid from token");
-      const page = start < 0 ? [] : joined.slice(start, start + 100);
-      const out: Record<string, unknown> = { joined: page, count: joined.length };
-      if (start >= 0 && start + 100 < joined.length) out.next_batch = page[page.length - 1];
-      return out;
-    },
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const other = ctx.query.get("user_id");
+        if (other === null) throw errors.missingParam("Missing user_id");
+        if (!isValidUserId(other)) throw errors.invalidParam("Invalid user_id");
+        if (other === s.userId) throw errors.invalidParam("user_id must not be your own");
+        const theirs = new Set(await ctx.hs.rooms.roomsForUser(other));
+        const joined = (await ctx.hs.rooms.roomsForUser(s.userId)).filter((r) => theirs.has(r)).sort();
+        // Paginated by room ID: `from` is the last room ID of the previous batch.
+        const from = ctx.query.get("from");
+        const start = from === null ? 0 : joined.findIndex((r) => r > from);
+        if (from !== null && !isValidRoomId(from)) throw errors.invalidParam("Invalid from token");
+        const page = start < 0 ? [] : joined.slice(start, start + 100);
+        const out: Record<string, unknown> = { joined: page, count: joined.length };
+        if (start >= 0 && start + 100 < joined.length) out.next_batch = page[page.length - 1];
+        return out;
+      },
+    }),
     ["v1"],
   );
 
-  r.client("POST", "/rooms/:roomId/report/:eventId", { input: reportBody }, report);
-  r.client("POST", "/rooms/:roomId/report", { input: reportBody }, report);
+  r.client("POST", "/rooms/:roomId/report/:eventId", procedure({ auth: "user", input: reportBody, handler: report }));
+  r.client("POST", "/rooms/:roomId/report", procedure({ auth: "user", input: reportBody, handler: report }));
 
-  r.client("GET", "/admin/whois/:userId", async (ctx) => {
-    const s = await ctx.auth();
-    const userId = ctx.params.userId;
-    if (userId !== s.userId && !s.isAdmin) throw errors.forbidden("Only server admins can look up other users");
-    if (!ctx.hs.isLocalUser(userId)) throw errors.notFound("Unknown user");
-    const devices = await ctx.hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
-    const out: Record<string, any> = {};
-    for (const d of devices) {
-      out[d.device_id] = { sessions: [{ connections: d.last_seen_ip ? [{ ip: d.last_seen_ip, last_seen: d.last_seen_ts }] : [] }] };
-    }
-    return { user_id: userId, devices: out };
-  });
+  r.client(
+    "GET",
+    "/admin/whois/:userId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const userId = ctx.params.userId;
+        if (userId !== s.userId && !s.isAdmin) throw errors.forbidden("Only server admins can look up other users");
+        if (!ctx.hs.isLocalUser(userId)) throw errors.notFound("Unknown user");
+        const devices = await ctx.hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
+        const out: Record<string, any> = {};
+        for (const d of devices) {
+          out[d.device_id] = { sessions: [{ connections: d.last_seen_ip ? [{ ip: d.last_seen_ip, last_seen: d.last_seen_ts }] : [] }] };
+        }
+        return { user_id: userId, devices: out };
+      },
+    }),
+  );
 
   // Application service network-specific room directory.
-  r.client("PUT", "/directory/list/appservice/:networkId/:roomId", async (ctx) => {
-    const s = await ctx.auth();
-    if (!s.appservice) throw errors.forbidden("Only application services may use this endpoint");
-    const body = await ctx.json();
-    if (!["public", "private"].includes(body.visibility)) throw errors.invalidParam("Invalid visibility");
-    if (!(await ctx.hs.rooms.exists(ctx.params.roomId))) throw errors.notFound("Room not found");
-    await ctx.hs.db.update("rooms", [{ field: "room_id", value: ctx.params.roomId }], { is_public: body.visibility === "public" });
-    return {};
-  });
+  r.client(
+    "PUT",
+    "/directory/list/appservice/:networkId/:roomId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (!s.appservice) throw errors.forbidden("Only application services may use this endpoint");
+        const body = await ctx.json();
+        if (!["public", "private"].includes(body.visibility)) throw errors.invalidParam("Invalid visibility");
+        if (!(await ctx.hs.rooms.exists(ctx.params.roomId))) throw errors.notFound("Room not found");
+        await ctx.hs.db.update("rooms", [{ field: "room_id", value: ctx.params.roomId }], { is_public: body.visibility === "public" });
+        return {};
+      },
+    }),
+  );
 
   const relVersions = ["v1", "v3"];
-  r.client("GET", "/rooms/:roomId/relations/:eventId", relations, relVersions);
-  r.client("GET", "/rooms/:roomId/relations/:eventId/:relType", relations, relVersions);
-  r.client("GET", "/rooms/:roomId/relations/:eventId/:relType/:eventType", relations, relVersions);
-  r.client("GET", "/rooms/:roomId/threads", threads, ["v1"]);
+  r.client("GET", "/rooms/:roomId/relations/:eventId", procedure({ handler: relations }), relVersions);
+  r.client("GET", "/rooms/:roomId/relations/:eventId/:relType", procedure({ handler: relations }), relVersions);
+  r.client("GET", "/rooms/:roomId/relations/:eventId/:relType/:eventType", procedure({ handler: relations }), relVersions);
+  r.client("GET", "/rooms/:roomId/threads", procedure({ handler: threads }), ["v1"]);
 
   r.client(
     "GET",
     "/rooms/:roomId/timestamp_to_event",
-    async (ctx) => {
-      const s = await ctx.auth();
-      const hs = ctx.hs;
-      const roomId = ctx.params.roomId;
-      await visibleState(hs, roomId, s.userId);
-      const ts = Number(ctx.query.get("ts"));
-      const dir = ctx.query.get("dir");
-      if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
-      let local: { event_id: string; origin_server_ts: number } | null = null;
-      const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }] });
-      // Equal timestamps: the topologically nearest event in the search direction wins.
-      rows.sort((a, b) =>
-        dir === "f"
-          ? a.json.origin_server_ts - b.json.origin_server_ts || a.depth - b.depth || a.stream - b.stream
-          : b.json.origin_server_ts - a.json.origin_server_ts || b.depth - a.depth || b.stream - a.stream,
-      );
-      for (const row of rows) {
-        const t = row.json.origin_server_ts;
-        if (!(dir === "f" ? t >= ts : t <= ts)) continue;
-        const visible = await hs.rooms.filterVisible(s.userId, roomId, [hs.rooms.rowToStored(row)]);
-        if (visible.length) {
-          local = { event_id: row.event_id, origin_server_ts: t };
-          break;
-        }
-      }
-      // A closer event may exist on another server (e.g. history we never backfilled).
-      if (hs.federation.enabled) {
-        for (const server of hs.federation.serversInRoom(await hs.rooms.currentState(roomId))) {
-          try {
-            const remote = await hs.federation.client.request(
-              server,
-              "GET",
-              `/_matrix/federation/v1/timestamp_to_event/${encodeURIComponent(roomId)}`,
-              { query: { ts: String(ts), dir }, timeoutMs: 10_000 },
-            );
-            if (typeof remote.event_id !== "string" || typeof remote.origin_server_ts !== "number") continue;
-            const closer =
-              !local || (dir === "f" ? remote.origin_server_ts < local.origin_server_ts : remote.origin_server_ts > local.origin_server_ts);
-            if (closer) {
-              // Make sure we have the event locally so clients can paginate from it.
-              if (!(await hs.rooms.getEvent(remote.event_id))) await hs.federation.backfill(roomId, [remote.event_id], 1).catch(() => 0);
-              local = { event_id: remote.event_id, origin_server_ts: remote.origin_server_ts };
-            }
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const roomId = ctx.params.roomId;
+        await visibleState(hs, roomId, s.userId);
+        const ts = Number(ctx.query.get("ts"));
+        const dir = ctx.query.get("dir");
+        if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
+        let local: { event_id: string; origin_server_ts: number } | null = null;
+        const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }] });
+        // Equal timestamps: the topologically nearest event in the search direction wins.
+        rows.sort((a, b) =>
+          dir === "f"
+            ? a.json.origin_server_ts - b.json.origin_server_ts || a.depth - b.depth || a.stream - b.stream
+            : b.json.origin_server_ts - a.json.origin_server_ts || b.depth - a.depth || b.stream - a.stream,
+        );
+        for (const row of rows) {
+          const t = row.json.origin_server_ts;
+          if (!(dir === "f" ? t >= ts : t <= ts)) continue;
+          const visible = await hs.rooms.filterVisible(s.userId, roomId, [hs.rooms.rowToStored(row)]);
+          if (visible.length) {
+            local = { event_id: row.event_id, origin_server_ts: t };
             break;
-          } catch {
-            /* try the next server */
           }
         }
-      }
-      if (!local) throw errors.notFound("No event found");
-      return local;
-    },
+        // A closer event may exist on another server (e.g. history we never backfilled).
+        if (hs.federation.enabled) {
+          for (const server of hs.federation.serversInRoom(await hs.rooms.currentState(roomId))) {
+            try {
+              const remote = await hs.federation.client.request(
+                server,
+                "GET",
+                `/_matrix/federation/v1/timestamp_to_event/${encodeURIComponent(roomId)}`,
+                { query: { ts: String(ts), dir }, timeoutMs: 10_000 },
+              );
+              if (typeof remote.event_id !== "string" || typeof remote.origin_server_ts !== "number") continue;
+              const closer =
+                !local ||
+                (dir === "f" ? remote.origin_server_ts < local.origin_server_ts : remote.origin_server_ts > local.origin_server_ts);
+              if (closer) {
+                // Make sure we have the event locally so clients can paginate from it.
+                if (!(await hs.rooms.getEvent(remote.event_id))) await hs.federation.backfill(roomId, [remote.event_id], 1).catch(() => 0);
+                local = { event_id: remote.event_id, origin_server_ts: remote.origin_server_ts };
+              }
+              break;
+            } catch {
+              /* try the next server */
+            }
+          }
+        }
+        if (!local) throw errors.notFound("No event found");
+        return local;
+      },
+    }),
     ["v1", "v3"],
   );
 }

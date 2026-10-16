@@ -5,6 +5,7 @@ import { toClientEvent, type PDU } from "#core/events.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
 
 // MSC2836: threading via `m.relationship` with tree walks (`/event_relationships`).
@@ -173,54 +174,70 @@ async function fetchRemote(hs: Homeserver, roomId: string, req: WalkRequest, rem
 
 export function registerRelationshipRoutes(r: Router): void {
   // The request is checked by parseRequest, shared with the federation endpoint.
-  r.post("/_matrix/client/unstable/event_relationships", { input: body({}) }, async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    const req = parseRequest(ctx.input);
-    const roomOf = async () => req.room_id ?? (await hs.rooms.getPdu(req.event_id))?.room_id ?? null;
-    const roomId = await roomOf();
-    if (!roomId) throw errors.forbidden("Unknown event");
-    if ((await hs.rooms.membership(roomId, s.userId)) !== "join") {
-      // Non-members may only read world-readable rooms.
-      const hv = getState(await hs.rooms.currentState(roomId), "m.room.history_visibility")?.content?.history_visibility;
-      if (hv !== "world_readable") throw errors.forbidden("You are not in this room");
-    }
-    const canSee = async (pdu: PDU) => {
-      if (pdu.room_id !== roomId) return false;
-      const ev = await hs.rooms.getEvent(pdu.event_id!);
-      if (!ev) return true; // Outliers carry no state; room membership was checked above.
-      return (await hs.rooms.filterVisible(s.userId, roomId, [ev])).length > 0;
-    };
-
-    // Fill gaps from remote servers until the local view is complete (bounded).
-    const asked = new Set<string>();
-    const remoteHashes = new Map<string, string>();
-    let result: Awaited<ReturnType<typeof walk>> = { events: [], limited: false, root: null };
-    for (let round = 0; round < 4; round++) {
-      const missing = new Set<string>();
-      result = await walk(hs, req, canSee, missing);
-      const wanted: WalkRequest[] = [];
-      for (const id of missing) {
-        if (asked.has(id)) continue;
-        asked.add(id);
-        wanted.push(id === req.event_id ? req : { ...req, event_id: id, direction: "up", include_parent: false, include_children: false });
-      }
-      for (const pdu of result.events) {
-        const remote = remoteHashes.get(pdu.event_id!);
-        if (!remote || asked.has(`children:${pdu.event_id}`)) continue;
-        if (remote !== (await childrenSummary(hs, pdu.event_id!)).children_hash) {
-          asked.add(`children:${pdu.event_id}`);
-          wanted.push({ ...req, event_id: pdu.event_id!, direction: "down", max_depth: 1, include_parent: false, include_children: false });
+  r.post(
+    "/_matrix/client/unstable/event_relationships",
+    procedure({
+      auth: "user",
+      input: body({}),
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const req = parseRequest(ctx.input);
+        const roomOf = async () => req.room_id ?? (await hs.rooms.getPdu(req.event_id))?.room_id ?? null;
+        const roomId = await roomOf();
+        if (!roomId) throw errors.forbidden("Unknown event");
+        if ((await hs.rooms.membership(roomId, s.userId)) !== "join") {
+          // Non-members may only read world-readable rooms.
+          const hv = getState(await hs.rooms.currentState(roomId), "m.room.history_visibility")?.content?.history_visibility;
+          if (hv !== "world_readable") throw errors.forbidden("You are not in this room");
         }
-      }
-      if (!wanted.length) break;
-      for (const w of wanted) await fetchRemote(hs, roomId, w, remoteHashes);
-    }
-    if (!result.root) throw errors.notFound("Event not found");
-    const events = [];
-    for (const pdu of result.events) events.push(toClientEvent(await withChildren(hs, pdu)));
-    return { events, limited: result.limited, next_batch: null };
-  });
+        const canSee = async (pdu: PDU) => {
+          if (pdu.room_id !== roomId) return false;
+          const ev = await hs.rooms.getEvent(pdu.event_id!);
+          if (!ev) return true; // Outliers carry no state; room membership was checked above.
+          return (await hs.rooms.filterVisible(s.userId, roomId, [ev])).length > 0;
+        };
+
+        // Fill gaps from remote servers until the local view is complete (bounded).
+        const asked = new Set<string>();
+        const remoteHashes = new Map<string, string>();
+        let result: Awaited<ReturnType<typeof walk>> = { events: [], limited: false, root: null };
+        for (let round = 0; round < 4; round++) {
+          const missing = new Set<string>();
+          result = await walk(hs, req, canSee, missing);
+          const wanted: WalkRequest[] = [];
+          for (const id of missing) {
+            if (asked.has(id)) continue;
+            asked.add(id);
+            wanted.push(
+              id === req.event_id ? req : { ...req, event_id: id, direction: "up", include_parent: false, include_children: false },
+            );
+          }
+          for (const pdu of result.events) {
+            const remote = remoteHashes.get(pdu.event_id!);
+            if (!remote || asked.has(`children:${pdu.event_id}`)) continue;
+            if (remote !== (await childrenSummary(hs, pdu.event_id!)).children_hash) {
+              asked.add(`children:${pdu.event_id}`);
+              wanted.push({
+                ...req,
+                event_id: pdu.event_id!,
+                direction: "down",
+                max_depth: 1,
+                include_parent: false,
+                include_children: false,
+              });
+            }
+          }
+          if (!wanted.length) break;
+          for (const w of wanted) await fetchRemote(hs, roomId, w, remoteHashes);
+        }
+        if (!result.root) throw errors.notFound("Event not found");
+        const events = [];
+        for (const pdu of result.events) events.push(toClientEvent(await withChildren(hs, pdu)));
+        return { events, limited: result.limited, next_batch: null };
+      },
+    }),
+  );
 }
 
 /** Server side of `/_matrix/federation/unstable/event_relationships`. */

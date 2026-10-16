@@ -366,6 +366,19 @@ npm run build                    # tsdown → dist/ (what the published package 
 node examples/node-http.ts       # development runs the TypeScript sources directly (type stripping)
 ```
 
+Endpoints are procedures (`src/http/procedure.ts`): a route declares what it needs and a
+handler, and the procedure checks the request in a fixed order (authentication, rate limit,
+body, then the response) before and after the handler runs:
+
+```ts
+r.client("POST", "/rooms/:roomId/invite", procedure({
+  auth: "user",                 // ctx.session (or "optional", "none")
+  rateLimit: "invite",
+  input: body({ user_id: lenient(z.string()), reason: lenient(z.string()) }), // ctx.input
+  handler: async (ctx) => { /* ctx.hs, ctx.session, ctx.input, ctx.params */ },
+}));
+```
+
 Inside `src`, modules import each other through the package's
 [subpath imports](https://nodejs.org/api/packages.html#subpath-imports): `#core/errors.ts` is
 `src/core/errors.ts`. The build turns them back into relative imports.

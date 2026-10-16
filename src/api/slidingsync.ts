@@ -4,7 +4,8 @@ import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
 import { isObject } from "#core/json.ts";
 import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
+import type { Router } from "#http/router.ts";
+import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { z } from "zod";
 import { body as bodySchema, lenient } from "#http/input.ts";
 
@@ -92,13 +93,16 @@ function matchesRequiredState(required: RequiredState, type: string, key: string
 }
 
 export function registerSlidingSyncRoutes(r: Router): void {
-  r.post("/_matrix/client/unstable/org.matrix.simplified_msc3575/sync", { input: slidingSyncBody }, slidingSync);
-  r.post("/_matrix/client/v5/sync", { input: slidingSyncBody }, slidingSync);
+  r.post(
+    "/_matrix/client/unstable/org.matrix.simplified_msc3575/sync",
+    procedure({ auth: "user", input: slidingSyncBody, handler: slidingSync }),
+  );
+  r.post("/_matrix/client/v5/sync", procedure({ auth: "user", input: slidingSyncBody, handler: slidingSync }));
 }
 
-async function slidingSync(ctx: RequestContext<z.output<typeof slidingSyncBody>>) {
+async function slidingSync(ctx: ProcedureContext<"user", z.output<typeof slidingSyncBody>>) {
   const hs = ctx.hs;
-  const s = await ctx.auth();
+  const s = ctx.session;
   const body = ctx.input;
   const connId = body.conn_id ?? "";
   const posParam = ctx.query.get("pos");

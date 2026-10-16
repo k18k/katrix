@@ -2,6 +2,7 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, fail } from "#http/input.ts";
 
@@ -72,23 +73,31 @@ async function requireCurrentVersion(ctx: RequestContext, userId: string) {
 }
 
 export function registerBackupRoutes(r: Router): void {
-  r.client("POST", "/room_keys/version", { input: createVersionBody }, async (ctx) => {
-    const s = await ctx.auth();
-    const body = ctx.input;
-    const max = (await ctx.hs.db.findMany("backup_versions", { where: [{ field: "user_id", value: s.userId }] })).reduce(
-      (m, v) => Math.max(m, v.version),
-      0,
-    );
-    await ctx.hs.db.create("backup_versions", {
-      user_id: s.userId,
-      version: max + 1,
-      algorithm: body.algorithm,
-      auth_data: body.auth_data,
-      etag: 0,
-      deleted: false,
-    });
-    return { version: String(max + 1) };
-  });
+  r.client(
+    "POST",
+    "/room_keys/version",
+    procedure({
+      auth: "user",
+      input: createVersionBody,
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = ctx.input;
+        const max = (await ctx.hs.db.findMany("backup_versions", { where: [{ field: "user_id", value: s.userId }] })).reduce(
+          (m, v) => Math.max(m, v.version),
+          0,
+        );
+        await ctx.hs.db.create("backup_versions", {
+          user_id: s.userId,
+          version: max + 1,
+          algorithm: body.algorithm,
+          auth_data: body.auth_data,
+          etag: 0,
+          deleted: false,
+        });
+        return { version: String(max + 1) };
+      },
+    }),
+  );
 
   const getVersionHandler = async (ctx: RequestContext) => {
     const s = await ctx.auth();
@@ -96,46 +105,60 @@ export function registerBackupRoutes(r: Router): void {
     if (!row) throw errors.notFound("No backup found");
     return describe(ctx.hs, row);
   };
-  r.client("GET", "/room_keys/version", getVersionHandler);
-  r.client("GET", "/room_keys/version/:version", getVersionHandler);
+  r.client("GET", "/room_keys/version", procedure({ handler: getVersionHandler }));
+  r.client("GET", "/room_keys/version/:version", procedure({ handler: getVersionHandler }));
 
-  r.client("PUT", "/room_keys/version/:version", async (ctx) => {
-    const s = await ctx.auth();
-    const body = await ctx.json();
-    const row = await getVersion(ctx.hs, s.userId, ctx.params.version);
-    if (!row) throw errors.notFound("Unknown backup version");
-    if (body.version !== undefined && String(body.version) !== ctx.params.version) throw errors.invalidParam("Version mismatch");
-    if (body.algorithm !== row.algorithm) throw errors.invalidParam("Algorithm cannot be changed");
-    if (!isObject(body.auth_data)) throw errors.badJson("auth_data is required");
-    await ctx.hs.db.update(
-      "backup_versions",
-      [
-        { field: "user_id", value: s.userId },
-        { field: "version", value: row.version },
-      ],
-      { auth_data: body.auth_data },
-    );
-    return {};
-  });
+  r.client(
+    "PUT",
+    "/room_keys/version/:version",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = await ctx.json();
+        const row = await getVersion(ctx.hs, s.userId, ctx.params.version);
+        if (!row) throw errors.notFound("Unknown backup version");
+        if (body.version !== undefined && String(body.version) !== ctx.params.version) throw errors.invalidParam("Version mismatch");
+        if (body.algorithm !== row.algorithm) throw errors.invalidParam("Algorithm cannot be changed");
+        if (!isObject(body.auth_data)) throw errors.badJson("auth_data is required");
+        await ctx.hs.db.update(
+          "backup_versions",
+          [
+            { field: "user_id", value: s.userId },
+            { field: "version", value: row.version },
+          ],
+          { auth_data: body.auth_data },
+        );
+        return {};
+      },
+    }),
+  );
 
-  r.client("DELETE", "/room_keys/version/:version", async (ctx) => {
-    const s = await ctx.auth();
-    const row = await getVersion(ctx.hs, s.userId, ctx.params.version);
-    if (!row) throw errors.notFound("Unknown backup version");
-    await ctx.hs.db.update(
-      "backup_versions",
-      [
-        { field: "user_id", value: s.userId },
-        { field: "version", value: row.version },
-      ],
-      { deleted: true },
-    );
-    await ctx.hs.db.delete("backup_keys", [
-      { field: "user_id", value: s.userId },
-      { field: "version", value: row.version },
-    ]);
-    return {};
-  });
+  r.client(
+    "DELETE",
+    "/room_keys/version/:version",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const row = await getVersion(ctx.hs, s.userId, ctx.params.version);
+        if (!row) throw errors.notFound("Unknown backup version");
+        await ctx.hs.db.update(
+          "backup_versions",
+          [
+            { field: "user_id", value: s.userId },
+            { field: "version", value: row.version },
+          ],
+          { deleted: true },
+        );
+        await ctx.hs.db.delete("backup_keys", [
+          { field: "user_id", value: s.userId },
+          { field: "version", value: row.version },
+        ]);
+        return {};
+      },
+    }),
+  );
 
   const putKeys = async (ctx: RequestContext) => {
     const s = await ctx.auth();
@@ -222,8 +245,8 @@ export function registerBackupRoutes(r: Router): void {
   };
 
   for (const path of ["/room_keys/keys", "/room_keys/keys/:roomId", "/room_keys/keys/:roomId/:sessionId"]) {
-    r.client("PUT", path, putKeys);
-    r.client("GET", path, getKeys);
-    r.client("DELETE", path, deleteKeys);
+    r.client("PUT", path, procedure({ handler: putKeys }));
+    r.client("GET", path, procedure({ handler: getKeys }));
+    r.client("DELETE", path, procedure({ handler: deleteKeys }));
   }
 }

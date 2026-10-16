@@ -4,7 +4,8 @@ import { isValidRoomId } from "#core/ids.ts";
 import type { Session } from "#core/auth.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
+import type { Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 import { paginate, visibleState } from "#api/rooms.ts";
 
 // Endpoints from before /sync (deprecated since r0 but still in the spec), and room previews
@@ -69,88 +70,116 @@ async function eventsSince(hs: Homeserver, s: Session, roomIds: string[], from: 
 }
 
 export function registerLegacyRoutes(r: Router): void {
-  r.client("GET", "/initialSync", async (ctx) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 0), 100);
-    const memberships = ["join", "invite", ...(ctx.query.get("archived") === "true" ? ["leave", "ban"] : [])];
-    const rooms: Record<string, unknown>[] = [];
-    for (const membership of memberships) {
-      for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
-        if (membership === "invite") {
-          const invite = await hs.rooms.membershipEvent(roomId, s.userId);
-          rooms.push({ room_id: roomId, membership, ...(invite ? { invite: hs.rooms.formatEvent(invite, viewerOf(s)) } : {}) });
-          continue;
+  r.client(
+    "GET",
+    "/initialSync",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 0), 100);
+        const memberships = ["join", "invite", ...(ctx.query.get("archived") === "true" ? ["leave", "ban"] : [])];
+        const rooms: Record<string, unknown>[] = [];
+        for (const membership of memberships) {
+          for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
+            if (membership === "invite") {
+              const invite = await hs.rooms.membershipEvent(roomId, s.userId);
+              rooms.push({ room_id: roomId, membership, ...(invite ? { invite: hs.rooms.formatEvent(invite, viewerOf(s)) } : {}) });
+              continue;
+            }
+            try {
+              rooms.push(await roomInfo(hs, s, roomId, limit));
+            } catch {
+              /* not visible (e.g. forgotten) */
+            }
+          }
         }
-        try {
-          rooms.push(await roomInfo(hs, s, roomId, limit));
-        } catch {
-          /* not visible (e.g. forgotten) */
-        }
-      }
-    }
-    const account = await hs.db.findMany("account_data", {
-      where: [
-        { field: "user_id", value: s.userId },
-        { field: "room_id", value: "" },
-      ],
-    });
-    return {
-      end: `s${await hs.streams.position()}`,
-      rooms,
-      presence: [],
-      account_data: account.map((a) => ({ type: a.type, content: a.content })),
-    };
-  });
+        const account = await hs.db.findMany("account_data", {
+          where: [
+            { field: "user_id", value: s.userId },
+            { field: "room_id", value: "" },
+          ],
+        });
+        return {
+          end: `s${await hs.streams.position()}`,
+          rooms,
+          presence: [],
+          account_data: account.map((a) => ({ type: a.type, content: a.content })),
+        };
+      },
+    }),
+  );
 
-  r.client("GET", "/rooms/:roomId/initialSync", async (ctx) => {
-    const s = await ctx.auth();
-    if (!isValidRoomId(ctx.params.roomId)) throw errors.invalidParam("Invalid room ID");
-    const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 0), 100);
-    return roomInfo(ctx.hs, s, ctx.params.roomId, limit);
-  });
+  r.client(
+    "GET",
+    "/rooms/:roomId/initialSync",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (!isValidRoomId(ctx.params.roomId)) throw errors.invalidParam("Invalid room ID");
+        const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "10", 10) || 10, 0), 100);
+        return roomInfo(ctx.hs, s, ctx.params.roomId, limit);
+      },
+    }),
+  );
 
-  r.client("GET", "/events/:eventId", async (ctx) => {
-    const s = await ctx.auth();
-    const ev = await ctx.hs.rooms.getEvent(ctx.params.eventId);
-    if (!ev || !(await ctx.hs.rooms.filterVisible(s.userId, ev.pdu.room_id, [ev])).length) throw errors.notFound("Event not found");
-    return ctx.hs.rooms.formatEvent(ev, viewerOf(s), { includeRoomId: true }) as unknown as Record<string, unknown>;
-  });
+  r.client(
+    "GET",
+    "/events/:eventId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const ev = await ctx.hs.rooms.getEvent(ctx.params.eventId);
+        if (!ev || !(await ctx.hs.rooms.filterVisible(s.userId, ev.pdu.room_id, [ev])).length) throw errors.notFound("Event not found");
+        return ctx.hs.rooms.formatEvent(ev, viewerOf(s), { includeRoomId: true }) as unknown as Record<string, unknown>;
+      },
+    }),
+  );
 
   // New events in the user's rooms, or in one room the user may peek into (`room_id`).
-  r.client("GET", "/events", async (ctx: RequestContext) => {
-    const s = await ctx.auth();
-    const hs = ctx.hs;
-    const now = await hs.streams.position();
-    const from = parseStreamToken(ctx.query.get("from"), now);
-    const timeout = Math.min(Math.max(Number(ctx.query.get("timeout") ?? 30_000) || 0, 0), hs.config.maxSyncTimeoutMs);
-    const peekRoom = ctx.query.get("room_id");
-    let roomIds: string[];
-    if (peekRoom !== null) {
-      if (!isValidRoomId(peekRoom)) throw errors.invalidParam("Invalid room ID");
-      const { joined, worldReadable } = await hs.rooms.canPeek(peekRoom, s.userId);
-      if (!joined && !worldReadable) throw errors.forbidden("You cannot peek into this room");
-      roomIds = [peekRoom];
-    } else {
-      roomIds = await hs.rooms.roomsForUser(s.userId);
-    }
-    const deadline = Date.now() + timeout;
-    for (;;) {
-      const events = await eventsSince(hs, s, roomIds, from, 100);
-      const remaining = deadline - Date.now();
-      if (events.length || remaining <= 0 || ctx.request.signal.aborted) {
-        const end = events.length ? events[events.length - 1].stream : Math.max(from, await hs.streams.position());
-        return {
-          start: `s${from}`,
-          end: `s${end}`,
-          chunk: events.map((e) => hs.rooms.formatEvent(e, viewerOf(s), { includeRoomId: true })),
-        };
-      }
-      // Peekers are not woken for rooms they are not in, so also re-check periodically.
-      await Promise.race([
-        hs.notifier.wait(s.userId, remaining, ctx.request.signal),
-        new Promise((resolve) => setTimeout(resolve, Math.min(remaining, peekRoom !== null ? 1000 : remaining)).unref?.()),
-      ]);
-    }
-  });
+  r.client(
+    "GET",
+    "/events",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const now = await hs.streams.position();
+        const from = parseStreamToken(ctx.query.get("from"), now);
+        const timeout = Math.min(Math.max(Number(ctx.query.get("timeout") ?? 30_000) || 0, 0), hs.config.maxSyncTimeoutMs);
+        const peekRoom = ctx.query.get("room_id");
+        let roomIds: string[];
+        if (peekRoom !== null) {
+          if (!isValidRoomId(peekRoom)) throw errors.invalidParam("Invalid room ID");
+          const { joined, worldReadable } = await hs.rooms.canPeek(peekRoom, s.userId);
+          if (!joined && !worldReadable) throw errors.forbidden("You cannot peek into this room");
+          roomIds = [peekRoom];
+        } else {
+          roomIds = await hs.rooms.roomsForUser(s.userId);
+        }
+        const deadline = Date.now() + timeout;
+        for (;;) {
+          const events = await eventsSince(hs, s, roomIds, from, 100);
+          const remaining = deadline - Date.now();
+          if (events.length || remaining <= 0 || ctx.request.signal.aborted) {
+            const end = events.length ? events[events.length - 1].stream : Math.max(from, await hs.streams.position());
+            return {
+              start: `s${from}`,
+              end: `s${end}`,
+              chunk: events.map((e) => hs.rooms.formatEvent(e, viewerOf(s), { includeRoomId: true })),
+            };
+          }
+          // Peekers are not woken for rooms they are not in, so also re-check periodically.
+          await Promise.race([
+            hs.notifier.wait(s.userId, remaining, ctx.request.signal),
+            new Promise((resolve) => setTimeout(resolve, Math.min(remaining, peekRoom !== null ? 1000 : remaining)).unref?.()),
+          ]);
+        }
+      },
+    }),
+  );
 }

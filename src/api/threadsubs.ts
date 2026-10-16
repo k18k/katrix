@@ -2,6 +2,7 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 
 // MSC4306: thread subscriptions. A subscription is either manual or "automatic" (made by a
 // client in reaction to an event in the thread). Unsubscribing records the stream position so
@@ -47,86 +48,95 @@ export function registerThreadSubscriptionRoutes(r: Router): void {
   r.client(
     "GET",
     path,
-    async (ctx) => {
-      const s = await ctx.auth();
-      await threadRoot(ctx, s.userId);
-      const row = await ctx.hs.db.findOne("thread_subscriptions", key(s.userId, ctx.params.roomId, ctx.params.threadId));
-      if (!row?.subscribed) throw errors.notFound("Not subscribed to this thread");
-      return { automatic: !!row.automatic };
-    },
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        await threadRoot(ctx, s.userId);
+        const row = await ctx.hs.db.findOne("thread_subscriptions", key(s.userId, ctx.params.roomId, ctx.params.threadId));
+        if (!row?.subscribed) throw errors.notFound("Not subscribed to this thread");
+        return { automatic: !!row.automatic };
+      },
+    }),
     VERSIONS,
   );
 
   r.client(
     "PUT",
     path,
-    async (ctx) => {
-      const s = await ctx.auth();
-      const hs = ctx.hs;
-      const { roomId, threadId } = ctx.params;
-      await threadRoot(ctx, s.userId);
-      const body = await ctx.json();
-      const cause = isObject(body) ? body.automatic : undefined;
-      if (cause !== undefined && typeof cause !== "string") throw errors.badJson("automatic must be an event ID");
-      let causeStream: number | null = null;
-      if (typeof cause === "string") {
-        const ev = await visibleEvent(ctx, s.userId, roomId, cause);
-        const rel = ev?.pdu.content?.["m.relates_to"];
-        if (!ev || !isObject(rel) || rel.rel_type !== "m.thread" || rel.event_id !== threadId) throw notInThread();
-        causeStream = ev.stream;
-      }
-      await hs.cluster.lock(`threadsub:${s.userId}:${roomId}:${threadId}`, async () => {
-        const row = await hs.db.findOne("thread_subscriptions", key(s.userId, roomId, threadId));
-        if (causeStream !== null) {
-          if (row && row.unsubscribed_after !== null && causeStream <= row.unsubscribed_after) throw conflicting();
-          // An automatic subscription never downgrades an existing one.
-          if (row?.subscribed) return;
-        } else if (row?.subscribed && !row.automatic) return;
-        await hs.streams.write((stream) =>
-          hs.db.upsert("thread_subscriptions", {
-            user_id: s.userId,
-            room_id: roomId,
-            thread_id: threadId,
-            subscribed: true,
-            automatic: causeStream !== null,
-            unsubscribed_after: row?.unsubscribed_after ?? null,
-            stream,
-          }),
-        );
-      });
-      hs.notifier.notify([s.userId]);
-      return {};
-    },
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const { roomId, threadId } = ctx.params;
+        await threadRoot(ctx, s.userId);
+        const body = await ctx.json();
+        const cause = isObject(body) ? body.automatic : undefined;
+        if (cause !== undefined && typeof cause !== "string") throw errors.badJson("automatic must be an event ID");
+        let causeStream: number | null = null;
+        if (typeof cause === "string") {
+          const ev = await visibleEvent(ctx, s.userId, roomId, cause);
+          const rel = ev?.pdu.content?.["m.relates_to"];
+          if (!ev || !isObject(rel) || rel.rel_type !== "m.thread" || rel.event_id !== threadId) throw notInThread();
+          causeStream = ev.stream;
+        }
+        await hs.cluster.lock(`threadsub:${s.userId}:${roomId}:${threadId}`, async () => {
+          const row = await hs.db.findOne("thread_subscriptions", key(s.userId, roomId, threadId));
+          if (causeStream !== null) {
+            if (row && row.unsubscribed_after !== null && causeStream <= row.unsubscribed_after) throw conflicting();
+            // An automatic subscription never downgrades an existing one.
+            if (row?.subscribed) return;
+          } else if (row?.subscribed && !row.automatic) return;
+          await hs.streams.write((stream) =>
+            hs.db.upsert("thread_subscriptions", {
+              user_id: s.userId,
+              room_id: roomId,
+              thread_id: threadId,
+              subscribed: true,
+              automatic: causeStream !== null,
+              unsubscribed_after: row?.unsubscribed_after ?? null,
+              stream,
+            }),
+          );
+        });
+        hs.notifier.notify([s.userId]);
+        return {};
+      },
+    }),
     VERSIONS,
   );
 
   r.client(
     "DELETE",
     path,
-    async (ctx) => {
-      const s = await ctx.auth();
-      const hs = ctx.hs;
-      const { roomId, threadId } = ctx.params;
-      await threadRoot(ctx, s.userId);
-      await hs.cluster.lock(`threadsub:${s.userId}:${roomId}:${threadId}`, async () => {
-        const row = await hs.db.findOne("thread_subscriptions", key(s.userId, roomId, threadId));
-        if (!row?.subscribed) return;
-        const position = await hs.streams.position();
-        await hs.streams.write((stream) =>
-          hs.db.upsert("thread_subscriptions", {
-            user_id: s.userId,
-            room_id: roomId,
-            thread_id: threadId,
-            subscribed: false,
-            automatic: false,
-            unsubscribed_after: position,
-            stream,
-          }),
-        );
-      });
-      hs.notifier.notify([s.userId]);
-      return {};
-    },
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const { roomId, threadId } = ctx.params;
+        await threadRoot(ctx, s.userId);
+        await hs.cluster.lock(`threadsub:${s.userId}:${roomId}:${threadId}`, async () => {
+          const row = await hs.db.findOne("thread_subscriptions", key(s.userId, roomId, threadId));
+          if (!row?.subscribed) return;
+          const position = await hs.streams.position();
+          await hs.streams.write((stream) =>
+            hs.db.upsert("thread_subscriptions", {
+              user_id: s.userId,
+              room_id: roomId,
+              thread_id: threadId,
+              subscribed: false,
+              automatic: false,
+              unsubscribed_after: position,
+              stream,
+            }),
+          );
+        });
+        hs.notifier.notify([s.userId]);
+        return {};
+      },
+    }),
     VERSIONS,
   );
 }

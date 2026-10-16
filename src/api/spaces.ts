@@ -3,6 +3,7 @@ import { getState, membershipOf } from "#core/authrules.ts";
 import { splitStateKey, stripState } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 
 /** Room-level details shared by /hierarchy, /room_summary and /publicRooms. */
 export async function roomDetails(hs: Homeserver, roomId: string): Promise<Record<string, any>> {
@@ -97,75 +98,79 @@ export function registerSpaceRoutes(r: Router): void {
   r.client(
     "GET",
     "/rooms/:roomId/hierarchy",
-    async (ctx) => {
-      const s = await ctx.auth();
-      const hs = ctx.hs;
-      const rootId = ctx.params.roomId;
-      if (!(await hs.rooms.exists(rootId)) || !(await canAccess(hs, rootId, s.userId))) throw errors.forbidden("You cannot view this room");
-      const suggestedOnly = ctx.query.get("suggested_only") === "true";
-      const maxDepth = ctx.query.has("max_depth") ? Number.parseInt(ctx.query.get("max_depth")!, 10) : Infinity;
-      const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "50", 10) || 50, 1), 100);
-      const from = ctx.query.get("from");
-      let offset = 0;
-      if (from) {
-        const m = /^(\d+)_(.+)$/.exec(from);
-        // Tokens are bound to the query parameters they were issued for.
-        if (!m || m[2] !== `${rootId}|${suggestedOnly}|${ctx.query.get("max_depth") ?? ""}`)
-          throw errors.invalidParam("Invalid pagination token");
-        offset = Number(m[1]);
-      }
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const hs = ctx.hs;
+        const rootId = ctx.params.roomId;
+        if (!(await hs.rooms.exists(rootId)) || !(await canAccess(hs, rootId, s.userId)))
+          throw errors.forbidden("You cannot view this room");
+        const suggestedOnly = ctx.query.get("suggested_only") === "true";
+        const maxDepth = ctx.query.has("max_depth") ? Number.parseInt(ctx.query.get("max_depth")!, 10) : Infinity;
+        const limit = Math.min(Math.max(Number.parseInt(ctx.query.get("limit") ?? "50", 10) || 50, 1), 100);
+        const from = ctx.query.get("from");
+        let offset = 0;
+        if (from) {
+          const m = /^(\d+)_(.+)$/.exec(from);
+          // Tokens are bound to the query parameters they were issued for.
+          if (!m || m[2] !== `${rootId}|${suggestedOnly}|${ctx.query.get("max_depth") ?? ""}`)
+            throw errors.invalidParam("Invalid pagination token");
+          offset = Number(m[1]);
+        }
 
-      const rooms: Record<string, any>[] = [];
-      const seen = new Set<string>();
-      // Depth-first traversal (a stack), like Synapse, so pages follow the space tree.
-      const queue: { roomId: string; depth: number; via: string[] }[] = [{ roomId: rootId, depth: 0, via: [] }];
-      while (queue.length) {
-        const { roomId, depth, via } = queue.pop()!;
-        if (seen.has(roomId)) continue;
-        seen.add(roomId);
-        if (!(await hs.rooms.serverIsJoined(roomId))) {
-          // A room hosted elsewhere: ask a server from the space's `via` list.
-          const remote = await remoteSummary(hs, roomId, via, suggestedOnly, s.userId);
-          if (!remote) continue;
-          rooms.push(remote);
-          const isSpace = remote.room_type === "m.space";
-          const remoteChildren = (isSpace ? (remote.children_state ?? []) : [])
-            .filter((c: any) => Array.isArray(c.content?.via) && c.content.via.length)
-            .sort(childOrder);
-          if (depth < maxDepth) {
-            for (const child of [...remoteChildren].reverse())
-              queue.push({ roomId: child.state_key, depth: depth + 1, via: child.content.via });
+        const rooms: Record<string, any>[] = [];
+        const seen = new Set<string>();
+        // Depth-first traversal (a stack), like Synapse, so pages follow the space tree.
+        const queue: { roomId: string; depth: number; via: string[] }[] = [{ roomId: rootId, depth: 0, via: [] }];
+        while (queue.length) {
+          const { roomId, depth, via } = queue.pop()!;
+          if (seen.has(roomId)) continue;
+          seen.add(roomId);
+          if (!(await hs.rooms.serverIsJoined(roomId))) {
+            // A room hosted elsewhere: ask a server from the space's `via` list.
+            const remote = await remoteSummary(hs, roomId, via, suggestedOnly, s.userId);
+            if (!remote) continue;
+            rooms.push(remote);
+            const isSpace = remote.room_type === "m.space";
+            const remoteChildren = (isSpace ? (remote.children_state ?? []) : [])
+              .filter((c: any) => Array.isArray(c.content?.via) && c.content.via.length)
+              .sort(childOrder);
+            if (depth < maxDepth) {
+              for (const child of [...remoteChildren].reverse())
+                queue.push({ roomId: child.state_key, depth: depth + 1, via: child.content.via });
+            }
+            continue;
           }
-          continue;
+          if (roomId !== rootId && !(await canAccess(hs, roomId, s.userId))) continue;
+          const state = await hs.rooms.currentState(roomId);
+          const children: Record<string, any>[] = [];
+          // Only spaces have children; m.space.child events in ordinary rooms are ignored.
+          const isSpace = getState(state, "m.room.create")?.content?.type === "m.space";
+          for (const [key, ev] of isSpace ? state : []) {
+            const [type] = splitStateKey(key);
+            if (type !== "m.space.child" || !Array.isArray(ev.content?.via) || ev.content.via.length === 0) continue;
+            if (suggestedOnly && ev.content.suggested !== true) continue;
+            children.push({ ...stripState(ev), origin_server_ts: ev.origin_server_ts });
+          }
+          children.sort(childOrder);
+          if (depth < maxDepth) {
+            // Pushed in reverse so that the first child is visited next.
+            for (const child of [...children].reverse()) queue.push({ roomId: child.state_key, depth: depth + 1, via: child.content.via });
+          }
+          const details = await roomDetails(hs, roomId);
+          const allowed = allowedRoomIds(getState(state, "m.room.join_rules")?.content);
+          if (allowed) details.allowed_room_ids = allowed;
+          details.children_state = children;
+          rooms.push(details);
         }
-        if (roomId !== rootId && !(await canAccess(hs, roomId, s.userId))) continue;
-        const state = await hs.rooms.currentState(roomId);
-        const children: Record<string, any>[] = [];
-        // Only spaces have children; m.space.child events in ordinary rooms are ignored.
-        const isSpace = getState(state, "m.room.create")?.content?.type === "m.space";
-        for (const [key, ev] of isSpace ? state : []) {
-          const [type] = splitStateKey(key);
-          if (type !== "m.space.child" || !Array.isArray(ev.content?.via) || ev.content.via.length === 0) continue;
-          if (suggestedOnly && ev.content.suggested !== true) continue;
-          children.push({ ...stripState(ev), origin_server_ts: ev.origin_server_ts });
-        }
-        children.sort(childOrder);
-        if (depth < maxDepth) {
-          // Pushed in reverse so that the first child is visited next.
-          for (const child of [...children].reverse()) queue.push({ roomId: child.state_key, depth: depth + 1, via: child.content.via });
-        }
-        const details = await roomDetails(hs, roomId);
-        const allowed = allowedRoomIds(getState(state, "m.room.join_rules")?.content);
-        if (allowed) details.allowed_room_ids = allowed;
-        details.children_state = children;
-        rooms.push(details);
-      }
-      const page = rooms.slice(offset, offset + limit);
-      const out: Record<string, any> = { rooms: page };
-      if (offset + limit < rooms.length)
-        out.next_batch = `${offset + limit}_${rootId}|${suggestedOnly}|${ctx.query.get("max_depth") ?? ""}`;
-      return out;
-    },
+        const page = rooms.slice(offset, offset + limit);
+        const out: Record<string, any> = { rooms: page };
+        if (offset + limit < rooms.length)
+          out.next_batch = `${offset + limit}_${rootId}|${suggestedOnly}|${ctx.query.get("max_depth") ?? ""}`;
+        return out;
+      },
+    }),
     ["v1"],
   );
 
@@ -189,7 +194,7 @@ export function registerSpaceRoutes(r: Router): void {
     if (allowed) out.allowed_room_ids = allowed;
     return out;
   };
-  r.client("GET", "/room_summary/:roomIdOrAlias", summary, ["v1"]);
+  r.client("GET", "/room_summary/:roomIdOrAlias", procedure({ handler: summary }), ["v1"]);
   // The MSC3266 unstable path, which Element still tries first.
-  r.get("/_matrix/client/unstable/im.nheko.summary/summary/:roomIdOrAlias", summary);
+  r.get("/_matrix/client/unstable/im.nheko.summary/summary/:roomIdOrAlias", procedure({ handler: summary }));
 }

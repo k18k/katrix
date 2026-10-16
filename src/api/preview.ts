@@ -4,6 +4,7 @@ import { errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 
 const MAX_BYTES = 1024 * 1024;
 
@@ -180,7 +181,7 @@ export function registerPreviewRoutes(r: Router): void {
     if (!url) throw errors.missingParam("Missing url");
     return preview(ctx.hs, url);
   };
-  r.get("/_matrix/media/v3/preview_url", handler);
-  r.get("/_matrix/media/r0/preview_url", handler);
-  r.get("/_matrix/client/v1/media/preview_url", handler);
+  r.get("/_matrix/media/v3/preview_url", procedure({ handler: handler }));
+  r.get("/_matrix/media/r0/preview_url", procedure({ handler: handler }));
+  r.get("/_matrix/client/v1/media/preview_url", procedure({ handler: handler }));
 }

@@ -12,6 +12,7 @@ import { domainOf, serverAllowedByAcl } from "#federation/index.ts";
 import { parseXMatrix } from "#federation/client.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, lenient } from "#http/input.ts";
 
@@ -257,13 +258,28 @@ async function sendMembership(ctx: RequestContext, origin: string, membership: s
 }
 
 export function registerFederationRoutes(r: Router): void {
+  // Server-server endpoints: the request's X-Matrix signature is verified before anything else,
+  // and the verified origin server is handed to the handler.
   const fed = <S extends z.ZodType | undefined = undefined>(
     method: "GET" | "PUT" | "POST",
     path: string,
-    handler: (ctx: RequestContext<S extends z.ZodType ? z.output<S> : unknown>, origin: string) => unknown,
-    options: { input?: S } = {},
+    def: {
+      input?: S;
+      handler: (
+        ctx: ProcedureContext<"none", S extends z.ZodType ? z.output<S> : undefined, { origin: string }>,
+        origin: string,
+      ) => unknown;
+    },
   ) => {
-    r.add(method, `${F}${path}`, async (ctx) => handler(ctx as any, await authenticate(ctx)) as any, options as { input?: z.ZodType });
+    r.add(
+      method,
+      `${F}${path}`,
+      procedure({
+        input: def.input,
+        guard: async (ctx) => ({ origin: await authenticate(ctx) }),
+        handler: (ctx) => def.handler(ctx as any, ctx.origin) as any,
+      }),
+    );
   };
 
   // --- Keys -------------------------------------------------------------------
@@ -301,40 +317,55 @@ export function registerFederationRoutes(r: Router): void {
   const requireFederation = (ctx: RequestContext) => {
     if (!ctx.hs.federation.enabled) throw errors.unrecognized("Federation is disabled");
   };
-  r.post("/_matrix/key/v2/query", { input: keyQueryBody }, async (ctx) => {
-    requireFederation(ctx);
-    return canonicalJsonResponse(await notary(ctx, Object.keys(ctx.input.server_keys ?? {})));
-  });
-  r.get("/_matrix/key/v2/query/:serverName", async (ctx) => {
-    requireFederation(ctx);
-    return canonicalJsonResponse(await notary(ctx, [ctx.params.serverName]));
-  });
+  r.post(
+    "/_matrix/key/v2/query",
+    procedure({
+      input: keyQueryBody,
+      handler: async (ctx) => {
+        requireFederation(ctx);
+        return canonicalJsonResponse(await notary(ctx, Object.keys(ctx.input.server_keys ?? {})));
+      },
+    }),
+  );
+  r.get(
+    "/_matrix/key/v2/query/:serverName",
+    procedure({
+      handler: async (ctx) => {
+        requireFederation(ctx);
+        return canonicalJsonResponse(await notary(ctx, [ctx.params.serverName]));
+      },
+    }),
+  );
 
   // --- Transactions -------------------------------------------------------------
-  fed("PUT", "/v1/send/:txnId", async (ctx, origin) => {
-    const body = await ctx.json();
-    if (body.origin !== undefined && body.origin !== origin) throw errors.forbidden("Transaction origin mismatch");
-    return ctx.hs.federation.receiveTransaction(origin, ctx.params.txnId, body);
+  fed("PUT", "/v1/send/:txnId", {
+    handler: async (ctx, origin) => {
+      const body = await ctx.json();
+      if (body.origin !== undefined && body.origin !== origin) throw errors.forbidden("Transaction origin mismatch");
+      return ctx.hs.federation.receiveTransaction(origin, ctx.params.txnId, body);
+    },
   });
 
   // --- Joins, leaves, knocks ------------------------------------------------------
-  fed("GET", "/v1/make_join/:roomId/:userId", async (ctx, origin) => {
-    const hs = ctx.hs;
-    const { roomId, userId } = ctx.params;
-    if (domainOf(userId) !== origin) throw errors.forbidden("User does not belong to the origin server");
-    const version = await roomOr404(hs, roomId);
-    await rejectIfPartial(hs, roomId);
-    const supported = ctx.query.getAll("ver");
-    if (!(supported.length ? supported : ["1"]).includes(version)) {
-      throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Your server does not support this room version", {
-        room_version: version,
-      });
-    }
-    const state = await checkAcl(hs, roomId, origin);
-    if (FederationJoinGuard.noLocalMembers(hs, state)) throw errors.notFound("This server is not in the room");
-    const via = await restrictedAuthoriser(hs, state, version, userId);
-    const event = await makeMembership(hs, roomId, version, userId, "join", via ? { join_authorised_via_users_server: via } : {});
-    return { event, room_version: version };
+  fed("GET", "/v1/make_join/:roomId/:userId", {
+    handler: async (ctx, origin) => {
+      const hs = ctx.hs;
+      const { roomId, userId } = ctx.params;
+      if (domainOf(userId) !== origin) throw errors.forbidden("User does not belong to the origin server");
+      const version = await roomOr404(hs, roomId);
+      await rejectIfPartial(hs, roomId);
+      const supported = ctx.query.getAll("ver");
+      if (!(supported.length ? supported : ["1"]).includes(version)) {
+        throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Your server does not support this room version", {
+          room_version: version,
+        });
+      }
+      const state = await checkAcl(hs, roomId, origin);
+      if (FederationJoinGuard.noLocalMembers(hs, state)) throw errors.notFound("This server is not in the room");
+      const via = await restrictedAuthoriser(hs, state, version, userId);
+      const event = await makeMembership(hs, roomId, version, userId, "join", via ? { join_authorised_via_users_server: via } : {});
+      return { event, room_version: version };
+    },
   });
 
   const sendJoin = async (ctx: RequestContext, origin: string) => {
@@ -354,43 +385,53 @@ export function registerFederationRoutes(r: Router): void {
       servers_in_room: servers,
     };
   };
-  fed("PUT", "/v2/send_join/:roomId/:eventId", sendJoin);
-  fed("PUT", "/v1/send_join/:roomId/:eventId", async (ctx, origin) => [200, await sendJoin(ctx, origin)]);
+  fed("PUT", "/v2/send_join/:roomId/:eventId", { handler: sendJoin });
+  fed("PUT", "/v1/send_join/:roomId/:eventId", { handler: async (ctx, origin) => [200, await sendJoin(ctx, origin)] });
 
-  fed("GET", "/v1/make_leave/:roomId/:userId", async (ctx, origin) => {
-    const { roomId, userId } = ctx.params;
-    if (domainOf(userId) !== origin) throw errors.forbidden("User does not belong to the origin server");
-    const version = await roomOr404(ctx.hs, roomId);
-    await checkAcl(ctx.hs, roomId, origin);
-    return { event: await makeMembership(ctx.hs, roomId, version, userId, "leave"), room_version: version };
+  fed("GET", "/v1/make_leave/:roomId/:userId", {
+    handler: async (ctx, origin) => {
+      const { roomId, userId } = ctx.params;
+      if (domainOf(userId) !== origin) throw errors.forbidden("User does not belong to the origin server");
+      const version = await roomOr404(ctx.hs, roomId);
+      await checkAcl(ctx.hs, roomId, origin);
+      return { event: await makeMembership(ctx.hs, roomId, version, userId, "leave"), room_version: version };
+    },
   });
-  fed("PUT", "/v2/send_leave/:roomId/:eventId", async (ctx, origin) => {
-    await sendMembership(ctx, origin, "leave");
-    return {};
+  fed("PUT", "/v2/send_leave/:roomId/:eventId", {
+    handler: async (ctx, origin) => {
+      await sendMembership(ctx, origin, "leave");
+      return {};
+    },
   });
-  fed("PUT", "/v1/send_leave/:roomId/:eventId", async (ctx, origin) => {
-    await sendMembership(ctx, origin, "leave");
-    return [200, {}];
+  fed("PUT", "/v1/send_leave/:roomId/:eventId", {
+    handler: async (ctx, origin) => {
+      await sendMembership(ctx, origin, "leave");
+      return [200, {}];
+    },
   });
 
-  fed("GET", "/v1/make_knock/:roomId/:userId", async (ctx, origin) => {
-    const { roomId, userId } = ctx.params;
-    if (domainOf(userId) !== origin) throw errors.forbidden("User does not belong to the origin server");
-    const version = await roomOr404(ctx.hs, roomId);
-    await rejectIfPartial(ctx.hs, roomId);
-    const supported = ctx.query.getAll("ver");
-    if (!(supported.length ? supported : ["1"]).includes(version) || !roomVersionFeatures(version).knock) {
-      throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Your server does not support this room version", {
-        room_version: version,
-      });
-    }
-    await checkAcl(ctx.hs, roomId, origin);
-    return { event: await makeMembership(ctx.hs, roomId, version, userId, "knock"), room_version: version };
+  fed("GET", "/v1/make_knock/:roomId/:userId", {
+    handler: async (ctx, origin) => {
+      const { roomId, userId } = ctx.params;
+      if (domainOf(userId) !== origin) throw errors.forbidden("User does not belong to the origin server");
+      const version = await roomOr404(ctx.hs, roomId);
+      await rejectIfPartial(ctx.hs, roomId);
+      const supported = ctx.query.getAll("ver");
+      if (!(supported.length ? supported : ["1"]).includes(version) || !roomVersionFeatures(version).knock) {
+        throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Your server does not support this room version", {
+          room_version: version,
+        });
+      }
+      await checkAcl(ctx.hs, roomId, origin);
+      return { event: await makeMembership(ctx.hs, roomId, version, userId, "knock"), room_version: version };
+    },
   });
-  fed("PUT", "/v1/send_knock/:roomId/:eventId", async (ctx, origin) => {
-    await rejectIfPartial(ctx.hs, ctx.params.roomId);
-    await sendMembership(ctx, origin, "knock");
-    return { knock_room_state: ctx.hs.rooms.strippedState(await ctx.hs.rooms.currentState(ctx.params.roomId)) };
+  fed("PUT", "/v1/send_knock/:roomId/:eventId", {
+    handler: async (ctx, origin) => {
+      await rejectIfPartial(ctx.hs, ctx.params.roomId);
+      await sendMembership(ctx, origin, "knock");
+      return { knock_room_state: ctx.hs.rooms.strippedState(await ctx.hs.rooms.currentState(ctx.params.roomId)) };
+    },
   });
 
   // --- Invites ---------------------------------------------------------------------
@@ -446,19 +487,21 @@ export function registerFederationRoutes(r: Router): void {
     const wire = hs.federation.toFederationPdu({ ...pdu, signatures }, version);
     return v2 ? { event: wire } : [200, { event: wire }];
   };
-  fed("PUT", "/v2/invite/:roomId/:eventId", (ctx, origin) => invite(ctx, origin, true));
-  fed("PUT", "/v1/invite/:roomId/:eventId", (ctx, origin) => invite(ctx, origin, false));
+  fed("PUT", "/v2/invite/:roomId/:eventId", { handler: (ctx, origin) => invite(ctx, origin, true) });
+  fed("PUT", "/v1/invite/:roomId/:eventId", { handler: (ctx, origin) => invite(ctx, origin, false) });
 
   // --- Event retrieval ----------------------------------------------------------------
-  fed("GET", "/v1/event/:eventId", async (ctx, origin) => {
-    const hs = ctx.hs;
-    const ev = await hs.rooms.getEvent(ctx.params.eventId);
-    const pdu = ev?.pdu ?? (await hs.rooms.getPdu(ctx.params.eventId));
-    if (!pdu) throw errors.notFound("Unknown event");
-    const version = await roomOr404(hs, pdu.room_id);
-    await checkAcl(hs, pdu.room_id, origin);
-    if (ev && !(await serverCanSee(hs, origin, ev))) throw errors.forbidden("You may not see this event");
-    return { origin: hs.serverName, origin_server_ts: Date.now(), pdus: [hs.federation.toFederationPdu(pdu, version)] };
+  fed("GET", "/v1/event/:eventId", {
+    handler: async (ctx, origin) => {
+      const hs = ctx.hs;
+      const ev = await hs.rooms.getEvent(ctx.params.eventId);
+      const pdu = ev?.pdu ?? (await hs.rooms.getPdu(ctx.params.eventId));
+      if (!pdu) throw errors.notFound("Unknown event");
+      const version = await roomOr404(hs, pdu.room_id);
+      await checkAcl(hs, pdu.room_id, origin);
+      if (ev && !(await serverCanSee(hs, origin, ev))) throw errors.forbidden("You may not see this event");
+      return { origin: hs.serverName, origin_server_ts: Date.now(), pdus: [hs.federation.toFederationPdu(pdu, version)] };
+    },
   });
 
   const stateHandler = (idsOnly: boolean) => async (ctx: RequestContext, origin: string) => {
@@ -480,47 +523,50 @@ export function registerFederationRoutes(r: Router): void {
       auth_chain: chain.map((p) => hs.federation.toFederationPdu(p, version)),
     };
   };
-  fed("GET", "/v1/state/:roomId", stateHandler(false));
-  fed("GET", "/v1/state_ids/:roomId", stateHandler(true));
+  fed("GET", "/v1/state/:roomId", { handler: stateHandler(false) });
+  fed("GET", "/v1/state_ids/:roomId", { handler: stateHandler(true) });
 
-  fed("GET", "/v1/event_auth/:roomId/:eventId", async (ctx, origin) => {
-    const hs = ctx.hs;
-    const version = await roomOr404(hs, ctx.params.roomId);
-    await checkAcl(hs, ctx.params.roomId, origin);
-    const chain = await authChainOf(hs, [ctx.params.eventId]);
-    return { auth_chain: chain.map((p) => hs.federation.toFederationPdu(p, version)) };
+  fed("GET", "/v1/event_auth/:roomId/:eventId", {
+    handler: async (ctx, origin) => {
+      const hs = ctx.hs;
+      const version = await roomOr404(hs, ctx.params.roomId);
+      await checkAcl(hs, ctx.params.roomId, origin);
+      const chain = await authChainOf(hs, [ctx.params.eventId]);
+      return { auth_chain: chain.map((p) => hs.federation.toFederationPdu(p, version)) };
+    },
   });
 
-  fed("GET", "/v1/backfill/:roomId", async (ctx, origin) => {
-    const hs = ctx.hs;
-    const roomId = ctx.params.roomId;
-    const version = await roomOr404(hs, roomId);
-    const state = await checkAcl(hs, roomId, origin);
-    if (!FederationJoinGuard.serverInRoom(state, origin)) throw errors.forbidden("Your server is not in the room");
-    const limit = Math.min(Math.max(Number(ctx.query.get("limit") ?? 10) || 10, 1), 100);
-    const out: PDU[] = [];
-    const seen = new Set<string>();
-    let frontier = ctx.query.getAll("v");
-    while (frontier.length && out.length < limit) {
-      const next: string[] = [];
-      for (const id of frontier) {
-        if (seen.has(id) || out.length >= limit) continue;
-        seen.add(id);
-        const ev = await hs.rooms.getEvent(id);
-        if (!ev || ev.pdu.room_id !== roomId) continue;
-        // Events the server may not see are returned redacted (so the DAG stays complete).
-        out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : (redact(ev.pdu as Record<string, any>, version) as PDU));
-        next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
+  fed("GET", "/v1/backfill/:roomId", {
+    handler: async (ctx, origin) => {
+      const hs = ctx.hs;
+      const roomId = ctx.params.roomId;
+      const version = await roomOr404(hs, roomId);
+      const state = await checkAcl(hs, roomId, origin);
+      if (!FederationJoinGuard.serverInRoom(state, origin)) throw errors.forbidden("Your server is not in the room");
+      const limit = Math.min(Math.max(Number(ctx.query.get("limit") ?? 10) || 10, 1), 100);
+      const out: PDU[] = [];
+      const seen = new Set<string>();
+      let frontier = ctx.query.getAll("v");
+      while (frontier.length && out.length < limit) {
+        const next: string[] = [];
+        for (const id of frontier) {
+          if (seen.has(id) || out.length >= limit) continue;
+          seen.add(id);
+          const ev = await hs.rooms.getEvent(id);
+          if (!ev || ev.pdu.room_id !== roomId) continue;
+          // Events the server may not see are returned redacted (so the DAG stays complete).
+          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : (redact(ev.pdu as Record<string, any>, version) as PDU));
+          next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
+        }
+        frontier = next;
       }
-      frontier = next;
-    }
-    return { origin: hs.serverName, origin_server_ts: Date.now(), pdus: out.map((p) => hs.federation.toFederationPdu(p, version)) };
+      return { origin: hs.serverName, origin_server_ts: Date.now(), pdus: out.map((p) => hs.federation.toFederationPdu(p, version)) };
+    },
   });
 
-  fed(
-    "POST",
-    "/v1/get_missing_events/:roomId",
-    async (ctx, origin) => {
+  fed("POST", "/v1/get_missing_events/:roomId", {
+    input: missingEventsBody,
+    handler: async (ctx, origin) => {
       const hs = ctx.hs;
       const roomId = ctx.params.roomId;
       const version = await roomOr404(hs, roomId);
@@ -552,62 +598,64 @@ export function registerFederationRoutes(r: Router): void {
       out.sort((a, b) => a.depth - b.depth);
       return { events: out.map((p) => hs.federation.toFederationPdu(p, version)) };
     },
-    { input: missingEventsBody },
-  );
+  });
 
-  fed("GET", "/v1/timestamp_to_event/:roomId", async (ctx, origin) => {
-    const hs = ctx.hs;
-    const roomId = ctx.params.roomId;
-    await roomOr404(hs, roomId);
-    await checkAcl(hs, roomId, origin);
-    const ts = Number(ctx.query.get("ts"));
-    const dir = ctx.query.get("dir");
-    if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
-    const rows = await hs.db.findMany("events", {
-      where: [{ field: "room_id", value: roomId }],
-      sortBy: { field: "stream", direction: dir === "f" ? "asc" : "desc" },
-    });
-    for (const row of rows) {
-      const t = row.json.origin_server_ts;
-      if (dir === "f" ? t >= ts : t <= ts) return { event_id: row.event_id, origin_server_ts: t };
-    }
-    throw errors.notFound("No event found");
+  fed("GET", "/v1/timestamp_to_event/:roomId", {
+    handler: async (ctx, origin) => {
+      const hs = ctx.hs;
+      const roomId = ctx.params.roomId;
+      await roomOr404(hs, roomId);
+      await checkAcl(hs, roomId, origin);
+      const ts = Number(ctx.query.get("ts"));
+      const dir = ctx.query.get("dir");
+      if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
+      const rows = await hs.db.findMany("events", {
+        where: [{ field: "room_id", value: roomId }],
+        sortBy: { field: "stream", direction: dir === "f" ? "asc" : "desc" },
+      });
+      for (const row of rows) {
+        const t = row.json.origin_server_ts;
+        if (dir === "f" ? t >= ts : t <= ts) return { event_id: row.event_id, origin_server_ts: t };
+      }
+      throw errors.notFound("No event found");
+    },
   });
 
   // --- Queries ---------------------------------------------------------------------------
-  fed("GET", "/v1/query/directory", async (ctx) => {
-    const alias = ctx.query.get("room_alias");
-    if (!alias) throw errors.missingParam("Missing room_alias");
-    const row = await ctx.hs.db.findOne("room_aliases", [{ field: "alias", value: alias }]);
-    if (!row) throw errors.notFound("Room alias not found");
-    const servers = [ctx.hs.serverName, ...ctx.hs.federation.serversInRoom(await ctx.hs.rooms.currentState(row.room_id))];
-    return { room_id: row.room_id, servers: [...new Set(servers)] };
+  fed("GET", "/v1/query/directory", {
+    handler: async (ctx) => {
+      const alias = ctx.query.get("room_alias");
+      if (!alias) throw errors.missingParam("Missing room_alias");
+      const row = await ctx.hs.db.findOne("room_aliases", [{ field: "alias", value: alias }]);
+      if (!row) throw errors.notFound("Room alias not found");
+      const servers = [ctx.hs.serverName, ...ctx.hs.federation.serversInRoom(await ctx.hs.rooms.currentState(row.room_id))];
+      return { room_id: row.room_id, servers: [...new Set(servers)] };
+    },
   });
 
-  fed("GET", "/v1/query/profile", async (ctx) => {
-    const userId = ctx.query.get("user_id");
-    if (!userId) throw errors.missingParam("Missing user_id");
-    if (!isValidUserId(userId)) throw errors.invalidParam("Invalid user ID");
-    if (!ctx.hs.isLocalUser(userId)) throw errors.notFound("Unknown user");
-    const profile = await fullProfile(ctx.hs, userId);
-    if (!profile) throw errors.notFound("Unknown user");
-    const field = ctx.query.get("field");
-    if (!field) return profile;
-    if (profile[field] === undefined) throw errors.notFound("Profile field not set");
-    return { [field]: profile[field] };
+  fed("GET", "/v1/query/profile", {
+    handler: async (ctx) => {
+      const userId = ctx.query.get("user_id");
+      if (!userId) throw errors.missingParam("Missing user_id");
+      if (!isValidUserId(userId)) throw errors.invalidParam("Invalid user ID");
+      if (!ctx.hs.isLocalUser(userId)) throw errors.notFound("Unknown user");
+      const profile = await fullProfile(ctx.hs, userId);
+      if (!profile) throw errors.notFound("Unknown user");
+      const field = ctx.query.get("field");
+      if (!field) return profile;
+      if (profile[field] === undefined) throw errors.notFound("Profile field not set");
+      return { [field]: profile[field] };
+    },
   });
 
-  fed(
-    "POST",
-    "/unstable/event_relationships",
-    async (ctx, origin) => relationshipsForServer(ctx.hs, origin, ctx.input, (ids) => authChainOf(ctx.hs, ids)),
-    { input: body({}) },
-  );
+  fed("POST", "/unstable/event_relationships", {
+    input: body({}),
+    handler: async (ctx, origin) => relationshipsForServer(ctx.hs, origin, ctx.input, (ids) => authChainOf(ctx.hs, ids)),
+  });
 
-  fed(
-    "POST",
-    "/v1/user/keys/query",
-    async (ctx) => {
+  fed("POST", "/v1/user/keys/query", {
+    input: userKeysQueryBody,
+    handler: async (ctx) => {
       const local: Record<string, string[]> = {};
       for (const [userId, devices] of Object.entries(ctx.input.device_keys ?? {})) {
         if (ctx.hs.isLocalUser(userId)) local[userId] = Array.isArray(devices) ? devices : [];
@@ -615,44 +663,43 @@ export function registerFederationRoutes(r: Router): void {
       const res = await ctx.hs.keys.query("", local);
       return { device_keys: res.device_keys, master_keys: res.master_keys, self_signing_keys: res.self_signing_keys };
     },
-    { input: userKeysQueryBody },
-  );
+  });
 
-  fed(
-    "POST",
-    "/v1/user/keys/claim",
-    async (ctx) => {
+  fed("POST", "/v1/user/keys/claim", {
+    input: userKeysClaimBody,
+    handler: async (ctx) => {
       const local: Record<string, Record<string, string>> = {};
       for (const [userId, devices] of Object.entries(ctx.input.one_time_keys ?? {})) {
         if (ctx.hs.isLocalUser(userId) && isObject(devices)) local[userId] = devices as Record<string, string>;
       }
       return { one_time_keys: await ctx.hs.keys.claim(local) };
     },
-    { input: userKeysClaimBody },
-  );
-
-  fed("GET", "/v1/user/devices/:userId", async (ctx) => {
-    const hs = ctx.hs;
-    const userId = ctx.params.userId;
-    if (!hs.isLocalUser(userId)) throw errors.forbidden("User is not local");
-    const devices = await hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
-    const keys = await hs.keys.query("", { [userId]: [] });
-    const stream = (await hs.db.findOne("device_list_changes", [{ field: "user_id", value: userId }]))?.stream ?? 0;
-    const out: Record<string, any> = {
-      user_id: userId,
-      stream_id: stream,
-      devices: devices.map((d) => ({
-        device_id: d.device_id,
-        keys: keys.device_keys[userId]?.[d.device_id],
-        ...(d.display_name ? { device_display_name: d.display_name } : {}),
-      })),
-    };
-    if (keys.master_keys[userId]) out.master_key = keys.master_keys[userId];
-    if (keys.self_signing_keys[userId]) out.self_signing_key = keys.self_signing_keys[userId];
-    return out;
   });
 
-  const publicRooms = async (ctx: RequestContext<any>) => {
+  fed("GET", "/v1/user/devices/:userId", {
+    handler: async (ctx) => {
+      const hs = ctx.hs;
+      const userId = ctx.params.userId;
+      if (!hs.isLocalUser(userId)) throw errors.forbidden("User is not local");
+      const devices = await hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
+      const keys = await hs.keys.query("", { [userId]: [] });
+      const stream = (await hs.db.findOne("device_list_changes", [{ field: "user_id", value: userId }]))?.stream ?? 0;
+      const out: Record<string, any> = {
+        user_id: userId,
+        stream_id: stream,
+        devices: devices.map((d) => ({
+          device_id: d.device_id,
+          keys: keys.device_keys[userId]?.[d.device_id],
+          ...(d.display_name ? { device_display_name: d.display_name } : {}),
+        })),
+      };
+      if (keys.master_keys[userId]) out.master_key = keys.master_keys[userId];
+      if (keys.self_signing_keys[userId]) out.self_signing_key = keys.self_signing_keys[userId];
+      return out;
+    },
+  });
+
+  const publicRooms = async (ctx: ProcedureContext<"none", z.output<typeof publicRoomsBody> | undefined>) => {
     const hs = ctx.hs;
     const body: z.output<typeof publicRoomsBody> = (ctx.method === "POST" ? ctx.input : undefined) ?? {};
     const limit = Number(body.limit ?? ctx.query.get("limit") ?? 0) || undefined;
@@ -671,61 +718,67 @@ export function registerFederationRoutes(r: Router): void {
     if (limit && since + limit < chunk.length) out.next_batch = `o${since + limit}`;
     return out;
   };
-  fed("GET", "/v1/publicRooms", (ctx) => publicRooms(ctx));
-  fed("POST", "/v1/publicRooms", (ctx) => publicRooms(ctx), { input: publicRoomsBody });
+  fed("GET", "/v1/publicRooms", { handler: (ctx) => publicRooms(ctx) });
+  fed("POST", "/v1/publicRooms", { input: publicRoomsBody, handler: (ctx) => publicRooms(ctx) });
 
-  fed("GET", "/v1/hierarchy/:roomId", async (ctx, origin) => {
-    const hs = ctx.hs;
-    const roomId = ctx.params.roomId;
-    await roomOr404(hs, roomId);
-    const state = await checkAcl(hs, roomId, origin);
-    const suggestedOnly = ctx.query.get("suggested_only") === "true";
-    const summary = async (id: string, s: StateMap) => {
-      const details = await roomDetails(hs, id);
-      const jr = getState(s, "m.room.join_rules")?.content;
-      if (["restricted", "knock_restricted"].includes(jr?.join_rule)) {
-        details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : [])
-          .filter((a: any) => a?.type === "m.room_membership")
-          .map((a: any) => a.room_id);
+  fed("GET", "/v1/hierarchy/:roomId", {
+    handler: async (ctx, origin) => {
+      const hs = ctx.hs;
+      const roomId = ctx.params.roomId;
+      await roomOr404(hs, roomId);
+      const state = await checkAcl(hs, roomId, origin);
+      const suggestedOnly = ctx.query.get("suggested_only") === "true";
+      const summary = async (id: string, s: StateMap) => {
+        const details = await roomDetails(hs, id);
+        const jr = getState(s, "m.room.join_rules")?.content;
+        if (["restricted", "knock_restricted"].includes(jr?.join_rule)) {
+          details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : [])
+            .filter((a: any) => a?.type === "m.room_membership")
+            .map((a: any) => a.room_id);
+        }
+        return details;
+      };
+      const accessible = async (s: StateMap) => {
+        const jr = getState(s, "m.room.join_rules")?.content;
+        const rule = jr?.join_rule ?? "invite";
+        const hv = getState(s, "m.room.history_visibility")?.content?.history_visibility;
+        if (
+          ["public", "knock", "knock_restricted"].includes(rule) ||
+          hv === "world_readable" ||
+          FederationJoinGuard.serverInRoom(s, origin)
+        )
+          return true;
+        if (rule !== "restricted") return false;
+        // Restricted rooms are visible to servers with a member in an allowed room (as far as we know).
+        for (const allow of Array.isArray(jr?.allow) ? jr!.allow : []) {
+          if (allow?.type !== "m.room_membership" || typeof allow.room_id !== "string" || !(await hs.rooms.exists(allow.room_id))) continue;
+          if (FederationJoinGuard.serverInRoom(await hs.rooms.currentState(allow.room_id), origin)) return true;
+        }
+        return false;
+      };
+      if (!(await accessible(state))) throw errors.notFound("Room is not accessible");
+      const children: Record<string, any>[] = [];
+      const childrenState: Record<string, any>[] = [];
+      const inaccessible: string[] = [];
+      for (const [key, ev] of state) {
+        const [type, childId] = splitStateKey(key);
+        if (type !== "m.space.child" || !Array.isArray(ev.content?.via) || !ev.content.via.length) continue;
+        if (suggestedOnly && ev.content.suggested !== true) continue;
+        childrenState.push({ type, state_key: childId, sender: ev.sender, content: ev.content, origin_server_ts: ev.origin_server_ts });
+        if (!(await hs.rooms.exists(childId))) continue;
+        const childState = await hs.rooms.currentState(childId);
+        if (!(await accessible(childState))) {
+          inaccessible.push(childId);
+          continue;
+        }
+        const childSummary = await summary(childId, childState);
+        childSummary.children_state = [];
+        children.push(childSummary);
       }
-      return details;
-    };
-    const accessible = async (s: StateMap) => {
-      const jr = getState(s, "m.room.join_rules")?.content;
-      const rule = jr?.join_rule ?? "invite";
-      const hv = getState(s, "m.room.history_visibility")?.content?.history_visibility;
-      if (["public", "knock", "knock_restricted"].includes(rule) || hv === "world_readable" || FederationJoinGuard.serverInRoom(s, origin))
-        return true;
-      if (rule !== "restricted") return false;
-      // Restricted rooms are visible to servers with a member in an allowed room (as far as we know).
-      for (const allow of Array.isArray(jr?.allow) ? jr!.allow : []) {
-        if (allow?.type !== "m.room_membership" || typeof allow.room_id !== "string" || !(await hs.rooms.exists(allow.room_id))) continue;
-        if (FederationJoinGuard.serverInRoom(await hs.rooms.currentState(allow.room_id), origin)) return true;
-      }
-      return false;
-    };
-    if (!(await accessible(state))) throw errors.notFound("Room is not accessible");
-    const children: Record<string, any>[] = [];
-    const childrenState: Record<string, any>[] = [];
-    const inaccessible: string[] = [];
-    for (const [key, ev] of state) {
-      const [type, childId] = splitStateKey(key);
-      if (type !== "m.space.child" || !Array.isArray(ev.content?.via) || !ev.content.via.length) continue;
-      if (suggestedOnly && ev.content.suggested !== true) continue;
-      childrenState.push({ type, state_key: childId, sender: ev.sender, content: ev.content, origin_server_ts: ev.origin_server_ts });
-      if (!(await hs.rooms.exists(childId))) continue;
-      const childState = await hs.rooms.currentState(childId);
-      if (!(await accessible(childState))) {
-        inaccessible.push(childId);
-        continue;
-      }
-      const childSummary = await summary(childId, childState);
-      childSummary.children_state = [];
-      children.push(childSummary);
-    }
-    const room = await summary(roomId, state);
-    room.children_state = childrenState;
-    return { room, children, inaccessible_children: inaccessible };
+      const room = await summary(roomId, state);
+      room.children_state = childrenState;
+      return { room, children, inaccessible_children: inaccessible };
+    },
   });
 
   // --- Media ---------------------------------------------------------------------------
@@ -743,78 +796,97 @@ export function registerFederationRoutes(r: Router): void {
     const body = Buffer.concat([Buffer.from(head), Buffer.from(data), Buffer.from(`\r\n--${boundary}--\r\n`)]);
     return new Response(body, { status: 200, headers: { "content-type": `multipart/mixed; boundary=${boundary}` } });
   };
-  fed("GET", "/v1/media/download/:mediaId", (ctx) => mediaHandler(ctx));
-  fed("GET", "/v1/media/thumbnail/:mediaId", (ctx) => mediaHandler(ctx));
+  fed("GET", "/v1/media/download/:mediaId", { handler: (ctx) => mediaHandler(ctx) });
+  fed("GET", "/v1/media/thumbnail/:mediaId", { handler: (ctx) => mediaHandler(ctx) });
 
   // --- OpenID ------------------------------------------------------------------------------
-  r.get(`${F}/v1/openid/userinfo`, async (ctx) => {
-    const token = ctx.query.get("access_token");
-    const userId = token ? await ctx.hs.cluster.get<string>(`openid:${token}`) : null;
-    if (!userId) throw new MatrixError(401, "M_UNKNOWN_TOKEN", "Invalid OpenID token");
-    return { sub: userId };
-  });
-  r.client("POST", "/user/:userId/openid/request_token", async (ctx) => {
-    const s = await ctx.auth();
-    if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot request tokens for other users");
-    const token = randomToken();
-    await ctx.hs.cluster.set(`openid:${token}`, s.userId, 3600_000);
-    return { access_token: token, token_type: "Bearer", matrix_server_name: ctx.hs.serverName, expires_in: 3600 };
-  });
+  r.get(
+    `${F}/v1/openid/userinfo`,
+    procedure({
+      handler: async (ctx) => {
+        const token = ctx.query.get("access_token");
+        const userId = token ? await ctx.hs.cluster.get<string>(`openid:${token}`) : null;
+        if (!userId) throw new MatrixError(401, "M_UNKNOWN_TOKEN", "Invalid OpenID token");
+        return { sub: userId };
+      },
+    }),
+  );
+  r.client(
+    "POST",
+    "/user/:userId/openid/request_token",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot request tokens for other users");
+        const token = randomToken();
+        await ctx.hs.cluster.set(`openid:${token}`, s.userId, 3600_000);
+        return { access_token: token, token_type: "Bearer", matrix_server_name: ctx.hs.serverName, expires_in: 3600 };
+      },
+    }),
+  );
 
   // --- Third-party invites -------------------------------------------------------
   // The invitee's server asks the inviter's server to turn an m.room.third_party_invite into an invite.
-  fed("PUT", "/v1/exchange_third_party_invite/:roomId", async (ctx, origin) => {
-    const hs = ctx.hs;
-    const roomId = ctx.params.roomId;
-    const event = await ctx.json();
-    const signed = event.content?.third_party_invite?.signed;
-    if (event.type !== "m.room.member" || event.room_id !== roomId || event.content?.membership !== "invite" || !isObject(signed)) {
-      throw errors.badJson("Expected an m.room.member invite with third_party_invite");
-    }
-    if (typeof event.sender !== "string" || !hs.isLocalUser(event.sender))
-      throw errors.forbidden("The sender is not a user of this server");
-    if (typeof event.state_key !== "string" || domainOf(event.state_key) !== origin || signed.mxid !== event.state_key) {
-      throw errors.forbidden("The invitee does not belong to the requesting server");
-    }
-    await roomOr404(hs, roomId);
-    await checkAcl(hs, roomId, origin);
-    await exchangeThirdPartyInvite(hs, roomId, event.sender, event.state_key, signed);
-    return {};
+  fed("PUT", "/v1/exchange_third_party_invite/:roomId", {
+    handler: async (ctx, origin) => {
+      const hs = ctx.hs;
+      const roomId = ctx.params.roomId;
+      const event = await ctx.json();
+      const signed = event.content?.third_party_invite?.signed;
+      if (event.type !== "m.room.member" || event.room_id !== roomId || event.content?.membership !== "invite" || !isObject(signed)) {
+        throw errors.badJson("Expected an m.room.member invite with third_party_invite");
+      }
+      if (typeof event.sender !== "string" || !hs.isLocalUser(event.sender))
+        throw errors.forbidden("The sender is not a user of this server");
+      if (typeof event.state_key !== "string" || domainOf(event.state_key) !== origin || signed.mxid !== event.state_key) {
+        throw errors.forbidden("The invitee does not belong to the requesting server");
+      }
+      await roomOr404(hs, roomId);
+      await checkAcl(hs, roomId, origin);
+      await exchangeThirdPartyInvite(hs, roomId, event.sender, event.state_key, signed);
+      return {};
+    },
   });
 
   // An identity server tells us that a 3PID with pending invites was bound to one of our users.
-  r.put(`${F}/v1/3pid/onbind`, async (ctx) => {
-    const hs = ctx.hs;
-    const body = await ctx.json();
-    const invites: any[] = Array.isArray(body.invites) ? body.invites : [];
-    for (const invite of invites) {
-      const signed = invite?.signed;
-      if (!isObject(signed) || typeof signed.mxid !== "string" || !hs.isLocalUser(signed.mxid)) continue;
-      if (typeof invite.room_id !== "string" || typeof invite.sender !== "string") continue;
-      const event = {
-        type: "m.room.member",
-        room_id: invite.room_id,
-        sender: invite.sender,
-        state_key: signed.mxid,
-        content: { membership: "invite", third_party_invite: { signed } },
-      };
-      try {
-        if (hs.isLocalUser(invite.sender)) {
-          await exchangeThirdPartyInvite(hs, invite.room_id, invite.sender, signed.mxid, signed);
-        } else {
-          await hs.federation.client.request(
-            domainOf(invite.sender),
-            "PUT",
-            `/_matrix/federation/v1/exchange_third_party_invite/${encodeURIComponent(invite.room_id)}`,
-            { body: event },
-          );
+  r.put(
+    `${F}/v1/3pid/onbind`,
+    procedure({
+      handler: async (ctx) => {
+        const hs = ctx.hs;
+        const body = await ctx.json();
+        const invites: any[] = Array.isArray(body.invites) ? body.invites : [];
+        for (const invite of invites) {
+          const signed = invite?.signed;
+          if (!isObject(signed) || typeof signed.mxid !== "string" || !hs.isLocalUser(signed.mxid)) continue;
+          if (typeof invite.room_id !== "string" || typeof invite.sender !== "string") continue;
+          const event = {
+            type: "m.room.member",
+            room_id: invite.room_id,
+            sender: invite.sender,
+            state_key: signed.mxid,
+            content: { membership: "invite", third_party_invite: { signed } },
+          };
+          try {
+            if (hs.isLocalUser(invite.sender)) {
+              await exchangeThirdPartyInvite(hs, invite.room_id, invite.sender, signed.mxid, signed);
+            } else {
+              await hs.federation.client.request(
+                domainOf(invite.sender),
+                "PUT",
+                `/_matrix/federation/v1/exchange_third_party_invite/${encodeURIComponent(invite.room_id)}`,
+                { body: event },
+              );
+            }
+          } catch (err) {
+            hs.logger.warn("Could not exchange third-party invite to", invite.room_id, "for", signed.mxid, err);
+          }
         }
-      } catch (err) {
-        hs.logger.warn("Could not exchange third-party invite to", invite.room_id, "for", signed.mxid, err);
-      }
-    }
-    return {};
-  });
+        return {};
+      },
+    }),
+  );
 }
 
 /** Helpers for "is a server in the room" checks. */

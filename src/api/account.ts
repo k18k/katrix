@@ -5,6 +5,7 @@ import { LOCALPART_RE } from "#core/ids.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 import { requireUia } from "#api/uia.ts";
 import { canonicalAddress, isMedium } from "#core/threepid.ts";
 import { toMsisdn } from "#core/phone.ts";
@@ -135,24 +136,28 @@ async function resolveLoginUser(hs: Homeserver, body: Record<string, any>): Prom
 }
 
 export function registerAccountRoutes(r: Router): void {
-  r.client("GET", "/login", (ctx) => ({ flows: loginFlows(ctx.hs) }));
+  r.client("GET", "/login", procedure({ handler: (ctx) => ({ flows: loginFlows(ctx.hs) }) }));
 
   r.client(
     "GET",
     "/auth_metadata",
-    async (ctx) => {
-      if (!ctx.hs.oauth) throw errors.unrecognized("OAuth is not enabled");
-      return ctx.hs.oauth.serverMetadata();
-    },
+    procedure({
+      handler: async (ctx) => {
+        if (!ctx.hs.oauth) throw errors.unrecognized("OAuth is not enabled");
+        return ctx.hs.oauth.serverMetadata();
+      },
+    }),
     ["v1"],
   );
   r.client(
     "GET",
     "/auth_issuer",
-    (ctx) => {
-      if (!ctx.hs.oauth) throw errors.unrecognized("OAuth is not enabled");
-      return { issuer: ctx.hs.oauth.options.issuer };
-    },
+    procedure({
+      handler: (ctx) => {
+        if (!ctx.hs.oauth) throw errors.unrecognized("OAuth is not enabled");
+        return { issuer: ctx.hs.oauth.options.issuer };
+      },
+    }),
     ["v1"],
   );
 
@@ -166,316 +171,410 @@ export function registerAccountRoutes(r: Router): void {
   r.client(
     "POST",
     "/login/get_token",
-    async (ctx) => {
-      const s = await ctx.auth();
-      if (!ctx.hs.config.loginViaExistingSession || ctx.hs.oauth || s.isGuest) throw errors.unrecognized();
-      await ctx.rateLimit("login");
-      await requireUia(ctx.hs, await ctx.json(), [["m.login.password"]], s.userId);
-      const ttl = 2 * 60_000;
-      return { login_token: await ctx.hs.auth.createLoginToken(s.userId, ttl), expires_in_ms: ttl };
-    },
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (!ctx.hs.config.loginViaExistingSession || ctx.hs.oauth || s.isGuest) throw errors.unrecognized();
+        await ctx.rateLimit("login");
+        await requireUia(ctx.hs, await ctx.json(), [["m.login.password"]], s.userId);
+        const ttl = 2 * 60_000;
+        return { login_token: await ctx.hs.auth.createLoginToken(s.userId, ttl), expires_in_ms: ttl };
+      },
+    }),
     ["v1"],
   );
 
-  r.client("GET", "/login/sso/redirect", ssoRedirect);
-  r.client("GET", "/login/sso/redirect/:idpId", ssoRedirect);
-  r.client("GET", "/login/sso/callback/:idpId", async (ctx) => {
-    if (!ctx.hs.sso) throw errors.unrecognized("SSO is not enabled");
-    return Response.redirect(await ctx.hs.sso.finishLogin(ctx.params.idpId, ctx.query), 302);
-  });
+  r.client("GET", "/login/sso/redirect", procedure({ handler: ssoRedirect }));
+  r.client("GET", "/login/sso/redirect/:idpId", procedure({ handler: ssoRedirect }));
+  r.client(
+    "GET",
+    "/login/sso/callback/:idpId",
+    procedure({
+      handler: async (ctx) => {
+        if (!ctx.hs.sso) throw errors.unrecognized("SSO is not enabled");
+        return Response.redirect(await ctx.hs.sso.finishLogin(ctx.params.idpId, ctx.query), 302);
+      },
+    }),
+  );
 
-  r.client("POST", "/login", { input: loginBody }, async (ctx) => {
-    await ctx.rateLimit("login");
-    const body = ctx.input;
-    const hs = ctx.hs;
-    if (hs.oauth) throw errors.unrecognized("Log in through the OAuth provider");
-    if (body.type === "m.login.application_service") {
-      const reg = ctx.accessToken() ? hs.appservices.byToken(ctx.accessToken()!) : null;
-      if (!reg) throw errors.unknownToken("An application service token is required");
-      const userId = await resolveLoginUser(hs, body);
-      if (!hs.appservices.isInterestedUser(reg, userId)) throw errors.forbidden("User is not in the application service's namespace");
-      if (!(await hs.db.findOne("users", [{ field: "user_id", value: userId }]))) throw errors.forbidden("Unknown user");
-      const session = await hs.auth.createSession(userId, {
-        deviceId: body.device_id,
-        displayName: body.initial_device_display_name,
-      });
-      return { ...session, home_server: hs.serverName };
-    }
-    if (body.type === "m.login.token") {
-      if (body.token === undefined) throw errors.missingParam("Missing token");
-      const userId = await hs.auth.consumeLoginToken(body.token).catch(async (err) => {
-        await hs.audit.record({ action: "login_failed", actor: null, ip: ctx.ip, outcome: "failure", details: { type: "m.login.token" } });
-        throw err;
-      });
-      const user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
-      if (!user || user.deactivated) throw errors.userDeactivated();
-      const session = await hs.auth.createSession(userId, {
-        deviceId: body.device_id,
-        displayName: body.initial_device_display_name,
-        refreshToken: body.refresh_token === true,
-      });
-      await hs.audit.record({
-        action: "login",
-        actor: userId,
-        target: session.device_id,
-        ip: ctx.ip,
-        userAgent: ctx.request.headers.get("user-agent"),
-        details: { type: "m.login.token" },
-      });
-      return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
-    }
-    if (body.type !== "m.login.password" || !hs.userAuth.passwordLoginEnabled) throw errors.unknown("Unsupported login type");
-    const userId = await resolveLoginUser(hs, body);
-    if (body.password === undefined) throw errors.missingParam("Missing password");
-    let user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
-    const ok = await hs.userAuth.checkPassword({
-      userId,
-      localpart: userId.slice(1).split(":")[0],
-      password: body.password,
-      storedHash: user?.password_hash ?? null,
-    });
-    const ua = ctx.request.headers.get("user-agent");
-    if (!ok) {
-      await hs.audit.record({
-        action: "login_failed",
-        actor: userId,
-        ip: ctx.ip,
-        userAgent: ua,
-        outcome: "failure",
-        details: { type: "m.login.password" },
-      });
-      throw errors.forbidden("Invalid username or password");
-    }
-    if (!user) {
-      if (!(await hs.userAuth.autoProvision(userId))) throw errors.forbidden("Invalid username or password");
-      await createUser(hs, userId.slice(1).split(":")[0], {});
-      user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
-    }
-    if (user!.deactivated) throw errors.userDeactivated();
-    const session = await hs.auth.createSession(userId, {
-      deviceId: body.device_id,
-      displayName: body.initial_device_display_name,
-      refreshToken: body.refresh_token === true,
-    });
-    await hs.audit.record({
-      action: "login",
-      actor: userId,
-      target: session.device_id,
-      ip: ctx.ip,
-      userAgent: ua,
-      details: { type: "m.login.password" },
-    });
-    return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
-  });
+  r.client(
+    "POST",
+    "/login",
+    procedure({
+      rateLimit: "login",
+      input: loginBody,
+      handler: async (ctx) => {
+        const body = ctx.input;
+        const hs = ctx.hs;
+        if (hs.oauth) throw errors.unrecognized("Log in through the OAuth provider");
+        if (body.type === "m.login.application_service") {
+          const reg = ctx.accessToken() ? hs.appservices.byToken(ctx.accessToken()!) : null;
+          if (!reg) throw errors.unknownToken("An application service token is required");
+          const userId = await resolveLoginUser(hs, body);
+          if (!hs.appservices.isInterestedUser(reg, userId)) throw errors.forbidden("User is not in the application service's namespace");
+          if (!(await hs.db.findOne("users", [{ field: "user_id", value: userId }]))) throw errors.forbidden("Unknown user");
+          const session = await hs.auth.createSession(userId, {
+            deviceId: body.device_id,
+            displayName: body.initial_device_display_name,
+          });
+          return { ...session, home_server: hs.serverName };
+        }
+        if (body.type === "m.login.token") {
+          if (body.token === undefined) throw errors.missingParam("Missing token");
+          const userId = await hs.auth.consumeLoginToken(body.token).catch(async (err) => {
+            await hs.audit.record({
+              action: "login_failed",
+              actor: null,
+              ip: ctx.ip,
+              outcome: "failure",
+              details: { type: "m.login.token" },
+            });
+            throw err;
+          });
+          const user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
+          if (!user || user.deactivated) throw errors.userDeactivated();
+          const session = await hs.auth.createSession(userId, {
+            deviceId: body.device_id,
+            displayName: body.initial_device_display_name,
+            refreshToken: body.refresh_token === true,
+          });
+          await hs.audit.record({
+            action: "login",
+            actor: userId,
+            target: session.device_id,
+            ip: ctx.ip,
+            userAgent: ctx.request.headers.get("user-agent"),
+            details: { type: "m.login.token" },
+          });
+          return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
+        }
+        if (body.type !== "m.login.password" || !hs.userAuth.passwordLoginEnabled) throw errors.unknown("Unsupported login type");
+        const userId = await resolveLoginUser(hs, body);
+        if (body.password === undefined) throw errors.missingParam("Missing password");
+        let user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
+        const ok = await hs.userAuth.checkPassword({
+          userId,
+          localpart: userId.slice(1).split(":")[0],
+          password: body.password,
+          storedHash: user?.password_hash ?? null,
+        });
+        const ua = ctx.request.headers.get("user-agent");
+        if (!ok) {
+          await hs.audit.record({
+            action: "login_failed",
+            actor: userId,
+            ip: ctx.ip,
+            userAgent: ua,
+            outcome: "failure",
+            details: { type: "m.login.password" },
+          });
+          throw errors.forbidden("Invalid username or password");
+        }
+        if (!user) {
+          if (!(await hs.userAuth.autoProvision(userId))) throw errors.forbidden("Invalid username or password");
+          await createUser(hs, userId.slice(1).split(":")[0], {});
+          user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
+        }
+        if (user!.deactivated) throw errors.userDeactivated();
+        const session = await hs.auth.createSession(userId, {
+          deviceId: body.device_id,
+          displayName: body.initial_device_display_name,
+          refreshToken: body.refresh_token === true,
+        });
+        await hs.audit.record({
+          action: "login",
+          actor: userId,
+          target: session.device_id,
+          ip: ctx.ip,
+          userAgent: ua,
+          details: { type: "m.login.password" },
+        });
+        return { ...session, home_server: hs.serverName, well_known: wellKnown(hs) ?? undefined };
+      },
+    }),
+  );
 
-  r.client("POST", "/refresh", { input: body({ refresh_token: lenient(z.string()) }) }, async (ctx) => {
-    const body = ctx.input;
-    if (body.refresh_token === undefined) throw errors.missingParam("Missing refresh_token");
-    const { access_token, refresh_token, expires_in_ms } = await ctx.hs.auth.refresh(body.refresh_token);
-    return { access_token, refresh_token, expires_in_ms };
-  });
+  r.client(
+    "POST",
+    "/refresh",
+    procedure({
+      input: body({ refresh_token: lenient(z.string()) }),
+      handler: async (ctx) => {
+        const body = ctx.input;
+        if (body.refresh_token === undefined) throw errors.missingParam("Missing refresh_token");
+        const { access_token, refresh_token, expires_in_ms } = await ctx.hs.auth.refresh(body.refresh_token);
+        return { access_token, refresh_token, expires_in_ms };
+      },
+    }),
+  );
 
-  r.client("POST", "/logout", async (ctx) => {
-    const s = await ctx.auth();
-    await ctx.hs.auth.deleteDevice(s.userId, s.deviceId);
-    await ctx.hs.audit.record({ action: "logout", actor: s.userId, target: s.deviceId, ip: ctx.ip });
-    return {};
-  });
+  r.client(
+    "POST",
+    "/logout",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        await ctx.hs.auth.deleteDevice(s.userId, s.deviceId);
+        await ctx.hs.audit.record({ action: "logout", actor: s.userId, target: s.deviceId, ip: ctx.ip });
+        return {};
+      },
+    }),
+  );
 
-  r.client("POST", "/logout/all", async (ctx) => {
-    const s = await ctx.auth();
-    await ctx.hs.auth.deleteAllDevices(s.userId);
-    await ctx.hs.audit.record({ action: "logout", actor: s.userId, ip: ctx.ip, details: { all: true } });
-    return {};
-  });
+  r.client(
+    "POST",
+    "/logout/all",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        await ctx.hs.auth.deleteAllDevices(s.userId);
+        await ctx.hs.audit.record({ action: "logout", actor: s.userId, ip: ctx.ip, details: { all: true } });
+        return {};
+      },
+    }),
+  );
 
-  r.client("GET", "/account/whoami", async (ctx) => {
-    const s = await ctx.auth();
-    return { user_id: s.userId, ...(s.deviceId ? { device_id: s.deviceId } : {}), is_guest: s.isGuest };
-  });
+  r.client(
+    "GET",
+    "/account/whoami",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        return { user_id: s.userId, ...(s.deviceId ? { device_id: s.deviceId } : {}), is_guest: s.isGuest };
+      },
+    }),
+  );
 
-  r.client("GET", "/register/available", async (ctx) => {
-    const username = ctx.query.get("username");
-    if (!username) throw errors.missingParam("Missing username");
-    await validateNewUsername(ctx.hs, username);
-    return { available: true };
-  });
+  r.client(
+    "GET",
+    "/register/available",
+    procedure({
+      handler: async (ctx) => {
+        const username = ctx.query.get("username");
+        if (!username) throw errors.missingParam("Missing username");
+        await validateNewUsername(ctx.hs, username);
+        return { available: true };
+      },
+    }),
+  );
 
-  r.client("GET", "/register", async (ctx) => ({ flows: (await registrationFlows(ctx.hs)).map((stages) => ({ stages })), params: {} }));
+  r.client(
+    "GET",
+    "/register",
+    procedure({ handler: async (ctx) => ({ flows: (await registrationFlows(ctx.hs)).map((stages) => ({ stages })), params: {} }) }),
+  );
 
   r.client(
     "GET",
     "/register/m.login.registration_token/validity",
-    async (ctx) => {
-      await ctx.rateLimit("register");
-      const token = ctx.query.get("token");
-      if (!token) throw errors.missingParam("Missing token");
-      return { valid: await registrationTokenValid(ctx.hs, token) };
-    },
+    procedure({
+      rateLimit: "register",
+      handler: async (ctx) => {
+        const token = ctx.query.get("token");
+        if (!token) throw errors.missingParam("Missing token");
+        return { valid: await registrationTokenValid(ctx.hs, token) };
+      },
+    }),
     ["v1"],
   );
 
-  r.client("POST", "/register", { input: registerBody }, async (ctx) => {
-    const hs = ctx.hs;
-    const body = ctx.input;
-    const kind = ctx.query.get("kind") ?? "user";
-    if (kind === "guest") {
-      if (!hs.userAuth.guestAccessEnabled) throw errors.forbidden("Guest access is disabled");
-      const userId = await createUser(hs, await generateLocalpart(hs), { guest: true });
-      const session = await hs.auth.createSession(userId, { displayName: body.initial_device_display_name });
-      return { ...session, home_server: hs.serverName };
-    }
-    if (kind !== "user") throw errors.invalidParam("Unknown kind");
-    // Application services register users in their namespace without UIA.
-    if (body.type === "m.login.application_service" || body.auth?.type === "m.login.application_service") {
-      const s = await ctx.auth();
-      if (!s.appservice) throw errors.forbidden("An application service token is required");
-      if (body.username === undefined) throw errors.missingParam("Missing username");
-      const localpart = body.username.toLowerCase();
-      const userId = `@${localpart}:${hs.serverName}`;
-      if (!hs.appservices.isInterestedUser(s.appservice, userId))
-        throw errors.exclusive("User is not in the application service's namespace");
-      if (!LOCALPART_RE.test(localpart)) throw errors.invalidUsername();
-      if (await hs.db.findOne("users", [{ field: "user_id", value: userId }])) throw errors.userInUse();
-      await createUser(hs, localpart, {});
-      if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
-      return {
-        ...(await hs.auth.createSession(userId, {
+  r.client(
+    "POST",
+    "/register",
+    procedure({
+      input: registerBody,
+      handler: async (ctx) => {
+        const hs = ctx.hs;
+        const body = ctx.input;
+        const kind = ctx.query.get("kind") ?? "user";
+        if (kind === "guest") {
+          if (!hs.userAuth.guestAccessEnabled) throw errors.forbidden("Guest access is disabled");
+          const userId = await createUser(hs, await generateLocalpart(hs), { guest: true });
+          const session = await hs.auth.createSession(userId, { displayName: body.initial_device_display_name });
+          return { ...session, home_server: hs.serverName };
+        }
+        if (kind !== "user") throw errors.invalidParam("Unknown kind");
+        // Application services register users in their namespace without UIA.
+        if (body.type === "m.login.application_service" || body.auth?.type === "m.login.application_service") {
+          const s = await ctx.auth();
+          if (!s.appservice) throw errors.forbidden("An application service token is required");
+          if (body.username === undefined) throw errors.missingParam("Missing username");
+          const localpart = body.username.toLowerCase();
+          const userId = `@${localpart}:${hs.serverName}`;
+          if (!hs.appservices.isInterestedUser(s.appservice, userId))
+            throw errors.exclusive("User is not in the application service's namespace");
+          if (!LOCALPART_RE.test(localpart)) throw errors.invalidUsername();
+          if (await hs.db.findOne("users", [{ field: "user_id", value: userId }])) throw errors.userInUse();
+          await createUser(hs, localpart, {});
+          if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
+          return {
+            ...(await hs.auth.createSession(userId, {
+              deviceId: body.device_id,
+              displayName: body.initial_device_display_name,
+            })),
+            home_server: hs.serverName,
+          };
+        }
+        if (ctx.accessToken() && hs.appservices.byToken(ctx.accessToken()!))
+          throw errors.missingParam("Application services must use type m.login.application_service");
+        rejectIfDelegated(hs);
+        if (!(await hs.registrationAllowed())) throw errors.forbidden("Registration is disabled");
+        await ctx.rateLimit("register");
+        const localpart =
+          body.username !== undefined ? await validateNewUsername(hs, body.username.toLowerCase()) : await generateLocalpart(hs);
+        if (hs.appservices.exclusiveUserOwner(`@${localpart}:${hs.serverName}`))
+          throw errors.exclusive("This user ID is reserved by an application service");
+        if (body.password !== undefined) {
+          const problem = await hs.userAuth.validatePassword(body.password);
+          if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
+        }
+        const flows = await registrationFlows(hs);
+        const { threepids } = await requireUia(hs, body, flows, null);
+        await consumeRegistrationToken(hs, body);
+        // Re-check after UIA in case of a race between two registrations.
+        if (await hs.db.findOne("users", [{ field: "localpart", value: localpart }])) throw errors.userInUse();
+        const userId = await createUser(hs, localpart, { password: body.password });
+        for (const t of threepids)
+          await hs.threepids.add(userId, t).catch((err) => hs.logger.warn("Could not attach", t.medium, "to", userId, err));
+        await hs.audit.record({
+          action: "register",
+          actor: userId,
+          ip: ctx.ip,
+          userAgent: ctx.request.headers.get("user-agent"),
+          details: { token: body.auth?.type === "m.login.registration_token" },
+        });
+        if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
+        const session = await hs.auth.createSession(userId, {
           deviceId: body.device_id,
           displayName: body.initial_device_display_name,
-        })),
-        home_server: hs.serverName,
-      };
-    }
-    if (ctx.accessToken() && hs.appservices.byToken(ctx.accessToken()!))
-      throw errors.missingParam("Application services must use type m.login.application_service");
-    rejectIfDelegated(hs);
-    if (!(await hs.registrationAllowed())) throw errors.forbidden("Registration is disabled");
-    await ctx.rateLimit("register");
-    const localpart =
-      body.username !== undefined ? await validateNewUsername(hs, body.username.toLowerCase()) : await generateLocalpart(hs);
-    if (hs.appservices.exclusiveUserOwner(`@${localpart}:${hs.serverName}`))
-      throw errors.exclusive("This user ID is reserved by an application service");
-    if (body.password !== undefined) {
-      const problem = await hs.userAuth.validatePassword(body.password);
-      if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
-    }
-    const flows = await registrationFlows(hs);
-    const { threepids } = await requireUia(hs, body, flows, null);
-    await consumeRegistrationToken(hs, body);
-    // Re-check after UIA in case of a race between two registrations.
-    if (await hs.db.findOne("users", [{ field: "localpart", value: localpart }])) throw errors.userInUse();
-    const userId = await createUser(hs, localpart, { password: body.password });
-    for (const t of threepids)
-      await hs.threepids.add(userId, t).catch((err) => hs.logger.warn("Could not attach", t.medium, "to", userId, err));
-    await hs.audit.record({
-      action: "register",
-      actor: userId,
-      ip: ctx.ip,
-      userAgent: ctx.request.headers.get("user-agent"),
-      details: { token: body.auth?.type === "m.login.registration_token" },
-    });
-    if (body.inhibit_login === true) return { user_id: userId, home_server: hs.serverName };
-    const session = await hs.auth.createSession(userId, {
-      deviceId: body.device_id,
-      displayName: body.initial_device_display_name,
-      refreshToken: body.refresh_token === true,
-    });
-    return { ...session, home_server: hs.serverName };
-  });
+          refreshToken: body.refresh_token === true,
+        });
+        return { ...session, home_server: hs.serverName };
+      },
+    }),
+  );
 
-  r.client("POST", "/account/password", { input: passwordBody }, async (ctx) => {
-    const hs = ctx.hs;
-    rejectIfDelegated(hs);
-    const body = ctx.input;
-    // Without an access token, the password is reset by proving ownership of an address of the account.
-    let s: { userId: string; deviceId: string | null };
-    if (ctx.accessToken()) {
-      const session = await ctx.auth();
-      await requireUia(hs, body, [["m.login.password"]], session.userId);
-      s = { userId: session.userId, deviceId: session.deviceId };
-    } else {
-      const { threepids } = await requireUia(hs, body, [["m.login.email.identity"], ["m.login.msisdn"]], null);
-      const owner = threepids.length ? await hs.threepids.userFor(threepids[0].medium, threepids[0].address) : null;
-      if (!owner) throw new MatrixError(400, "M_THREEPID_NOT_FOUND", "No account uses this address");
-      s = { userId: owner, deviceId: null };
-    }
-    if (!body.new_password) throw errors.missingParam("Missing new_password");
-    const problem = await hs.userAuth.validatePassword(body.new_password);
-    if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
-    await hs.db.update("users", [{ field: "user_id", value: s.userId }], {
-      password_hash: await hs.userAuth.hashPassword(body.new_password),
-    });
-    await hs.audit.record({
-      action: "password_change",
-      actor: s.userId,
-      ip: ctx.ip,
-      details: { logout_devices: body.logout_devices !== false },
-    });
-    if (body.logout_devices !== false) await hs.auth.deleteAllDevices(s.userId, s.deviceId ?? undefined);
-    return {};
-  });
-
-  r.client("POST", "/account/deactivate", { input: body({}) }, async (ctx) => {
-    const hs = ctx.hs;
-    rejectIfDelegated(hs);
-    const s = await ctx.auth();
-    await requireUia(hs, ctx.input, [["m.login.password"]], s.userId);
-    for (const membership of ["join", "invite", "knock"]) {
-      for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
-        try {
-          await hs.rooms.setMembership(roomId, s.userId, s.userId, "leave");
-        } catch {
-          /* best effort */
+  r.client(
+    "POST",
+    "/account/password",
+    procedure({
+      input: passwordBody,
+      handler: async (ctx) => {
+        const hs = ctx.hs;
+        rejectIfDelegated(hs);
+        const body = ctx.input;
+        // Without an access token, the password is reset by proving ownership of an address of the account.
+        let s: { userId: string; deviceId: string | null };
+        if (ctx.accessToken()) {
+          const session = await ctx.auth();
+          await requireUia(hs, body, [["m.login.password"]], session.userId);
+          s = { userId: session.userId, deviceId: session.deviceId };
+        } else {
+          const { threepids } = await requireUia(hs, body, [["m.login.email.identity"], ["m.login.msisdn"]], null);
+          const owner = threepids.length ? await hs.threepids.userFor(threepids[0].medium, threepids[0].address) : null;
+          if (!owner) throw new MatrixError(400, "M_THREEPID_NOT_FOUND", "No account uses this address");
+          s = { userId: owner, deviceId: null };
         }
-      }
-    }
-    await hs.auth.deleteAllDevices(s.userId);
-    await hs.db.update("users", [{ field: "user_id", value: s.userId }], {
-      deactivated: true,
-      password_hash: null,
-      displayname: null,
-      avatar_url: null,
-    });
-    await hs.db.delete("profile_fields", [{ field: "user_id", value: s.userId }]);
-    const unbind = await hs.threepids.removeAll(s.userId);
-    await hs.audit.record({ action: "deactivate", actor: s.userId, target: s.userId, ip: ctx.ip });
-    return { id_server_unbind_result: unbind };
-  });
+        if (!body.new_password) throw errors.missingParam("Missing new_password");
+        const problem = await hs.userAuth.validatePassword(body.new_password);
+        if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
+        await hs.db.update("users", [{ field: "user_id", value: s.userId }], {
+          password_hash: await hs.userAuth.hashPassword(body.new_password),
+        });
+        await hs.audit.record({
+          action: "password_change",
+          actor: s.userId,
+          ip: ctx.ip,
+          details: { logout_devices: body.logout_devices !== false },
+        });
+        if (body.logout_devices !== false) await hs.auth.deleteAllDevices(s.userId, s.deviceId ?? undefined);
+        return {};
+      },
+    }),
+  );
+
+  r.client(
+    "POST",
+    "/account/deactivate",
+    procedure({
+      input: body({}),
+      handler: async (ctx) => {
+        const hs = ctx.hs;
+        rejectIfDelegated(hs);
+        const s = await ctx.auth();
+        await requireUia(hs, ctx.input, [["m.login.password"]], s.userId);
+        for (const membership of ["join", "invite", "knock"]) {
+          for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
+            try {
+              await hs.rooms.setMembership(roomId, s.userId, s.userId, "leave");
+            } catch {
+              /* best effort */
+            }
+          }
+        }
+        await hs.auth.deleteAllDevices(s.userId);
+        await hs.db.update("users", [{ field: "user_id", value: s.userId }], {
+          deactivated: true,
+          password_hash: null,
+          displayname: null,
+          avatar_url: null,
+        });
+        await hs.db.delete("profile_fields", [{ field: "user_id", value: s.userId }]);
+        const unbind = await hs.threepids.removeAll(s.userId);
+        await hs.audit.record({ action: "deactivate", actor: s.userId, target: s.userId, ip: ctx.ip });
+        return { id_server_unbind_result: unbind };
+      },
+    }),
+  );
 
   // Synapse-compatible shared-secret registration, used by Complement for admin users.
-  r.get("/_synapse/admin/v1/register", async (ctx) => {
-    if (!ctx.hs.config.registrationSharedSecret) throw errors.unrecognized();
-    const nonce = randomString(32);
-    await ctx.hs.cluster.set(`regnonce:${nonce}`, true, 60_000);
-    return { nonce };
-  });
-  r.post("/_synapse/admin/v1/register", { input: sharedSecretRegisterBody }, async (ctx) => {
-    const hs = ctx.hs;
-    const secret = hs.config.registrationSharedSecret;
-    if (!secret) throw errors.unrecognized();
-    const body = ctx.input;
-    if (body.nonce === undefined || !(await hs.cluster.get(`regnonce:${body.nonce}`))) throw errors.unknown("Unrecognised nonce");
-    await hs.cluster.delete(`regnonce:${body.nonce}`);
-    const admin = body.admin === true;
-    // HMAC-SHA1 is what Synapse's shared-secret registration protocol specifies (tools compute the
-    // same MAC). It only authenticates this request; passwords are stored with scrypt.
-    const expected = createHmac("sha1", secret)
-      .update(`${body.nonce}\u0000${body.username}\u0000${body.password}\u0000${admin ? "admin" : "notadmin"}`)
-      .digest("hex");
-    const given = Buffer.from(body.mac ?? "", "utf8");
-    if (given.length !== expected.length || !timingSafeEqual(given, Buffer.from(expected, "utf8")))
-      throw errors.forbidden("HMAC incorrect");
-    const localpart = await validateNewUsername(hs, body.username.toLowerCase());
-    const userId = await createUser(hs, localpart, {
-      password: body.password,
-      admin,
-      displayname: body.displayname,
-    });
-    const session = await hs.auth.createSession(userId);
-    await hs.audit.record({ action: "register", actor: "server", target: userId, ip: ctx.ip, details: { shared_secret: true, admin } });
-    return { ...session, home_server: hs.serverName };
-  });
+  r.get(
+    "/_synapse/admin/v1/register",
+    procedure({
+      handler: async (ctx) => {
+        if (!ctx.hs.config.registrationSharedSecret) throw errors.unrecognized();
+        const nonce = randomString(32);
+        await ctx.hs.cluster.set(`regnonce:${nonce}`, true, 60_000);
+        return { nonce };
+      },
+    }),
+  );
+  r.post(
+    "/_synapse/admin/v1/register",
+    procedure({
+      input: sharedSecretRegisterBody,
+      handler: async (ctx) => {
+        const hs = ctx.hs;
+        const secret = hs.config.registrationSharedSecret;
+        if (!secret) throw errors.unrecognized();
+        const body = ctx.input;
+        if (body.nonce === undefined || !(await hs.cluster.get(`regnonce:${body.nonce}`))) throw errors.unknown("Unrecognised nonce");
+        await hs.cluster.delete(`regnonce:${body.nonce}`);
+        const admin = body.admin === true;
+        // HMAC-SHA1 is what Synapse's shared-secret registration protocol specifies (tools compute the
+        // same MAC). It only authenticates this request; passwords are stored with scrypt.
+        const expected = createHmac("sha1", secret)
+          .update(`${body.nonce}\u0000${body.username}\u0000${body.password}\u0000${admin ? "admin" : "notadmin"}`)
+          .digest("hex");
+        const given = Buffer.from(body.mac ?? "", "utf8");
+        if (given.length !== expected.length || !timingSafeEqual(given, Buffer.from(expected, "utf8")))
+          throw errors.forbidden("HMAC incorrect");
+        const localpart = await validateNewUsername(hs, body.username.toLowerCase());
+        const userId = await createUser(hs, localpart, {
+          password: body.password,
+          admin,
+          displayname: body.displayname,
+        });
+        const session = await hs.auth.createSession(userId);
+        await hs.audit.record({ action: "register", actor: "server", target: userId, ip: ctx.ip, details: { shared_secret: true, admin } });
+        return { ...session, home_server: hs.serverName };
+      },
+    }),
+  );
 }
 
 export async function registrationFlows(hs: Homeserver): Promise<string[][]> {

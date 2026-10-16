@@ -2,6 +2,7 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 
 const DEFAULT_MAX_UPLOAD = 50 * 1024 * 1024;
 const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif|apng)|video\/(mp4|webm|ogg)|audio\/(mpeg|ogg|wav|webm|mp4|aac|flac)|text\/plain)$/;
@@ -156,18 +157,33 @@ async function thumbnail(ctx: RequestContext): Promise<Response> {
 
 export function registerMediaRoutes(r: Router): void {
   const config = (ctx: RequestContext) => ({ "m.upload.size": maxUpload(ctx.hs) });
-  r.get("/_matrix/media/v3/config", async (ctx) => {
-    await ctx.auth();
-    return config(ctx);
-  });
-  r.get("/_matrix/media/r0/config", async (ctx) => {
-    await ctx.auth();
-    return config(ctx);
-  });
-  r.get("/_matrix/client/v1/media/config", async (ctx) => {
-    await ctx.auth();
-    return config(ctx);
-  });
+  r.get(
+    "/_matrix/media/v3/config",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        return config(ctx);
+      },
+    }),
+  );
+  r.get(
+    "/_matrix/media/r0/config",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        return config(ctx);
+      },
+    }),
+  );
+  r.get(
+    "/_matrix/client/v1/media/config",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        return config(ctx);
+      },
+    }),
+  );
 
   const upload = async (ctx: RequestContext) => {
     await ctx.auth();
@@ -176,49 +192,66 @@ export function registerMediaRoutes(r: Router): void {
     await storeUpload(ctx, mediaId);
     return { content_uri: `mxc://${ctx.hs.serverName}/${mediaId}` };
   };
-  r.post("/_matrix/media/v3/upload", upload);
-  r.post("/_matrix/media/r0/upload", upload);
+  r.post("/_matrix/media/v3/upload", procedure({ handler: upload }));
+  r.post("/_matrix/media/r0/upload", procedure({ handler: upload }));
 
-  r.post("/_matrix/media/v1/create", async (ctx) => {
-    const s = await ctx.auth();
-    const mediaId = randomString(24);
-    await ctx.hs.db.create("media", {
-      media_id: mediaId,
-      content_type: null,
-      filename: null,
-      size: 0,
-      uploader: s.userId,
-      created_ts: Date.now(),
-      pending: true,
-    });
-    return { content_uri: `mxc://${ctx.hs.serverName}/${mediaId}`, unused_expires_at: Date.now() + 24 * 3600_000 };
-  });
+  r.post(
+    "/_matrix/media/v1/create",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const mediaId = randomString(24);
+        await ctx.hs.db.create("media", {
+          media_id: mediaId,
+          content_type: null,
+          filename: null,
+          size: 0,
+          uploader: s.userId,
+          created_ts: Date.now(),
+          pending: true,
+        });
+        return { content_uri: `mxc://${ctx.hs.serverName}/${mediaId}`, unused_expires_at: Date.now() + 24 * 3600_000 };
+      },
+    }),
+  );
 
-  r.put("/_matrix/media/v3/upload/:serverName/:mediaId", async (ctx) => {
-    const s = await ctx.auth();
-    if (ctx.params.serverName !== ctx.hs.serverName) throw errors.notFound("Unknown media");
-    const meta = await ctx.hs.db.findOne("media", [{ field: "media_id", value: ctx.params.mediaId }]);
-    if (!meta) throw errors.notFound("Unknown media");
-    if (meta.uploader !== s.userId) throw errors.forbidden("You did not create this media ID");
-    if (!meta.pending) throw new MatrixError(409, "M_CANNOT_OVERWRITE_MEDIA", "Media already uploaded");
-    await storeUpload(ctx, ctx.params.mediaId);
-    return {};
-  });
+  r.put(
+    "/_matrix/media/v3/upload/:serverName/:mediaId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (ctx.params.serverName !== ctx.hs.serverName) throw errors.notFound("Unknown media");
+        const meta = await ctx.hs.db.findOne("media", [{ field: "media_id", value: ctx.params.mediaId }]);
+        if (!meta) throw errors.notFound("Unknown media");
+        if (meta.uploader !== s.userId) throw errors.forbidden("You did not create this media ID");
+        if (!meta.pending) throw new MatrixError(409, "M_CANNOT_OVERWRITE_MEDIA", "Media already uploaded");
+        await storeUpload(ctx, ctx.params.mediaId);
+        return {};
+      },
+    }),
+  );
 
   // Legacy unauthenticated endpoints and authenticated (v1.11) endpoints.
   for (const prefix of ["/_matrix/media/v3", "/_matrix/media/r0"]) {
-    r.get(`${prefix}/download/:serverName/:mediaId`, download);
-    r.get(`${prefix}/download/:serverName/:mediaId/:fileName`, download);
-    r.get(`${prefix}/thumbnail/:serverName/:mediaId`, thumbnail);
+    r.get(`${prefix}/download/:serverName/:mediaId`, procedure({ handler: download }));
+    r.get(`${prefix}/download/:serverName/:mediaId/:fileName`, procedure({ handler: download }));
+    r.get(`${prefix}/thumbnail/:serverName/:mediaId`, procedure({ handler: thumbnail }));
   }
   const authed = async (ctx: RequestContext) => {
     await ctx.auth();
     return download(ctx);
   };
-  r.get("/_matrix/client/v1/media/download/:serverName/:mediaId", authed);
-  r.get("/_matrix/client/v1/media/download/:serverName/:mediaId/:fileName", authed);
-  r.get("/_matrix/client/v1/media/thumbnail/:serverName/:mediaId", async (ctx) => {
-    await ctx.auth();
-    return thumbnail(ctx);
-  });
+  r.get("/_matrix/client/v1/media/download/:serverName/:mediaId", procedure({ handler: authed }));
+  r.get("/_matrix/client/v1/media/download/:serverName/:mediaId/:fileName", procedure({ handler: authed }));
+  r.get(
+    "/_matrix/client/v1/media/thumbnail/:serverName/:mediaId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        return thumbnail(ctx);
+      },
+    }),
+  );
 }

@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { MatrixError } from "#core/errors.ts";
 
-// Request body schemas (zod). A route declares `{ input: schema }` and its handler receives the
-// parsed body as `ctx.input`. Matrix requires servers to ignore unknown keys, so body schemas are
-// loose objects: unknown fields pass through untouched.
+// Request body schemas (zod), used as a procedure's `input` (see http/procedure.ts). Matrix
+// requires servers to ignore unknown keys, so body schemas are loose objects: unknown fields pass
+// through untouched.
 
 /** A request body: a JSON object whose unknown keys are kept. */
 export const body = <T extends z.ZodRawShape>(shape: T) => z.looseObject(shape);

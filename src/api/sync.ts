@@ -5,6 +5,7 @@ import type { StoredEvent } from "#core/rooms.ts";
 import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
 import { matchesFilter, roomAllowed, validateSyncFilter, type SyncFilter } from "#api/filters.ts";
 import { loadRules } from "#core/pushrules.ts";
@@ -483,29 +484,44 @@ async function touchPresence(hs: Homeserver, userId: string, presence: string): 
 }
 
 export function registerSyncRoutes(r: Router): void {
-  r.client("GET", "/sync", sync);
+  r.client("GET", "/sync", procedure({ handler: sync }));
 
   // Filters are checked by validateSyncFilter, shared with filters given inline to /sync.
-  r.client("POST", "/user/:userId/filter", { input: body({}) }, async (ctx) => {
-    const s = await ctx.auth();
-    if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot create filters for other users");
-    const filter = validateSyncFilter(ctx.input);
-    const existing = await ctx.hs.db.findMany("filters", { where: [{ field: "user_id", value: s.userId }] });
-    const filterId = String(existing.reduce((max, f) => Math.max(max, Number(f.filter_id) || 0), 0) + 1);
-    await ctx.hs.db.create("filters", { user_id: s.userId, filter_id: filterId, filter });
-    return { filter_id: filterId };
-  });
+  r.client(
+    "POST",
+    "/user/:userId/filter",
+    procedure({
+      auth: "user",
+      input: body({}),
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot create filters for other users");
+        const filter = validateSyncFilter(ctx.input);
+        const existing = await ctx.hs.db.findMany("filters", { where: [{ field: "user_id", value: s.userId }] });
+        const filterId = String(existing.reduce((max, f) => Math.max(max, Number(f.filter_id) || 0), 0) + 1);
+        await ctx.hs.db.create("filters", { user_id: s.userId, filter_id: filterId, filter });
+        return { filter_id: filterId };
+      },
+    }),
+  );
 
-  r.client("GET", "/user/:userId/filter/:filterId", async (ctx) => {
-    const s = await ctx.auth();
-    if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot read filters of other users");
-    const row = await ctx.hs.db.findOne("filters", [
-      { field: "user_id", value: s.userId },
-      { field: "filter_id", value: ctx.params.filterId },
-    ]);
-    if (!row) throw errors.notFound("Unknown filter");
-    return row.filter;
-  });
+  r.client(
+    "GET",
+    "/user/:userId/filter/:filterId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot read filters of other users");
+        const row = await ctx.hs.db.findOne("filters", [
+          { field: "user_id", value: s.userId },
+          { field: "filter_id", value: ctx.params.filterId },
+        ]);
+        if (!row) throw errors.notFound("Unknown filter");
+        return row.filter;
+      },
+    }),
+  );
 }
 
 /**

@@ -1,6 +1,7 @@
 import { MatrixError, errors } from "#core/errors.ts";
 import { canonicalAddress, isMedium, type ThreepidPurpose } from "#core/threepid.ts";
 import type { RequestContext, Router } from "#http/router.ts";
+import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { requireUia } from "#api/uia.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
@@ -29,73 +30,111 @@ function notDelegated(ctx: RequestContext): void {
 
 export function registerThreepidRoutes(r: Router): void {
   // The fields are checked by the 3PID service, after it has checked that 3PIDs are enabled at all.
-  const requestToken = (purpose: ThreepidPurpose, medium: "email" | "msisdn") => async (ctx: RequestContext<Record<string, unknown>>) => {
-    notDelegated(ctx);
-    await ctx.rateLimit(purpose === "register" ? "register" : "login");
-    return ctx.hs.threepids.requestToken(purpose, medium, ctx.input);
-  };
+  const requestToken =
+    (purpose: ThreepidPurpose, medium: "email" | "msisdn") => async (ctx: ProcedureContext<"none", Record<string, unknown>>) => {
+      notDelegated(ctx);
+      await ctx.rateLimit(purpose === "register" ? "register" : "login");
+      return ctx.hs.threepids.requestToken(purpose, medium, ctx.input);
+    };
   for (const medium of ["email", "msisdn"] as const) {
-    r.client("POST", `/register/${medium}/requestToken`, { input: body({}) }, requestToken("register", medium));
-    r.client("POST", `/account/password/${medium}/requestToken`, { input: body({}) }, requestToken("password_reset", medium));
-    r.client("POST", `/account/3pid/${medium}/requestToken`, { input: body({}) }, requestToken("add_threepid", medium));
+    r.client("POST", `/register/${medium}/requestToken`, procedure({ input: body({}), handler: requestToken("register", medium) }));
+    r.client(
+      "POST",
+      `/account/password/${medium}/requestToken`,
+      procedure({ input: body({}), handler: requestToken("password_reset", medium) }),
+    );
+    r.client("POST", `/account/3pid/${medium}/requestToken`, procedure({ input: body({}), handler: requestToken("add_threepid", medium) }));
   }
 
   // The link in validation emails (GET), or a code typed into the client (POST to `submit_url`).
   const submitPath = "/_matrix/client/unstable/threepid/submit_token";
-  r.get(submitPath, async (ctx) => {
-    const q = ctx.query;
-    let nextLink: string | null = null;
-    let message = "Your address has been validated. You can return to your Matrix client.";
-    let status = 200;
-    try {
-      nextLink = await ctx.hs.threepids.submitToken(q.get("sid") ?? "", q.get("client_secret") ?? "", q.get("token") ?? "");
-    } catch (err) {
-      message = err instanceof MatrixError ? `Validation failed: ${err.message}.` : "Validation failed.";
-      status = 400;
-    }
-    if (nextLink && status === 200) return Response.redirect(nextLink, 302);
-    return new Response(`<!doctype html><meta charset="utf-8"><title>${ctx.hs.serverName}</title><p>${message}</p>`, {
-      status,
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
-  });
-  r.post(submitPath, { input: submitBody }, async (ctx) => {
-    const body = ctx.input;
-    await ctx.hs.threepids.submitToken(body.sid, body.client_secret, body.token);
-    return { success: true };
-  });
+  r.get(
+    submitPath,
+    procedure({
+      handler: async (ctx) => {
+        const q = ctx.query;
+        let nextLink: string | null = null;
+        let message = "Your address has been validated. You can return to your Matrix client.";
+        let status = 200;
+        try {
+          nextLink = await ctx.hs.threepids.submitToken(q.get("sid") ?? "", q.get("client_secret") ?? "", q.get("token") ?? "");
+        } catch (err) {
+          message = err instanceof MatrixError ? `Validation failed: ${err.message}.` : "Validation failed.";
+          status = 400;
+        }
+        if (nextLink && status === 200) return Response.redirect(nextLink, 302);
+        return new Response(`<!doctype html><meta charset="utf-8"><title>${ctx.hs.serverName}</title><p>${message}</p>`, {
+          status,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      },
+    }),
+  );
+  r.post(
+    submitPath,
+    procedure({
+      input: submitBody,
+      handler: async (ctx) => {
+        const body = ctx.input;
+        await ctx.hs.threepids.submitToken(body.sid, body.client_secret, body.token);
+        return { success: true };
+      },
+    }),
+  );
 
-  r.client("GET", "/account/3pid", async (ctx) => {
-    const s = await ctx.auth();
-    return { threepids: await ctx.hs.threepids.list(s.userId) };
-  });
+  r.client(
+    "GET",
+    "/account/3pid",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        return { threepids: await ctx.hs.threepids.list(s.userId) };
+      },
+    }),
+  );
 
-  r.client("POST", "/account/3pid/add", { input: body({ sid: lenient(z.string()), client_secret: lenient(z.string()) }) }, async (ctx) => {
-    notDelegated(ctx);
-    const s = await ctx.auth();
-    const body = ctx.input;
-    await requireUia(ctx.hs, body, [["m.login.password"]], s.userId);
-    const validated = await ctx.hs.threepids.validated({ sid: body.sid, client_secret: body.client_secret });
-    if (!validated) throw new MatrixError(400, "M_THREEPID_AUTH_FAILED", "The address has not been validated");
-    await ctx.hs.threepids.add(s.userId, validated);
-    return {};
-  });
+  r.client(
+    "POST",
+    "/account/3pid/add",
+    procedure({
+      input: body({ sid: lenient(z.string()), client_secret: lenient(z.string()) }),
+      handler: async (ctx) => {
+        notDelegated(ctx);
+        const s = await ctx.auth();
+        const body = ctx.input;
+        await requireUia(ctx.hs, body, [["m.login.password"]], s.userId);
+        const validated = await ctx.hs.threepids.validated({ sid: body.sid, client_secret: body.client_secret });
+        if (!validated) throw new MatrixError(400, "M_THREEPID_AUTH_FAILED", "The address has not been validated");
+        await ctx.hs.threepids.add(s.userId, validated);
+        return {};
+      },
+    }),
+  );
 
-  r.client("POST", "/account/3pid/bind", { input: bindBody }, async (ctx) => {
-    const s = await ctx.auth();
-    const body = ctx.input;
-    const res = await ctx.hs.identityServers.bind(body.id_server, body.id_access_token, body.sid, body.client_secret, s.userId);
-    // Remember the binding so that it can be removed when the address or account goes away.
-    if (res && isMedium(res.medium) && typeof res.address === "string") {
-      await ctx.hs.db.upsert("threepid_bindings", {
-        user_id: s.userId,
-        medium: res.medium,
-        address: res.address,
-        id_server: body.id_server,
-      });
-    }
-    return {};
-  });
+  r.client(
+    "POST",
+    "/account/3pid/bind",
+    procedure({
+      auth: "user",
+      input: bindBody,
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const body = ctx.input;
+        const res = await ctx.hs.identityServers.bind(body.id_server, body.id_access_token, body.sid, body.client_secret, s.userId);
+        // Remember the binding so that it can be removed when the address or account goes away.
+        if (res && isMedium(res.medium) && typeof res.address === "string") {
+          await ctx.hs.db.upsert("threepid_bindings", {
+            user_id: s.userId,
+            medium: res.medium,
+            address: res.address,
+            id_server: body.id_server,
+          });
+        }
+        return {};
+      },
+    }),
+  );
 
   const parseThreepid = (body: z.output<typeof threepidBody>) => {
     const address = canonicalAddress(body.medium, body.address);
@@ -103,24 +142,45 @@ export function registerThreepidRoutes(r: Router): void {
     return { medium: body.medium, address, idServer: body.id_server };
   };
 
-  r.client("POST", "/account/3pid/delete", { input: threepidBody }, async (ctx) => {
-    notDelegated(ctx);
-    const s = await ctx.auth();
-    const { medium, address, idServer } = parseThreepid(ctx.input);
-    const result = await ctx.hs.threepids.unbindAll(s.userId, medium, address, idServer);
-    await ctx.hs.threepids.remove(s.userId, medium, address);
-    return { id_server_unbind_result: result };
-  });
+  r.client(
+    "POST",
+    "/account/3pid/delete",
+    procedure({
+      input: threepidBody,
+      handler: async (ctx) => {
+        notDelegated(ctx);
+        const s = await ctx.auth();
+        const { medium, address, idServer } = parseThreepid(ctx.input);
+        const result = await ctx.hs.threepids.unbindAll(s.userId, medium, address, idServer);
+        await ctx.hs.threepids.remove(s.userId, medium, address);
+        return { id_server_unbind_result: result };
+      },
+    }),
+  );
 
-  r.client("POST", "/account/3pid/unbind", { input: threepidBody }, async (ctx) => {
-    const s = await ctx.auth();
-    const { medium, address, idServer } = parseThreepid(ctx.input);
-    return { id_server_unbind_result: await ctx.hs.threepids.unbindAll(s.userId, medium, address, idServer) };
-  });
+  r.client(
+    "POST",
+    "/account/3pid/unbind",
+    procedure({
+      auth: "user",
+      input: threepidBody,
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const { medium, address, idServer } = parseThreepid(ctx.input);
+        return { id_server_unbind_result: await ctx.hs.threepids.unbindAll(s.userId, medium, address, idServer) };
+      },
+    }),
+  );
 
   // Deprecated: adding an address validated by an identity server is not supported.
-  r.client("POST", "/account/3pid", async (ctx) => {
-    await ctx.auth();
-    throw errors.threepidDenied();
-  });
+  r.client(
+    "POST",
+    "/account/3pid",
+    procedure({
+      auth: "user",
+      handler: async () => {
+        throw errors.threepidDenied();
+      },
+    }),
+  );
 }
