@@ -1,22 +1,22 @@
 {
   "name": "matrix-nodejs-homeserver",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "A framework- and database-agnostic Matrix homeserver library for Node.js",
   "keywords": [
-    "matrix",
-    "homeserver",
     "chat",
     "e2ee",
-    "federation"
+    "federation",
+    "homeserver",
+    "matrix"
   ],
+  "homepage": "https://github.com/k18k/matrix-nodejs-homeserver#readme",
+  "bugs": {
+    "url": "https://github.com/k18k/matrix-nodejs-homeserver/issues"
+  },
   "license": "PolyForm-Noncommercial-1.0.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/k18k/matrix-nodejs-homeserver.git"
-  },
-  "homepage": "https://github.com/k18k/matrix-nodejs-homeserver#readme",
-  "bugs": {
-    "url": "https://github.com/k18k/matrix-nodejs-homeserver/issues"
   },
   "files": [
     "dist",
