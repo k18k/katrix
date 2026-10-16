@@ -25,7 +25,10 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const ledger: Ledger = !reset && existsSync(LEDGER) ? JSON.parse(readFileSync(LEDGER, "utf8")) : { tests: {}, history: [] };
-if (reset) ledger.tests = {};
+// https://github.com/k18k/matrix-nodejs-homeserver/issues/8: test names from result files were
+// used as keys of a plain object, so a name like `__proto__` wrote to its prototype. Results are
+// kept in a Map instead, where any name is just a key.
+const tests = new Map<string, { status: string; pkg: string }>(reset ? [] : Object.entries(ledger.tests ?? {}));
 
 for (const file of inputs) {
   for (const line of readFileSync(file, "utf8").split("\n")) {
@@ -37,13 +40,11 @@ for (const file of inputs) {
       continue;
     }
     if (!ev.Test || !["pass", "fail", "skip"].includes(ev.Action ?? "")) continue;
-    // https://github.com/k18k/matrix-nodejs-homeserver/issues/8: test names are used as keys; names like `__proto__` would write to the prototype.
-    if (["__proto__", "constructor", "prototype"].includes(ev.Test)) continue;
-    ledger.tests[ev.Test] = { status: ev.Action!, pkg: (ev.Package ?? "").replace(/^.*\/tests\/?/, "") || "federation" };
+    tests.set(ev.Test, { status: ev.Action!, pkg: (ev.Package ?? "").replace(/^.*\/tests\/?/, "") || "federation" });
   }
 }
 
-const entries = Object.entries(ledger.tests);
+const entries = [...tests];
 const top = entries.filter(([n]) => !n.includes("/"));
 const passing = (list: typeof entries) => list.filter(([, r]) => r.status === "pass").length;
 const counted = (list: typeof entries) => list.filter(([, r]) => r.status !== "skip").length;
@@ -56,6 +57,8 @@ if (inputs.length) {
     subTotal: counted(entries),
   });
 }
+// Object.fromEntries defines own properties, so even a `__proto__` name stays an ordinary key.
+ledger.tests = Object.fromEntries(tests);
 writeFileSync(LEDGER, JSON.stringify(ledger, null, 1) + "\n");
 
 const pct = (a: number, b: number) => (b ? `${((100 * a) / b).toFixed(1)}%` : "–");
