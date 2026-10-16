@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { errors } from "#core/errors.ts";
 import { signJson } from "#core/crypto.ts";
 import { SUPPORTED_ROOM_VERSIONS } from "#core/events.ts";
@@ -6,6 +7,11 @@ import { procedure } from "#http/procedure.ts";
 import { canonicalJsonResponse } from "#http/handler.ts";
 import { wellKnown } from "#api/account.ts";
 import { M, UNSTABLE } from "#core/m.ts";
+
+// https://github.com/k18k/matrix-nodejs-homeserver/issues/16: the federation version endpoint
+// reported a hardcoded "0.1.0" whatever release was installed. The version now comes from the
+// package's own package.json, which sits two levels up from both src/api/ and dist/api/.
+const PACKAGE = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { name: string; version: string };
 
 export const SPEC_VERSIONS = [
   "r0.0.1",
@@ -129,7 +135,7 @@ export function registerMiscRoutes(r: Router): void {
     procedure({
       handler: (ctx) => {
         if (!ctx.hs.federation.enabled) throw errors.unrecognized("Federation is disabled");
-        return { server: { name: "matrix-nodejs-homeserver", version: "0.1.0" } };
+        return { server: { name: PACKAGE.name, version: PACKAGE.version } };
       },
     }),
   );
