@@ -383,7 +383,12 @@ export class KeyService {
           for (const u of members) if (!sharing.has(u)) left.add(u);
         }
       } else if (m.membership === "join") {
-        changed.add(m.user_id);
+        // https://github.com/k18k/matrix-nodejs-homeserver/issues/53: only a join persisted after
+        // the token counts. Rows are also rewritten without a new membership event (a partial-state
+        // join completing, state rebuilt after resolution), and their users were reported again,
+        // though the client knew them. Synapse likewise looks at the membership events it sends.
+        const ev = await this.hs.rooms.getEvent(m.event_id);
+        if (ev && ev.stream > since) changed.add(m.user_id);
       } else if (!sharing.has(m.user_id)) {
         left.add(m.user_id);
       }
