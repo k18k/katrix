@@ -378,7 +378,12 @@ export class Homeserver extends EventEmitter {
     if (oldest[0] && oldest[0].stream < 0) await this.streams.lowerBackfillTo(oldest[0].stream);
     const oldestSnap = await this.db.findMany("state_snapshots", { sortBy: { field: "id", direction: "asc" }, limit: 1 });
     if (oldestSnap[0] && oldestSnap[0].id < 0) await this.streams.lowerBackfillTo(oldestSnap[0].id);
-    await this.cluster.advance("federation_outbox", (await this.db.max("federation_outbox", "id")) ?? 0);
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/70: only the federation outbox was
+    // moved past the IDs already stored, so after a restart on the in-process cluster (its
+    // sequences start at 0) audit entries, reports and appservice transactions reused IDs and
+    // failed on the primary key. Every sequence that numbers rows starts past them now.
+    for (const model of ["federation_outbox", "audit_log", "event_reports", "user_reports", "appservice_outbox"])
+      await this.cluster.advance(model, (await this.db.max(model, "id")) ?? 0);
     if (this.federation.enabled) this.federation.sender.start();
     this.delayedEvents.start();
     this.appservices.start();

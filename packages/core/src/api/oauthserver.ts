@@ -140,7 +140,10 @@ function page(hs: Homeserver, title: string, body: string, opts: { status?: numb
   const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store",
-    "referrer-policy": "no-referrer",
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/71: with no-referrer, Chrome sends
+    // `Origin: null` on the pages' own form posts, which the Origin check refused. same-origin
+    // keeps page URLs (they can hold codes) from other sites as well.
+    "referrer-policy": "same-origin",
     "x-frame-options": "DENY",
     "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src https:; frame-ancestors 'none'; base-uri 'none'",
   });

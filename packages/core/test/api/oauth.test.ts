@@ -368,6 +368,33 @@ test("pages refuse forms without the session's CSRF token, and cannot be framed"
     assert.match(login.headers.get("set-cookie")!, /^__Host-oauth_session=.*HttpOnly; SameSite=Lax.*Secure/);
     const forged = await b.post(`${P}/login`, { csrf: "x".repeat(32), username: "alice", password: "password" });
     assert.equal(forged.status, 403);
+    // #71: browsers send the page's own origin on its forms (Referrer-Policy same-origin; with
+    // no-referrer Chrome sent "null"), and that origin is accepted.
+    assert.equal(login.headers.get("referrer-policy"), "same-origin");
+    const sameOrigin = await t.handler(
+      new Request(`${BASE}${P}/login`, {
+        method: "POST",
+        headers: {
+          origin: BASE,
+          cookie: login.headers.getSetCookie()[0].split(";")[0],
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ csrf: b.csrf(login.text), username: "alice", password: "wrong" }),
+      }),
+    );
+    assert.equal(sameOrigin.status, 401);
+    const crossSite = await t.handler(
+      new Request(`${BASE}${P}/login`, {
+        method: "POST",
+        headers: {
+          origin: "https://evil.example",
+          cookie: login.headers.getSetCookie()[0].split(";")[0],
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ csrf: b.csrf(login.text), username: "alice", password: "password" }),
+      }),
+    );
+    assert.equal(crossSite.status, 403);
     // `next` cannot leave the server's pages.
     const ok = await b.post(`${P}/login`, {
       csrf: b.csrf(login.text),

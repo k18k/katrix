@@ -8,6 +8,7 @@
     "start": "node src/main.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json",
+    "predev": "npm run build -w matrix-nodejs-homeserver",
     "dev": "node src/dev.ts",
     "secrets": "msecrets",
     "deploy": "msecrets run -e production -- docker compose -f compose.prod.yaml up -d --build",
