@@ -20,6 +20,10 @@ const SYNC_TIMEOUT_MS = 30000;
 
 const delivery = new Trend("message_delivery", true);
 const received = new Counter("messages_received");
+// Messages the server accepted. The chat scenario asks for MESSAGES_PER_SECOND × DURATION; when
+// sends are slow, k6 runs out of senders and skips some (dropped_iterations), and the run then
+// measured a lighter load than asked for. The summary and the badges report the share that got in.
+const sent = new Counter("messages_sent");
 
 export const options = {
   scenarios: {
@@ -54,6 +58,7 @@ export const options = {
     "http_req_duration{name:initial_sync}": ["p(95)<60000"],
     "http_req_duration{name:sync}": ["p(95)<60000"],
     messages_received: ["count>=0"],
+    messages_sent: ["count>=0"],
     message_delivery: ["p(95)<3000"],
     checks: ["rate>0.99"],
   },
@@ -163,5 +168,5 @@ export function chat(data) {
     JSON.stringify({ msgtype: "m.text", body: "load test", sent: Date.now() }),
     auth(u.token, { tags: { name: "send" } }),
   );
-  check(res, { sent: (r) => r.status === 200 });
+  if (check(res, { sent: (r) => r.status === 200 })) sent.add(1);
 }
