@@ -7,7 +7,7 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/tsconfig.json ./packages/core/
 COPY apps/public/package.json ./apps/public/
 COPY apps/dev-idp/package.json ./apps/dev-idp/
-RUN npm ci --ignore-scripts --no-audit --no-fund -w matrix-nodejs-homeserver && npm install --no-save --no-audit --no-fund pg@8
+RUN npm ci --ignore-scripts --no-audit --no-fund -w matrix-nodejs-homeserver && npm install --no-save --ignore-scripts --no-audit --no-fund pg@8
 COPY packages/core/src ./packages/core/src
 COPY packages/core/loadtest/server.ts ./packages/core/loadtest/server.ts
 EXPOSE 8008
