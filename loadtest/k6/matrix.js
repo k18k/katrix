@@ -84,6 +84,14 @@ function register(username) {
 
 /** Once per run (per k6 instance): a run ID for unique user names, and the shared rooms. */
 export function setup() {
+  // The server (or the load balancer in front of it) may still be starting: wait for it, so a slow
+  // start is not reported as a failed run.
+  for (
+    let i = 0;
+    i < 60 && http.get(`${BASE}/_matrix/client/versions`, { responseCallback: http.expectedStatuses(200, 0, 502, 503) }).status !== 200;
+    i++
+  )
+    sleep(1);
   const run = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
   const token = register(`lt_${run}_owner`);
   if (!token) fail("could not register the room owner");

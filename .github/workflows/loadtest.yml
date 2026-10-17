@@ -3,6 +3,9 @@ name: Load test
 # Runs the load test (loadtest/) on a GitHub runner and publishes its results as README badges.
 # Investigation and tuning runs happen locally; this one exists to show where main stands. The
 # numbers describe one GitHub runner (4 CPUs, 16 GB), with the load generator on the same machine.
+# Clusters run with two nodes here: five nodes, Postgres and k6 on four CPUs measured how they
+# compete for the CPUs (the nodes sat idle at under 30 req/s each), not the homeserver. Five
+# nodes are measured locally (README).
 on:
   push:
     branches: [main]
@@ -53,7 +56,7 @@ jobs:
         run: |
           compose="docker compose -p matrix-loadtest -f loadtest/docker-compose.yml"
           $compose build
-          for scenario in "pg-nocluster 0 1" "pg-cluster-1 1 1" "pg-cluster-5 1 5"; do
+          for scenario in "pg-nocluster 0 1" "pg-cluster-1 1 1" "pg-cluster-2 1 2"; do
             set -- $scenario
             SUMMARY=$1 CLUSTER=$2 $compose up --scale "homeserver=$3" --abort-on-container-exit --exit-code-from k6 k6 \
               || echo "$1: thresholds crossed"
@@ -67,7 +70,7 @@ jobs:
             "sqlite=load · SQLite=loadtest/results/sqlite.json" \
             "pg-nocluster=load · Postgres=loadtest/results/pg-nocluster.json" \
             "pg-cluster-1=load · Postgres cluster ×1=loadtest/results/pg-cluster-1.json" \
-            "pg-cluster-5=load · Postgres cluster ×5=loadtest/results/pg-cluster-5.json" >> "$GITHUB_STEP_SUMMARY"
+            "pg-cluster-2=load · Postgres cluster ×2=loadtest/results/pg-cluster-2.json" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
         with:

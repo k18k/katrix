@@ -4,7 +4,7 @@
 [![Load test: SQLite](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Floadtest-results%2Fbadges%2Fsqlite.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml)
 [![Load test: Postgres](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Floadtest-results%2Fbadges%2Fpg-nocluster.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml)
 [![Load test: Postgres cluster, 1 node](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Floadtest-results%2Fbadges%2Fpg-cluster-1.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml)
-[![Load test: Postgres cluster, 5 nodes](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Floadtest-results%2Fbadges%2Fpg-cluster-5.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml)
+[![Load test: Postgres cluster, 2 nodes](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fk18k%2Fmatrix-nodejs-homeserver%2Floadtest-results%2Fbadges%2Fpg-cluster-2.json)](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml)
 
 A [Matrix](https://matrix.org) homeserver as an importable Node.js library. It isn't
 tied to any HTTP framework, database, auth system or deployment shape. You can use
@@ -516,7 +516,8 @@ BASE_URL=http://localhost:8008 ONLINE_USERS=1000 MESSAGES_PER_SECOND=50 ROOMS=25
 
 <!-- loadtest-results:start -->
 The badges at the top come from the [Load test workflow](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml) on main: the same
-scenario on one GitHub runner (4 CPUs), with k6 on the same machine. Each run's job summary has
+scenario on one GitHub runner (4 CPUs), with k6 on the same machine, and clusters of two nodes
+(five nodes would compete with Postgres and k6 for four CPUs). Each run's job summary has
 the full table.
 
 Latest results: 1000 users online in 25 rooms (40 per room), 50 messages/s, 30 s ramp-up then

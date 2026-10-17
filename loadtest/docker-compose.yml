@@ -63,6 +63,12 @@ services:
     depends_on:
       homeserver:
         condition: service_healthy
+    # k6 starts once nginx forwards requests: a container that has started may not listen yet, and
+    # k6's first request then failed the whole run.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8008/_matrix/client/versions"]
+      interval: 1s
+      retries: 60
     ulimits:
       nofile: { soft: 1048576, hard: 1048576 }
 
@@ -81,6 +87,8 @@ services:
     volumes:
       - ./k6:/scripts:ro
       - ./results:/results
-    depends_on: [lb]
+    depends_on:
+      lb:
+        condition: service_healthy
     ulimits:
       nofile: { soft: 1048576, hard: 1048576 }
