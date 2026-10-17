@@ -205,6 +205,12 @@ export const ssoConfirmPage = (serverName: string, result: SsoResult) => {
   });
 };
 
+// https://github.com/k18k/matrix-nodejs-homeserver/issues/73: clients use the stable discovery
+// endpoints only when the server advertises spec v1.15. Others (Element X) ask at MSC2965's
+// unstable paths, and without them found no OAuth and no way to sign in. Served at both, as
+// Synapse does.
+const OAUTH_DISCOVERY_VERSIONS = ["v1", "unstable/org.matrix.msc2965"];
+
 export function registerAccountRoutes(r: Router): void {
   r.client("GET", "/login", procedure({ handler: (ctx) => ({ flows: loginFlows(ctx.hs) }) }));
 
@@ -218,7 +224,7 @@ export function registerAccountRoutes(r: Router): void {
         return ctx.hs.oauth.serverMetadata();
       },
     }),
-    ["v1"],
+    OAUTH_DISCOVERY_VERSIONS,
   );
   r.client(
     "GET",
@@ -230,7 +236,7 @@ export function registerAccountRoutes(r: Router): void {
         return { issuer: ctx.hs.oauth.options.issuer };
       },
     }),
-    ["v1"],
+    OAUTH_DISCOVERY_VERSIONS,
   );
 
   const ssoRedirect = async (ctx: RequestContext) => {

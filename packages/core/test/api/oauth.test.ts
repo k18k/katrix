@@ -141,6 +141,9 @@ test("server metadata advertises the spec's endpoints and values", async () => {
     assert.deepEqual(m.code_challenge_methods_supported, ["S256"]);
     assert.deepEqual(m.prompt_values_supported, ["create"]);
     assert.ok(m.account_management_actions_supported.includes("org.matrix.cross_signing_reset"));
+    // #73: also at MSC2965's unstable paths, which clients use before spec v1.15 (Element X).
+    assert.deepEqual((await t.call("GET", "/_matrix/client/unstable/org.matrix.msc2965/auth_metadata")).json, m);
+    assert.equal((await t.call("GET", "/_matrix/client/unstable/org.matrix.msc2965/auth_issuer")).json.issuer, `${BASE}/`);
     // The legacy API stays, with SSO through the same pages.
     const flows = (await t.call("GET", "/_matrix/client/v3/login")).json.flows;
     assert.equal(flows.find((f: any) => f.type === "m.login.sso").oauth_aware_preferred, true);
