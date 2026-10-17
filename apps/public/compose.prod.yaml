@@ -42,11 +42,30 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?missing in msecrets.json}
       # GitHub user k18k (localpart = GitHub login, lowercased).
       ADMINS: ${ADMINS:-@k18k:matrix.mwdapis.stream}
+      # Calls: Element Call and Element X use LiveKit Cloud (which relays media itself), through
+      # lk-jwt-service (below), which clients reach at https://matrix.mwdapis.stream/livekit/jwt/
+      # (the homeserver passes those requests on).
+      LIVEKIT_JWT_URL: http://lk-jwt:8080
       TERMS_URL: ${TERMS_URL:-}
       POLICY_URL: ${POLICY_URL:-}
     volumes: [data:/data]
     depends_on:
       postgres: { condition: service_healthy }
+
+  # MatrixRTC authorization service: issues LiveKit tokens to users of this server who are in the
+  # call's room, and ends their call membership when they drop off (LiveKit's webhook, see README).
+  # Media goes between clients and LiveKit Cloud directly, not through this host.
+  lk-jwt:
+    image: ghcr.io/element-hq/lk-jwt-service:0.7.0
+    restart: unless-stopped
+    environment:
+      LIVEKIT_URL: ${LIVEKIT_URL:?missing in msecrets.json}
+      LIVEKIT_KEY: ${LIVEKIT_API_KEY:?missing in msecrets.json}
+      LIVEKIT_SECRET: ${LIVEKIT_API_SECRET:?missing in msecrets.json}
+      # Only users of this homeserver may start calls on the SFU.
+      LIVEKIT_FULL_ACCESS_HOMESERVERS: matrix.mwdapis.stream
+      # A fallback for webhooks that do not arrive.
+      LIVEKIT_SANITY_CHECK_INTERVAL_SECONDS: "30"
 
   # The tunnel's only route goes to the homeserver (cloudflared/config.yml).
   cloudflared:

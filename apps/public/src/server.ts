@@ -1,4 +1,4 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import pg from "pg";
@@ -49,6 +49,35 @@ export function pgConnectionString(raw: string): string {
   return url.toString();
 }
 
+// Headers that belong to one connection, not to the request passed on.
+const HOP_BY_HOP = new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "host", "content-length"]);
+
+/** Pass a request on to the MatrixRTC authorization service, without the /livekit/jwt prefix. */
+async function proxyLivekitJwt(target: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string" && !HOP_BY_HOP.has(k)) headers.set(k, v);
+  const path = req.url!.slice("/livekit/jwt".length) || "/";
+  try {
+    const upstream = await fetch(`${target}${path}`, {
+      method: req.method,
+      headers,
+      body: chunks.length && req.method !== "GET" && req.method !== "HEAD" ? Buffer.concat(chunks) : undefined,
+      signal: AbortSignal.timeout(15_000),
+    });
+    const out: Record<string, string> = {};
+    upstream.headers.forEach((v, k) => {
+      if (!HOP_BY_HOP.has(k) && k !== "content-encoding") out[k] = v;
+    });
+    res.writeHead(upstream.status, out);
+    res.end(Buffer.from(await upstream.arrayBuffer()));
+  } catch {
+    res.writeHead(502, { "content-type": "application/json" });
+    res.end(JSON.stringify({ errcode: "M_UNKNOWN", error: "The MatrixRTC authorization service is unreachable" }));
+  }
+}
+
 export async function startPublicServer(config: PublicConfig): Promise<{ hs: Homeserver; server: Server; close: () => Promise<void> }> {
   let databaseAdapter: DatabaseAdapter;
   let pool: pg.Pool | null = null;
@@ -78,6 +107,12 @@ export async function startPublicServer(config: PublicConfig): Promise<{ hs: Hom
       },
     },
     federation: { enabled: false },
+    // Element Call and Element X: LiveKit (LiveKit Cloud) through its authorization service.
+    rtc: config.livekitJwtUrl ? { transports: [{ type: "livekit", livekit_service_url: `${config.publicBaseUrl}/livekit/jwt` }] } : {},
+    // The authorization service checks the OpenID tokens of Element Call at the user's
+    // homeserver, which it finds like a federating server does: /.well-known/matrix/server.
+    // There is no federation, but this one endpoint it needs answers without it.
+    ...(config.livekitJwtUrl ? { federationAddress: `${new URL(config.publicBaseUrl).host}:443` } : {}),
     audit: { enabled: true },
   });
   await hs.ready;
@@ -89,6 +124,10 @@ export async function startPublicServer(config: PublicConfig): Promise<{ hs: Hom
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-frame-options": "DENY" });
       return res.end(page);
+    }
+    if (config.livekitJwtUrl && req.url?.startsWith("/livekit/jwt/")) {
+      void proxyLivekitJwt(config.livekitJwtUrl, req, res);
+      return;
     }
     matrix(req, res);
   });

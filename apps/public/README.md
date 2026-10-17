@@ -8,6 +8,8 @@ A public Matrix homeserver built on [`matrix-nodejs-homeserver`](../../packages/
   server's pages, and older clients through `m.login.sso`, which goes to the same pages.
 - **Postgres 18** in a container on the host (one instance, no cluster adapter); media on a volume.
 - **No federation.**
+- **Calls:** Element Call and Element X through LiveKit Cloud, which also relays media for
+  clients behind strict NATs. Media never goes through the host or the tunnel.
 - **Reachable through a Cloudflare tunnel**: the host opens no port.
 - **Version 0**: for testing. The landing page says so. Data is meant to survive updates, but
   may have to be reset.
@@ -41,6 +43,7 @@ environment `production`. `npx msecrets ls` shows which ones still need a value.
 | `POSTGRES_PASSWORD` | Generated. Handed to the homeserver as `PGPASSWORD`, so any characters work. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | From a GitHub OAuth app (below). |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Written by `npm run tunnel`. |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | From a LiveKit Cloud project (below). |
 
 1. **GitHub OAuth app** (GitHub → Settings → Developer settings → OAuth Apps → New): homepage
    `https://matrix.mwdapis.stream`, callback URL
@@ -53,12 +56,25 @@ environment `production`. `npx msecrets ls` shows which ones still need a value.
    browser, once), creates the tunnel `matrix-public`, routes `matrix.mwdapis.stream` to it, and
    stores the token in `msecrets.json`. The route to the homeserver is in
    [`cloudflared/config.yml`](cloudflared/config.yml).
-3. **The host** decrypts the secrets with its own key. Give it one, read-only, for production:
+3. **Calls.** The tunnel carries only HTTP, so media (WebRTC) goes to hosted services:
+   - **Element Call and Element X** use MatrixRTC: media goes through an SFU, and LiveKit is the
+     only one clients support. Create a project on [LiveKit Cloud](https://cloud.livekit.io), then
+     `npx msecrets set LIVEKIT_URL -e production` (its `wss://….livekit.cloud` URL), and the same
+     for `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. In the project's settings, add the webhook
+     `https://matrix.mwdapis.stream/livekit/jwt/sfu_webhook`; it lets lk-jwt-service end a call
+     membership when someone drops off.
+   - **Legacy 1:1 calls** (`m.call.*` in Element Web, FluffyChat, Nheko) connect the two
+     clients directly; there is no TURN server for them, so they need a direct path.
+
+   lk-jwt-service runs next to the homeserver, which passes `/livekit/jwt/*` on to it, so the
+   tunnel still has one route. It checks Element Call's OpenID tokens at
+   `/.well-known/matrix/server`, which the server answers for this even without federation.
+4. **The host** decrypts the secrets with its own key. Give it one, read-only, for production:
    ```sh
    npx msecrets recipient add matrix-host --generate --env production   # prints the key once
    ```
    On the host, keep it in `MSECRETS_IDENTITY` (or `~/.config/msecrets/identity.txt`).
-4. **Deploy** (on the host, from `apps/public`):
+5. **Deploy** (on the host, from `apps/public`):
    ```sh
    npm run deploy      # msecrets run -e production -- docker compose -f compose.prod.yaml up -d --build
    ```
@@ -80,4 +96,5 @@ to the login pages and the landing page.
 | `LOGIN_PROVIDER` | `github` or `dev` (default: whichever is configured). |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | GitHub login. |
 | `DEV_IDP_ISSUER`, `DEV_IDP_CLIENT_ID`, `DEV_IDP_CLIENT_SECRET` | The development provider. |
+| `LIVEKIT_JWT_URL` | lk-jwt-service as the server reaches it; advertises the LiveKit transport. |
 | `ADMINS`, `TERMS_URL`, `POLICY_URL`, `PORT` | See above. Port default 8008. |
