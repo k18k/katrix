@@ -218,9 +218,7 @@ rtc: {
 },
 ```
 
-TURN credentials are time-limited (coturn `static-auth-secret`), or come from a service:
-`turn: cloudflareTurn({ keyId, apiToken })` uses Cloudflare's managed TURN, and
-`turn.credentials(userId)` any other. MatrixRTC
+TURN credentials are time-limited (coturn `static-auth-secret`). MatrixRTC
 transports are advertised for Element Call. Delayed events (MSC4140) remove a
 call membership when a client disappears.
 
