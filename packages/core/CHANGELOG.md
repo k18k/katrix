@@ -1,5 +1,21 @@
 # matrix-nodejs-homeserver
 
+## 0.3.5
+
+### Patch Changes
+
+- e82882d: Security: with delegated OAuth, the `m.oauth` step for replacing cross-signing keys passed as soon as the client named it, without the user approving anything. Anyone holding a user's access token could replace their cross-signing identity. The step now passes only within 10 minutes after the user approved the reset. With `oauthServer` the approval comes from the account page. With a delegated provider it comes through `POST /_synapse/admin/v1/users/{userId}/_allow_cross_signing_replacement_without_uia`, which matrix-authentication-service calls. ([#65](https://github.com/k18k/matrix-nodejs-homeserver/issues/65))
+- e82882d: The homeserver can serve the spec's OAuth 2.0 API itself (`oauthServer` option). Clients such as Element X register on their own, and users sign in, register, approve clients and manage their account on the server's web pages. Covered: dynamic client registration, the authorization code grant with PKCE, the device authorization grant, refresh tokens, revocation, `prompt=create`, account management actions, and `m.oauth` for cross-signing resets. The legacy login API stays available unless `legacyApi: false`.
+  
+  Upstream identity providers no longer need OpenID Connect: a provider can give its endpoints directly. `githubProvider({ clientId, clientSecret })` sets up GitHub, so a server can offer GitHub as its only login.
+  
+  Breaking: tokens from OAuth (this server's or a delegated provider's) can no longer call endpoints that need User-Interactive Authentication (deleting devices, changing the password, deactivating, adding addresses). They get 403 with `account_management_uri` and are sent to account management, as the spec intends. `POST /keys/device_signing/upload` is the exception, through `m.oauth`.
+- b2fe231: The OAuth 2.0 API's server metadata and issuer are also served at MSC2965's unstable paths (`/_matrix/client/unstable/org.matrix.msc2965/auth_metadata`, `…/auth_issuer`). Clients that use those before spec v1.15, such as Element X, now find the OAuth login. ([#73](https://github.com/k18k/matrix-nodejs-homeserver/issues/73))
+- e82882d: Refreshing tokens no longer logs a client out when the refresh response gets lost: the old refresh token keeps working until the new access token is first used. A refresh token used again after that is treated as leaked and logs the device out. ([#66](https://github.com/k18k/matrix-nodejs-homeserver/issues/66))
+  
+  Refresh tokens no longer stop working after a week without use. The cleanup deleted them together with expired access tokens. ([#67](https://github.com/k18k/matrix-nodejs-homeserver/issues/67))
+- 56f9a51: After a restart on a persistent database without the Postgres cluster adapter, audit log entries, content reports and application service transactions failed with a unique constraint error until their IDs passed the ones already stored. Audit entries were lost in that time. Startup now continues every such sequence after the stored IDs. ([#70](https://github.com/k18k/matrix-nodejs-homeserver/issues/70))
+
 ## 0.3.4
 
 ### Patch Changes
