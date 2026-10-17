@@ -41,7 +41,7 @@ export async function startPublicServer(config: PublicConfig): Promise<{ hs: Hom
   let pool: pg.Pool | null = null;
   mkdirSync(config.dataDir, { recursive: true });
   if (config.databaseUrl) {
-    pool = new pg.Pool({ connectionString: config.databaseUrl, max: 20 });
+    pool = new pg.Pool({ connectionString: config.databaseUrl, max: config.dbPool });
     databaseAdapter = postgresAdapter(pool);
   } else {
     databaseAdapter = sqliteAdapter(new DatabaseSync(`${config.dataDir}/homeserver.db`));

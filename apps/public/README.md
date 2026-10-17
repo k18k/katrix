@@ -6,7 +6,7 @@ A public Matrix homeserver built on [`matrix-nodejs-homeserver`](../../packages/
 - **GitHub is the only login** (the OAuth 2.0 API of the spec, with GitHub as the identity
   provider). No passwords; the first login creates the account. Clients sign in through the
   server's pages, and older clients through `m.login.sso`, which goes to the same pages.
-- **Postgres**; media on a volume.
+- **Postgres on PlanetScale** (outside the host); media on a volume.
 - **No federation.**
 - **Reachable through a Cloudflare tunnel**: the host opens no port.
 - **Version 0**: for testing. The landing page says so. Data is meant to survive updates, but
@@ -38,7 +38,7 @@ environment `production`. `npx msecrets ls` shows which ones still need a value.
 
 | Secret | Value |
 |---|---|
-| `POSTGRES_PASSWORD` | Generated already. |
+| `DATABASE_URL` | The PlanetScale Postgres connection string, with `sslmode=verify-full`. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | From a GitHub OAuth app (below). |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Written by `npm run tunnel`. |
 
@@ -75,6 +75,7 @@ to the login pages and the landing page.
 | `SERVER_NAME` | The server name (`matrix.mwdapis.stream`). Required. |
 | `PUBLIC_BASE_URL` | Default `https://{SERVER_NAME}`. |
 | `DATABASE_URL` | Postgres. Without it, SQLite in `DATA_DIR`. |
+| `DB_POOL` | Postgres connections. Default 10. |
 | `DATA_DIR` | Media (and SQLite). Default `./data`, `/data` in the image. |
 | `LOGIN_PROVIDER` | `github` or `dev` (default: whichever is configured). |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | GitHub login. |

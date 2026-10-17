@@ -5,7 +5,7 @@ A [Matrix](https://matrix.org) homeserver as an importable Node.js library, and 
 | Directory | What | Published |
 |---|---|---|
 | [`packages/core`](packages/core) | The library: Client-Server and Server-Server API, E2EE, sliding sync, the OAuth 2.0 API, adapters for SQLite, Postgres and MySQL. [Documentation](packages/core/README.md). | npm: [`matrix-nodejs-homeserver`](https://www.npmjs.com/package/matrix-nodejs-homeserver) |
-| [`apps/public`](apps/public) | The public test server (v0) at [matrix.mwdapis.stream](https://matrix.mwdapis.stream): GitHub is the only login, Postgres, no federation, a Cloudflare tunnel. | no |
+| [`apps/public`](apps/public) | The public test server (v0) at [matrix.mwdapis.stream](https://matrix.mwdapis.stream): GitHub is the only login, Postgres on PlanetScale, no federation, a Cloudflare tunnel. | no |
 | [`apps/dev-idp`](apps/dev-idp) | A development OpenID Connect provider (Better Auth) where you sign in by picking a user. The public server uses it locally in place of GitHub. | no |
 
 ```sh

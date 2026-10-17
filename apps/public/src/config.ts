@@ -7,6 +7,8 @@ export interface PublicConfig {
   port: number;
   /** Postgres; without it, SQLite in `dataDir` (for trying the app without a database). */
   databaseUrl: string | null;
+  /** Connections to Postgres. Default 10 (managed databases limit them per plan). */
+  dbPool: number;
   dataDir: string;
   /** The only way to sign in: GitHub in production, the development identity provider locally. */
   provider: SsoProvider;
@@ -46,6 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PublicConfig {
     publicBaseUrl: (env.PUBLIC_BASE_URL ?? `https://${serverName}`).replace(/\/$/, ""),
     port: Number(env.PORT ?? 8008),
     databaseUrl: env.DATABASE_URL || null,
+    dbPool: Number(env.DB_POOL ?? 10),
     dataDir: env.DATA_DIR ?? "./data",
     provider: loginProvider(env),
     termsUrl: env.TERMS_URL || undefined,
