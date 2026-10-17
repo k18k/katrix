@@ -1,0 +1,48 @@
+import type { Router } from "#http/router.ts";
+import { registerAccountRoutes } from "#api/account.ts";
+import { registerOAuthServerRoutes } from "#api/oauthserver.ts";
+import { registerBackupRoutes } from "#api/backup.ts";
+import { registerSearchRoutes } from "#api/search.ts";
+import { registerPreviewRoutes } from "#api/preview.ts";
+import { registerSpaceRoutes } from "#api/spaces.ts";
+import { registerAdminRoutes } from "#api/admin.ts";
+import { registerSlidingSyncRoutes } from "#api/slidingsync.ts";
+import { registerFederationRoutes } from "#api/federation.ts";
+import { registerRtcRoutes } from "#api/rtc.ts";
+import { registerAppServiceRoutes } from "#api/appservice.ts";
+import { registerMediaRoutes } from "#api/media.ts";
+import { registerLegacyRoutes } from "#api/legacy.ts";
+import { registerThreepidRoutes } from "#api/threepid.ts";
+import { registerMiscRoutes } from "#api/misc.ts";
+import { registerProfileRoutes } from "#api/profile.ts";
+import { registerPushRoutes } from "#api/push.ts";
+import { registerRoomRoutes } from "#api/rooms.ts";
+import { registerSyncRoutes } from "#api/sync.ts";
+import { registerThreadSubscriptionRoutes } from "#api/threadsubs.ts";
+import { registerRelationshipRoutes } from "#api/relationships.ts";
+import { registerUserRoutes } from "#api/user.ts";
+
+export function registerRoutes(r: Router): void {
+  registerMiscRoutes(r);
+  registerAccountRoutes(r);
+  registerOAuthServerRoutes(r);
+  registerProfileRoutes(r);
+  registerRoomRoutes(r);
+  registerLegacyRoutes(r);
+  registerThreepidRoutes(r);
+  registerSyncRoutes(r);
+  registerUserRoutes(r);
+  registerPushRoutes(r);
+  registerMediaRoutes(r);
+  registerSearchRoutes(r);
+  registerBackupRoutes(r);
+  registerPreviewRoutes(r);
+  registerSpaceRoutes(r);
+  registerAdminRoutes(r);
+  registerSlidingSyncRoutes(r);
+  registerFederationRoutes(r);
+  registerRtcRoutes(r);
+  registerAppServiceRoutes(r);
+  registerThreadSubscriptionRoutes(r);
+  registerRelationshipRoutes(r);
+}

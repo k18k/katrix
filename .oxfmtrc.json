@@ -4,5 +4,13 @@
   "semi": true,
   "singleQuote": false,
   "trailingComma": "all",
-  "ignorePatterns": ["dist/**", "package-lock.json", "complement/results.json", "complement/passing.txt", "CLAUDE-SECURITY-*/**", "*.md"]
+  "ignorePatterns": [
+    "**/dist/**",
+    "package-lock.json",
+    "packages/core/complement/results.json",
+    "packages/core/complement/passing.txt",
+    "CLAUDE-SECURITY-*/**",
+    "*.md",
+    "**/msecrets.json"
+  ]
 }

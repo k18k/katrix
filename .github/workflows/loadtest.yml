@@ -1,6 +1,6 @@
 name: Load test
 
-# Runs the load test (loadtest/) on a GitHub runner and publishes its results as README badges.
+# Runs the load test (packages/core/loadtest/) on a GitHub runner and publishes its results as README badges.
 # Investigation and tuning runs happen locally; this one exists to show where main stands. The
 # numbers describe one GitHub runner (4 CPUs, 16 GB), with the load generator on the same machine.
 # Clusters run with two nodes here: five nodes, Postgres and k6 on four CPUs measured how they
@@ -9,7 +9,7 @@ name: Load test
 on:
   push:
     branches: [main]
-    paths: ["src/**", "loadtest/**", "package-lock.json", ".github/workflows/loadtest.yml"]
+    paths: ["packages/core/src/**", "packages/core/loadtest/**", "package-lock.json", ".github/workflows/loadtest.yml"]
   workflow_dispatch:
 
 permissions:
@@ -32,6 +32,9 @@ jobs:
     name: Run
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: packages/core
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -39,6 +42,7 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci --ignore-scripts
+        working-directory: .
 
       - name: SQLite, one process
         run: |
@@ -75,7 +79,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: loadtest-results
-          path: loadtest/results/
+          path: packages/core/loadtest/results/
 
   # Commits the badge data to the loadtest-results branch, which the README badges read. Only this
   # job may write to the repository, and it runs no code from the checkout.

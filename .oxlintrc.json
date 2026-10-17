@@ -7,7 +7,7 @@
     "node": true,
     "es2024": true
   },
-  "ignorePatterns": ["dist/**", "node_modules/**"],
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**"],
   "rules": {
     "no-unused-vars": [
       "error",
