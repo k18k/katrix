@@ -4,6 +4,7 @@ import { LOCALPART_RE, isValidUserId } from "#core/ids.ts";
 import type { Homeserver } from "#homeserver.ts";
 import { createUser } from "#api/account.ts";
 import { M } from "#core/m.ts";
+import { getState, membershipOf, powerLevels, userLevel } from "#core/authrules.ts";
 
 export interface ServerNoticesOptions {
   /** Localpart of the user that sends server notices. Default: "server". */
@@ -124,6 +125,31 @@ export class AdminService {
   }
 
   // --- Rooms ------------------------------------------------------------------
+
+  /**
+   * Make a local user join a room, as Synapse's `POST /_synapse/admin/v1/join` does: public rooms
+   * directly; otherwise a local member who may invite invites them first (the invite shows in the
+   * room, so its members see who added them). Returns the room ID.
+   */
+  async joinUser(userId: string, roomIdOrAlias: string): Promise<string> {
+    if (!this.hs.isLocalUser(userId) || !(await this.getUser(userId))) throw errors.notFound("Unknown user");
+    const roomId = await this.hs.rooms.resolveRoomIdOrAlias(roomIdOrAlias);
+    const version = await this.hs.rooms.roomVersion(roomId);
+    if (!version) throw errors.notFound("Unknown room");
+    const state = await this.hs.rooms.currentState(roomId);
+    const membership = membershipOf(state, userId);
+    if (membership === "join") return roomId;
+    if (membership === "ban") throw errors.forbidden("The user is banned from the room");
+    const joinRule = getState(state, M.ROOM.JOIN_RULES)?.content?.join_rule;
+    if (membership !== "invite" && joinRule !== "public") {
+      const pl = powerLevels(state, version);
+      const inviter = (await this.hs.rooms.joinedMembers(roomId)).find((m) => this.hs.isLocalUser(m) && userLevel(pl, m) >= pl.invite);
+      if (!inviter) throw errors.forbidden("No local member of the room may invite");
+      await this.hs.rooms.invite(roomId, inviter, userId);
+    }
+    await this.hs.rooms.join(userId, roomId);
+    return roomId;
+  }
 
   async listRooms(opts: { from?: number; limit?: number } = {}) {
     const rows = await this.hs.db.findMany("rooms", { sortBy: { field: "created_ts", direction: "asc" } });

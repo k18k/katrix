@@ -141,6 +141,14 @@ export function registerAdminRoutes(r: Router): void {
       },
     }),
   );
+  r.post(
+    "/_synapse/admin/v1/join/:roomIdOrAlias",
+    procedure({
+      guard: adminGuard,
+      input: body({ user_id: z.string(fail("M_MISSING_PARAM", "user_id is required", "user_id")) }),
+      handler: async (ctx) => ({ room_id: await ctx.hs.admin.joinUser(ctx.input.user_id, ctx.params.roomIdOrAlias) }),
+    }),
+  );
   // Synapse's endpoint for an OAuth server: the user approved replacing their cross-signing keys,
   // so the m.oauth UIA stage passes for a few minutes (#65). matrix-authentication-service calls it.
   r.post(

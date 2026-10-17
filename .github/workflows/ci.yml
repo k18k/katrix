@@ -27,6 +27,7 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
+      - run: node node_modules/@matrix-org/matrix-sdk-crypto-nodejs/download-lib.js
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
@@ -51,6 +52,9 @@ jobs:
       - run: npm ci --ignore-scripts
       # The apps import the built library (packages/core/dist), which --ignore-scripts skipped.
       - run: npm run build -w matrix-nodejs-homeserver
+      # The audit bot's crypto (matrix-sdk-crypto) is a native module that its install script
+      # downloads from the project's GitHub releases.
+      - run: node node_modules/@matrix-org/matrix-sdk-crypto-nodejs/download-lib.js
       - run: npm test
 
   complement:

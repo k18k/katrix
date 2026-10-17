@@ -6,6 +6,7 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json ./packages/core/
 COPY apps/public/package.json ./apps/public/
 COPY apps/dev-idp/package.json ./apps/dev-idp/
+COPY packages/auditbot/package.json ./packages/auditbot/
 # --include-workspace-root: the build needs the shared tools of the root (typescript, @types/node).
 RUN npm ci --ignore-scripts --no-audit --no-fund -w matrix-nodejs-homeserver --include-workspace-root
 COPY packages/core/tsconfig.json packages/core/tsdown.config.ts ./packages/core/
@@ -19,6 +20,7 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json ./packages/core/
 COPY apps/public/package.json ./apps/public/
 COPY apps/dev-idp/package.json ./apps/dev-idp/
+COPY packages/auditbot/package.json ./packages/auditbot/
 # Runtime dependencies only (pg); the library itself has none (zod is bundled into dist/).
 RUN npm ci --ignore-scripts --no-audit --no-fund --omit=dev -w @matrix-nodejs-homeserver/public \
  && mkdir -p /data && chown node:node /data
