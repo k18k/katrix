@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { createHomeserver, getFetchHandler, memoryAdapter } from "matrix-nodejs-homeserver";
-import { CryptoClient, fileSink, memorySink, startAuditBot, type AuditRecord } from "../src/index.ts";
+import { createHomeserver, getFetchHandler, memoryAdapter } from "#index.ts";
+import { CryptoClient, fileSink, memorySink, startAuditBot, type AuditRecord } from "#auditbot/index.ts";
 
 // The audit bot against a real homeserver: it joins rooms on its own and records them, and in an
 // end-to-end encrypted room it decrypts what a real E2EE client (matrix-sdk-crypto, as in the

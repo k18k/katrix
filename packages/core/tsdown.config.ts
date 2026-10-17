@@ -9,7 +9,9 @@ const zodDir = dirname(createRequire(import.meta.url).resolve("zod/package.json"
 // because Node does not strip types from files inside node_modules. Development and the
 // examples still run the TypeScript sources directly.
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // The audit bot is its own entry (matrix-nodejs-homeserver/auditbot): the main one must not load
+  // its native crypto module.
+  entry: ["src/index.ts", "src/auditbot/index.ts"],
   unbundle: true,
   format: "esm",
   platform: "node",

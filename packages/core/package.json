@@ -20,9 +20,10 @@
     "directory": "packages/core"
   },
   "files": [
-    "dist",
+    "AUDITBOT.md",
+    "LICENSE",
     "README.md",
-    "LICENSE"
+    "dist"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -34,6 +35,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./auditbot": {
+      "types": "./dist/auditbot/index.d.ts",
+      "default": "./dist/auditbot/index.js"
     }
   },
   "publishConfig": {
@@ -56,11 +61,20 @@
     "@better-auth/oauth-provider": "1.7.6",
     "@better-auth/utils": "0.4.2",
     "@better-fetch/fetch": "1.3.2",
+    "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6",
     "better-auth": "1.7.6",
     "better-call": "1.4.0",
     "publint": "^0.3.25",
     "tsdown": "^0.23.1",
     "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "@matrix-org/matrix-sdk-crypto-nodejs": "^0.6.6"
+  },
+  "peerDependenciesMeta": {
+    "@matrix-org/matrix-sdk-crypto-nodejs": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22"

@@ -1,12 +1,18 @@
 # Audit bot
 
-Records the rooms of a [matrix-nodejs-homeserver](../core) server, end-to-end encrypted ones
+`matrix-nodejs-homeserver/auditbot` records the rooms of the server, end-to-end encrypted ones
 included, to an archive: an account of the server that is a member of every room (or every room
 but direct messages) and writes each event as one JSON line.
 
+It needs the crypto library, an optional peer dependency:
+
+```sh
+npm install matrix-nodejs-homeserver @matrix-org/matrix-sdk-crypto-nodejs
+```
+
 ```ts
 import { createHomeserver } from "matrix-nodejs-homeserver";
-import { fileSink, startAuditBot } from "@matrix-nodejs-homeserver/auditbot";
+import { fileSink, startAuditBot } from "matrix-nodejs-homeserver/auditbot";
 
 const hs = createHomeserver({ /* … */ });
 const bot = await startAuditBot(hs, {

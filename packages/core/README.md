@@ -345,6 +345,18 @@ up for admins (`/_synapse/admin/v1/event_reports`, `reports list`), and the admi
 room is notified. `GET /_matrix/client/v3/admin/whois/{userId}` shows a user's
 devices and IP addresses.
 
+## Audit bot
+
+`matrix-nodejs-homeserver/auditbot` records every room of the server to an archive, end-to-end
+encrypted ones decrypted, like the Auditing of Element Server Suite Pro. The bot is a room
+member with its own device, visible in member lists. See [AUDITBOT.md](https://github.com/k18k/matrix-nodejs-homeserver/blob/main/packages/core/AUDITBOT.md).
+
+```ts
+import { fileSink, startAuditBot } from "matrix-nodejs-homeserver/auditbot";
+
+await startAuditBot(hs, { sink: fileSink("/data/audit"), dataDir: "/data/auditbot", storePassphrase, rooms: "groups" });
+```
+
 ## Administration
 
 You can use `hs.admin` from your own code:

@@ -15,7 +15,6 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/tsconfig.json ./packages/core/
 COPY apps/public/package.json ./apps/public/
 COPY apps/dev-idp/package.json ./apps/dev-idp/
-COPY packages/auditbot/package.json ./packages/auditbot/
 RUN npm ci --ignore-scripts --no-audit --no-fund -w matrix-nodejs-homeserver
 COPY packages/core/src ./packages/core/src
 COPY packages/core/complement ./packages/core/complement
