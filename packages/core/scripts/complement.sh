@@ -16,6 +16,8 @@
 # MATRIX_DEBUG=1 (print server debug logs of failing tests), CACHE_VOLUME, GO_IMAGE.
 set -e
 root=$(cd "$(dirname "$0")/.." && pwd)
+# The image is built from the repository root (npm workspaces share one lockfile).
+repo=$(cd "$root/../.." && pwd)
 image=complement-matrix-nodejs:latest
 ref=${COMPLEMENT_REF:-e2ada0745de192f930afe015e8cd8d87dd0e1a7c}
 go_image=${GO_IMAGE:-golang:1.26-bookworm}
@@ -23,12 +25,12 @@ cache=${CACHE_VOLUME:-matrix-nodejs-complement}
 out=${OUT:-$root/complement-results.json}
 [ $# -gt 0 ] || set -- ./tests/...
 
-docker build -q -t "$image" -f "$root/complement/Dockerfile" "$root" >/dev/null
+docker build -q -t "$image" -f "$root/complement/Dockerfile" "$repo" >/dev/null
 
 # https://github.com/k18k/matrix-nodejs-homeserver/issues/18: a server that cannot even load its
 # modules made Complement wait for every container until the timeout. Check that first, and stop
 # with the error in seconds.
-docker run --rm --entrypoint node "$image" -e 'import("/app/src/index.ts").catch((e) => { console.error("The homeserver does not load:", e.message); process.exit(1); })'
+docker run --rm --entrypoint node "$image" -e 'import("/app/packages/core/src/index.ts").catch((e) => { console.error("The homeserver does not load:", e.message); process.exit(1); })'
 
 # Variables prefixed PASS_ reach the homeserver containers (without the prefix). The homeservers
 # reach Complement through their gateway (see complement/entrypoint.sh). MATRIX_DEBUG=1 prints

@@ -1,0 +1,6 @@
+# Ingress of the tunnel created by scripts/tunnel.sh. The tunnel itself is identified by
+# TUNNEL_TOKEN (compose.prod.yaml); only the homeserver is reachable through it.
+ingress:
+  - hostname: matrix.mwdapis.stream
+    service: http://homeserver:8008
+  - service: http_status:404

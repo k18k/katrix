@@ -32,8 +32,8 @@ jobs:
       - run: npm run format:check
       # The published package must build (tsdown → dist/, .js and .d.ts per module), and its exports
       # and types must resolve for consumers (publint, arethetypeswrong; the package is ESM only).
-      - run: npm pack --dry-run
-      - run: npm run check:package
+      - run: npm pack --dry-run -w matrix-nodejs-homeserver
+      - run: npm run check:package -w matrix-nodejs-homeserver
 
   # The package supports every maintained Node.js LTS; development uses the latest release.
   tests:
@@ -49,12 +49,17 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --ignore-scripts
+      # The apps import the built library (packages/core/dist), which --ignore-scripts skipped.
+      - run: npm run build -w matrix-nodejs-homeserver
       - run: npm test
 
   complement:
     name: Complement
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: packages/core
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -86,9 +91,9 @@ jobs:
         with:
           name: complement-results
           path: |
-            complement-results.json
-            complement-passing.txt
-            complement-badge.json
+            packages/core/complement-results.json
+            packages/core/complement-passing.txt
+            packages/core/complement-badge.json
 
   # Commits the badge to the complement-results branch, which the README badge reads. Only this
   # job may write to the repository; it runs no code from the checkout, and only for main.

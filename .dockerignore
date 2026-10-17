@@ -1,5 +1,7 @@
-node_modules
+**/node_modules
 .git
-*.db
-*.db-*
-.media
+**/*.db
+**/*.db-*
+**/.media
+**/dist
+CLAUDE-SECURITY-*

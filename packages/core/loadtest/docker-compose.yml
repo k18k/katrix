@@ -1,6 +1,6 @@
 # Load test: Postgres, one or more homeserver nodes behind nginx, and k6.
 #
-#   docker compose -f loadtest/docker-compose.yml up --build --scale homeserver=3 --abort-on-container-exit k6
+#   docker compose -f packages/core/loadtest/docker-compose.yml up --build --scale homeserver=3 --abort-on-container-exit k6
 #
 # See loadtest/README.md for the knobs (ONLINE_USERS, MESSAGES_PER_SECOND, ROOMS, RAMP, DURATION).
 services:
@@ -30,8 +30,8 @@ services:
 
   homeserver:
     build:
-      context: ..
-      dockerfile: loadtest/Dockerfile
+      context: ../../..
+      dockerfile: packages/core/loadtest/Dockerfile
     environment:
       DATABASE_URL: postgres://matrix:matrix@postgres:5432/matrix
       DB_POOL: ${DB_POOL:-20}

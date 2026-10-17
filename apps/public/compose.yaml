@@ -1,0 +1,59 @@
+# Local development: the public server with Postgres, and the development identity provider in
+# place of GitHub (sign in by picking a user). From apps/public:
+#
+#   docker compose up --build
+#
+# Then open http://localhost:8008/ or point a client (e.g. https://app.element.io) at
+# http://localhost:8008. Nothing here is secret; production uses compose.prod.yaml.
+name: matrix-public-dev
+
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: matrix
+      POSTGRES_PASSWORD: matrix
+      POSTGRES_DB: matrix
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matrix"]
+      interval: 2s
+      retries: 30
+
+  # Browsers reach it at http://dev-idp.localhost:3001 (*.localhost is the loopback address), and
+  # so does the homeserver, through the network alias: the issuer URL is the same for both.
+  dev-idp:
+    build:
+      context: ../..
+      dockerfile: apps/dev-idp/Dockerfile
+    environment:
+      DEV_IDP_BASE_URL: http://dev-idp.localhost:3001
+      DEV_IDP_REDIRECT_URIS: http://localhost:8008/_matrix/client/v3/login/sso/callback/dev
+      PORT: "3001"
+    ports: ["127.0.0.1:3001:3001"]
+    networks:
+      default:
+        aliases: [dev-idp.localhost]
+
+  homeserver:
+    build:
+      context: ../..
+      dockerfile: apps/public/Dockerfile
+    environment:
+      SERVER_NAME: localhost
+      PUBLIC_BASE_URL: http://localhost:8008
+      DATABASE_URL: postgres://matrix:matrix@postgres:5432/matrix
+      LOGIN_PROVIDER: dev
+      DEV_IDP_ISSUER: http://dev-idp.localhost:3001/api/auth
+      DEV_IDP_CLIENT_ID: matrix-dev
+      DEV_IDP_CLIENT_SECRET: matrix-dev-secret
+      ADMINS: "@alice:localhost"
+    ports: ["127.0.0.1:8008:8008"]
+    volumes: [data:/data]
+    depends_on:
+      postgres: { condition: service_healthy }
+      dev-idp: { condition: service_started }
+
+volumes:
+  postgres:
+  data:

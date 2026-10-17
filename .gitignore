@@ -1,5 +1,5 @@
 node_modules
-/src/**/*.js
+/packages/core/src/**/*.js
 *.db
 *.sqlite
 .media
@@ -10,4 +10,4 @@ node_modules
 *.sqlite-shm
 *.sqlite-journal
 complement-results.json
-/dist
+dist

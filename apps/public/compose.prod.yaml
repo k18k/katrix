@@ -1,0 +1,57 @@
+# Production: https://matrix.mwdapis.stream through a Cloudflare tunnel (no port is opened on the
+# host). GitHub is the only login. Secrets come from msecrets.json (environment "production"):
+#
+#   npm run deploy      # msecrets run -e production -- docker compose -f compose.prod.yaml up -d --build
+#
+# `msecrets run` decrypts them into the environment of `docker compose`, which hands each service
+# only the ones it needs. See README.md for setting the secrets and the tunnel up.
+name: matrix-public
+
+services:
+  postgres:
+    image: postgres:17.11
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: matrix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run through msecrets (npm run deploy)}
+      POSTGRES_DB: matrix
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matrix"]
+      interval: 5s
+      retries: 30
+
+  homeserver:
+    build:
+      context: ../..
+      dockerfile: apps/public/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVER_NAME: matrix.mwdapis.stream
+      PUBLIC_BASE_URL: https://matrix.mwdapis.stream
+      DATABASE_URL: postgres://matrix:${POSTGRES_PASSWORD}@postgres:5432/matrix
+      LOGIN_PROVIDER: github
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?missing in msecrets.json}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?missing in msecrets.json}
+      # GitHub user k18k (localpart = GitHub login, lowercased).
+      ADMINS: ${ADMINS:-@k18k:matrix.mwdapis.stream}
+      TERMS_URL: ${TERMS_URL:-}
+      POLICY_URL: ${POLICY_URL:-}
+    volumes: [data:/data]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # The tunnel's only route goes to the homeserver (cloudflared/config.yml).
+  cloudflared:
+    image: cloudflare/cloudflared:2025.11.1
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?missing in msecrets.json (npm run tunnel)}
+    volumes: ["./cloudflared/config.yml:/etc/cloudflared/config.yml:ro"]
+    depends_on:
+      homeserver: { condition: service_healthy }
+
+volumes:
+  postgres:
+  data:

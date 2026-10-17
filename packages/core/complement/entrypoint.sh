@@ -25,4 +25,4 @@ if [ "$COMPLEMENT_HOST_VIA_GATEWAY" = "1" ]; then
   fi
 fi
 export NODE_EXTRA_CA_CERTS=/complement/ca/ca.crt
-exec node /app/complement/server.ts
+exec node /app/packages/core/complement/server.ts
