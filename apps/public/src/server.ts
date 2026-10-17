@@ -36,12 +36,25 @@ ${config.termsUrl ? `<p class="muted"><a href="${escape(config.termsUrl)}">Terms
 </main></html>`;
 }
 
+/**
+ * A libpq connection string as node-postgres understands it. `sslrootcert=system` (libpq 16:
+ * trust the system's CAs, which PlanetScale's strings use) is read by node-postgres as a file
+ * named "system"; without it, `sslmode=verify-full` verifies the server with Node's CA store,
+ * which is what it asks for.
+ */
+export function pgConnectionString(raw: string): string {
+  const url = new URL(raw);
+  if (url.searchParams.get("sslrootcert") !== "system") return raw;
+  url.searchParams.delete("sslrootcert");
+  return url.toString();
+}
+
 export async function startPublicServer(config: PublicConfig): Promise<{ hs: Homeserver; server: Server; close: () => Promise<void> }> {
   let databaseAdapter: DatabaseAdapter;
   let pool: pg.Pool | null = null;
   mkdirSync(config.dataDir, { recursive: true });
   if (config.databaseUrl) {
-    pool = new pg.Pool({ connectionString: config.databaseUrl, max: config.dbPool });
+    pool = new pg.Pool({ connectionString: pgConnectionString(config.databaseUrl), max: config.dbPool });
     databaseAdapter = postgresAdapter(pool);
   } else {
     databaseAdapter = sqliteAdapter(new DatabaseSync(`${config.dataDir}/homeserver.db`));

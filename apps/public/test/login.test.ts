@@ -7,7 +7,7 @@ import { request, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { startDevIdp } from "@matrix-nodejs-homeserver/dev-idp";
 import { loadConfig } from "../src/config.ts";
-import { startPublicServer } from "../src/server.ts";
+import { pgConnectionString, startPublicServer } from "../src/server.ts";
 
 // The public app end to end, as it runs locally: the development identity provider (Better Auth)
 // is the only login, and a Matrix client goes through the OAuth 2.0 API to a working token.
@@ -21,6 +21,14 @@ test("config: one login provider is required, GitHub or the dev provider", () =>
   assert.equal(github.provider.id, "github");
   assert.equal(github.publicBaseUrl, "https://matrix.test");
   assert.throws(() => loadConfig({ SERVER_NAME: "matrix.test", GITHUB_CLIENT_ID: "id" }), /GITHUB_CLIENT_SECRET/);
+});
+
+test("Postgres URLs: libpq's sslrootcert=system is dropped, the rest kept", () => {
+  assert.equal(
+    pgConnectionString("postgresql://u:p%40ss@host.psdb.cloud:5432/db?sslmode=verify-full&sslrootcert=system"),
+    "postgresql://u:p%40ss@host.psdb.cloud:5432/db?sslmode=verify-full",
+  );
+  assert.equal(pgConnectionString("postgres://u@h/db?sslrootcert=/etc/ca.pem"), "postgres://u@h/db?sslrootcert=/etc/ca.pem");
 });
 
 test("e2e: sign in through the dev provider by picking a user", async () => {
