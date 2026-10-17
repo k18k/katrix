@@ -1,9 +1,10 @@
 // k6 load test for the homeserver (see loadtest/README.md).
 //
-// Two kinds of virtual users, each with its own account in one of ROOMS shared rooms:
-// - "online" users hold a long-polling /sync open, as idle clients do, and measure how long a
-//   message takes from being sent to reaching them (message_delivery);
-// - "chat" users send MESSAGES_PER_SECOND messages in total, spread over the rooms.
+// Two kinds of virtual users in ROOMS shared rooms:
+// - "online" users, each with its own account, hold a long-polling /sync open, as idle clients
+//   do, and measure how long a message takes from being sent to reaching them (message_delivery);
+// - "chat" users send MESSAGES_PER_SECOND messages in total, spread over the rooms, as one
+//   sender account per room, registered and joined in setup().
 // Online users ramp up over RAMP, then everything runs for DURATION.
 import http from "k6/http";
 import { check, fail, sleep } from "k6";
@@ -110,7 +111,22 @@ export function setup() {
     if (res.status !== 200) fail(`createRoom failed: ${res.status} ${res.body}`);
     rooms.push(res.json("room_id"));
   }
-  return { run, rooms };
+  // The senders exist before the chat phase, so it consists of sends only and every run puts
+  // the same load on the server. Senders made on first use registered and joined during the
+  // measurement, and k6 skipped sends while they did, more so the slower the server was.
+  const senders = [];
+  for (let i = 0; i < ROOMS; i++) {
+    const sender = register(`lt_${run}_chat_${i}`);
+    if (!sender) fail("could not register a sender");
+    const join = http.post(
+      `${BASE}/_matrix/client/v3/join/${encodeURIComponent(rooms[i])}`,
+      "{}",
+      auth(sender, { tags: { name: "join" } }),
+    );
+    if (join.status !== 200) fail(`sender join failed: ${join.status} ${join.body}`);
+    senders.push(sender);
+  }
+  return { run, rooms, senders };
 }
 
 // Each VU has its own JavaScript runtime, so these are per virtual user.
@@ -159,14 +175,16 @@ export function online(data) {
   u.since = body.next_batch;
 }
 
+let sends = 0;
+
 export function chat(data) {
-  const u = account(data, "chat");
-  if (!u) return;
-  const txn = `${exec.vu.idInTest}-${u.txn++}`;
+  // Each message goes to the next room, from that room's sender; transaction IDs are unique per VU.
+  const i = (exec.vu.idInTest + sends) % data.rooms.length;
+  const txn = `${exec.vu.idInTest}-${sends++}`;
   const res = http.put(
-    `${BASE}/_matrix/client/v3/rooms/${encodeURIComponent(u.room)}/send/m.room.message/${txn}`,
+    `${BASE}/_matrix/client/v3/rooms/${encodeURIComponent(data.rooms[i])}/send/m.room.message/${txn}`,
     JSON.stringify({ msgtype: "m.text", body: "load test", sent: Date.now() }),
-    auth(u.token, { tags: { name: "send" } }),
+    auth(data.senders[i], { tags: { name: "send" } }),
   );
   if (check(res, { sent: (r) => r.status === 200 })) sent.add(1);
 }
