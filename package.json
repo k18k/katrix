@@ -9,6 +9,7 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
+    "smoke": "npm run smoke -w matrix-nodejs-homeserver && npm test -w @matrix-nodejs-homeserver/public",
     "build": "npm run build --workspaces --if-present",
     "lint": "oxlint",
     "format": "oxfmt .",

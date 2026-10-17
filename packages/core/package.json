@@ -43,6 +43,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test \"test/**/*.test.ts\"",
+    "smoke": "node --test test/smoke.test.ts",
     "build": "tsdown",
     "check:package": "publint && attw --pack . --profile esm-only",
     "prepare": "npm run build",

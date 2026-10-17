@@ -11,6 +11,7 @@ A [Matrix](https://matrix.org) homeserver as an importable Node.js library, and 
 ```sh
 npm install          # every workspace; builds packages/core/dist
 npm test             # tests of every workspace
+npm run smoke        # a few seconds: does the homeserver work (and the public app's login)?
 npm run typecheck
 npm run lint && npm run format:check
 ```
