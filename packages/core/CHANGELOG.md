@@ -1,5 +1,12 @@
 # matrix-nodejs-homeserver
 
+## 0.3.6
+
+### Patch Changes
+
+- 80610f6: Admins can make a local user join a room: `hs.admin.joinUser(userId, roomIdOrAlias)` and Synapse's `POST /_synapse/admin/v1/join/{roomIdOrAlias}` with `{ "user_id" }`. Public rooms are joined directly. In other rooms, a local member who may invite invites the user first, so the room's members see who added them.
+- 9770c09: New: an audit bot, `matrix-nodejs-homeserver/auditbot` (`startAuditBot(hs, { sink, dataDir, storePassphrase })`). It records every room of the server to an archive, one JSON line per event, like the Auditing of Element Server Suite Pro. End-to-end encrypted rooms are recorded decrypted: the bot is a room member with its own device, visible in member lists as "Audit log (this room is recorded)". `rooms: "groups"` leaves direct messages out. It needs the optional peer dependency `@matrix-org/matrix-sdk-crypto-nodejs`; the main entry point does not load it. See AUDITBOT.md.
+
 ## 0.3.5
 
 ### Patch Changes
