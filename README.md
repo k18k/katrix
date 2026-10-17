@@ -520,39 +520,49 @@ scenario on one GitHub runner (4 CPUs), with k6 on the same machine, and cluster
 (five nodes would compete with Postgres and k6 for four CPUs). Each run's job summary has
 the full table.
 
-Latest results: 1000 users online in 25 rooms (40 per room), 50 messages/s, 30 s ramp-up then
-30 s at full load, on one developer machine (WSL2, Docker Desktop). Times are p50 / p95.
+Latest results, on one developer machine (WSL2, Docker Desktop): 1000 users online in 25 rooms
+(40 per room), 30 s ramp-up, then 30 s of messages. Times are p50 / p95; "sent" is the share of
+the messages the scenario asks for that the server accepted (a server that falls behind takes
+fewer, and then looks faster than it is).
 
-| Setup | req/s | send | /sync | join | delivery | messages delivered | failed |
-|---|---|---|---|---|---|---|---|
-| SQLite, 1 process | 662 | 97 ms / 0.16 s | 0.87 s / 1.6 s | 10 ms / 91 ms | 1.64 s / 2.70 s | 53,935 | 0% |
-| Postgres, no cluster | 670 | 15 ms / 19 ms | 1.1 s / 1.8 s | 14 ms / 23 ms | 1.76 s / 2.31 s | 58,667 | 0% |
-| Postgres, cluster, 1 node | 593 | 27 ms / 38 ms | 1.3 s / 2.0 s | 36 ms / 51 ms | 1.96 s / 2.57 s | 58,493 | 0% |
-| Postgres, cluster, 5 nodes | 871 | 60 ms / 88 ms | 0.50 s / 1.1 s | 62 ms / 119 ms | 0.70 s / 1.09 s | 59,298 | 0% |
+At 10 messages/s (every user receiving one message every 2.5 s):
 
-What the load tests found and fixed so far: presence written on every `/sync` (#26), one commit
-per push notification (#27), a missing index (#28), Postgres cluster locks that could deadlock
-the pool (#29), stream writes serialized per instance (#30), `/sync` reading every change on the
-server (#31) and every joined room (#33), lock handover by polling (#32). Then `/sync` reads were batched
-(#34) and a process builds at most four sync responses at once (#35), so sends no longer queue
-behind the syncs a message wakes.
+| Setup | send | delivery | sent | failed |
+|---|---|---|---|---|
+| SQLite, 1 process | 5 ms / 15 ms | 14 ms / 0.18 s | 100% | 0% |
+| Postgres, no cluster | 9 ms / 30 ms | 29 ms / 0.60 s | 100% | 0% |
 
-Since 0.3.2 (#38–#45), Postgres delivery time fell by about 55% on one node and 50% on five:
-- changed rooms are built concurrently, with fewer reads each (#38);
-- push notifications of a message are written in one statement (#39);
-- Postgres statements are prepared once per connection (#40);
-- push rules are no longer copied per member (#41);
-- to-device acknowledgements run only when needed (#42);
-- reads issued at the same moment by concurrent requests share one statement (#43);
-- presence and device-list changes are found through a stream index (#44);
-- batched reads take half as long to plan (#45).
+At 50 messages/s (every user receiving two messages a second, 59,000 deliveries in 30 s):
 
-On SQLite, commits no longer wait for an fsync (#46). Database calls also yield to the event
-loop (#47): before that, a wave of syncs could hold it for seconds, sends took 0.74 s and the
-server took in only about 40% of the messages the scenario sends.
+| Setup | req/s | send | /sync | delivery | sent | failed |
+|---|---|---|---|---|---|---|
+| SQLite, 1 process | 722 | 11 ms / 25 ms | 0.77 s / 1.3 s | 1.2 s / 1.6 s | 100% | 0% |
+| Postgres, no cluster | 687 | 35 ms / 49 ms | 0.79 s / 1.2 s | 1.2 s / 1.6 s | 100% | 0% |
+| Postgres, cluster, 1 node | 766 | 72 ms / 98 ms | 1.1 s / 1.5 s | 1.7 s / 2.2 s | 100% | 0% |
+| Postgres, cluster, 5 nodes | 910 | 146 ms / 233 ms | 0.42 s / 1.6 s | 0.37 s / 1.5 s | 100% | 0% |
 
-With every user receiving about two messages a second, delivery time is how long it takes a
-process to rebuild every user's `/sync` in turn: about 750 per second per Postgres node here.
+At 50 messages/s, delivery time is how long a process takes to rebuild the `/sync` of every
+user in turn, since every user has something new in nearly every rebuild.
+
+What the load tests found and fixed:
+- presence written on every `/sync` (#26), one commit per push notification (#27), a missing
+  index (#28), Postgres cluster locks that could deadlock the pool (#29), stream writes
+  serialized per instance (#30), `/sync` reading every change on the server (#31) and every
+  joined room (#33), lock handover by polling (#32), unbatched `/sync` reads (#34), syncs
+  crowding out sends (#35);
+- in 0.3.3 (#38–#47): rooms built one after another (#38), a statement per push notification
+  (#39), Postgres re-planning every statement (#40), push rules copied per member (#41),
+  needless to-device deletes (#42), concurrent reads as separate statements (#43), presence and
+  device lists looked up per user (#44), costly batched reads (#45), an fsync per SQLite commit
+  (#46), a blocked event loop (#47);
+- since 0.3.3: waiting `/sync` requests rebuilt whenever anything on the server changed, and
+  about two thirds of all rebuilds found nothing new (#50); a single instance now keeps track of
+  where data last changed, so `/sync` skips reads that would find nothing, like Synapse's stream
+  change caches (#51); queued syncs held the event loop, and yielding per statement made sends
+  slow (#52).
+
+The load test itself was fixed too: its senders registered during the measurement, so a slow
+server was sent fewer messages, and nginx could start after k6 (a red badge with "100% failed").
 <!-- loadtest-results:end -->
 
 ## License

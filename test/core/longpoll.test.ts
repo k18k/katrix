@@ -9,7 +9,13 @@ import type { Homeserver } from "#homeserver.ts";
 function server() {
   const cluster = localCluster();
   const streams = new StreamManager(cluster, "a");
-  const notifier = new Notifier(cluster, "a", () => streams.lastAllocated);
+  const notifier = new Notifier(
+    cluster,
+    "a",
+    () => streams.lastAllocated,
+    (fresh) => streams.position(fresh),
+  );
+  streams.onAdvance = () => notifier.advanced();
   return { streams, notifier } as unknown as Homeserver & { streams: StreamManager; notifier: Notifier };
 }
 
@@ -68,4 +74,18 @@ test("a wake-up between two builds is not lost", async () => {
   const { value } = await poll;
   assert.ok(value >= mine);
   assert.ok(Date.now() - started < 1_000);
+});
+
+test("a wake-up is held until its change is visible", async () => {
+  const hs = server();
+  const earlier = await hs.streams.allocate();
+  const mine = await hs.streams.write(async (id) => id);
+  const listener = hs.notifier.listen("@me:x");
+  hs.notifier.notify(["@me:x"], mine);
+  // The earlier write holds the position below `mine`: nothing to see yet, so no wake-up.
+  assert.equal(await listener.wait(50), null);
+  const again = hs.notifier.listen("@me:x");
+  await earlier.done();
+  assert.equal(await again.wait(1_000), mine);
+  assert.ok((await hs.streams.position()) >= mine);
 });

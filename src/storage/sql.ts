@@ -304,8 +304,8 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
   return build(rootExecutor, false);
 }
 
-/** How long SQLite statements may run back to back before yielding to the event loop (#47). */
-const YIELD_AFTER_MS = 10;
+/** How long SQLite statements may run back to back before yielding to the event loop (#47, #52). */
+const YIELD_AFTER_MS = 50;
 
 /** Prepared statements an SQLite adapter keeps (#40). */
 const STATEMENT_CACHE = 500;
@@ -362,6 +362,10 @@ export function sqliteAdapter(
   // resolve as microtasks, so a wave of requests full of reads ran as one chain that never let the
   // event loop take new requests or fire timers, for seconds under load. Outside transactions, a
   // statement first yields to the event loop when the last yield is more than YIELD_AFTER_MS ago.
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/52: that chain came from tasks handing
+  // over to each other in their microtasks, which no longer happens (see Semaphore); this is a
+  // backstop, as yielding every 10 ms under load made each statement wait a full turn of a busy
+  // event loop, and a send with twenty statements took seconds.
   let lastYield = performance.now();
   const waitGate = async () => {
     if (inTransaction.getStore()) return;

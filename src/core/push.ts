@@ -8,6 +8,7 @@ import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Row } from "#storage/types.ts";
 import { upsertMany } from "#storage/batch.ts";
+import { freeze } from "#core/changes.ts";
 import { M, UNSTABLE } from "#core/m.ts";
 
 /** Look up a dotted path; `\.` escapes a literal dot in a key (e.g. `content.m\.relates_to`). */
@@ -127,6 +128,12 @@ export function threadIdOf(event: PDU): string {
  * Push rule evaluation and push gateway delivery. Every new event is evaluated for
  * every local member; matches are stored for unread counts and `/notifications`.
  */
+type Counts = { notification_count: number; highlight_count: number };
+export interface UnreadCounts {
+  readonly room: Readonly<Counts>;
+  readonly threads: Readonly<Record<string, Readonly<Counts>>>;
+}
+
 export class PushService {
   private hs: Homeserver;
 
@@ -228,13 +235,15 @@ export class PushService {
     return row.stream <= read.unthreaded || row.stream <= (read.threads.get(row.thread_id) ?? 0);
   }
 
-  async unreadCounts(
-    userId: string,
-    roomId: string,
-  ): Promise<{
-    room: { notification_count: number; highlight_count: number };
-    threads: Record<string, { notification_count: number; highlight_count: number }>;
-  }> {
+  async unreadCounts(userId: string, roomId: string): Promise<UnreadCounts> {
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/51: on a single instance the counts
+    // are kept until the user's notifications or receipts in the room are written.
+    const changes = this.hs.changes;
+    if (!changes) return this.countUnread(userId, roomId);
+    return changes.values.unreadCounts.get(`${userId}|${roomId}`, async () => freeze(await this.countUnread(userId, roomId)));
+  }
+
+  private async countUnread(userId: string, roomId: string): Promise<UnreadCounts> {
     const read = await this.readPositions(userId, roomId);
     const unthreaded = read.unthreaded;
     const rows = await this.hs.db.findMany("notifications", {

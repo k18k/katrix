@@ -26,6 +26,7 @@ import { memoryRateLimiter, RateLimits, type RateLimitAction, type RateLimiter, 
 import { resolveUserAuth, type ResolvedUserAuth, type UserAuthAdapter } from "#adapters/auth.ts";
 import { memoryMedia, type MediaAdapter, type Thumbnailer } from "#adapters/media.ts";
 import { coalesceReads } from "#storage/batch.ts";
+import { ChangeTracker } from "#core/changes.ts";
 import { memoryAdapter } from "#storage/memory.ts";
 import { schema } from "#storage/schema.ts";
 import type { DatabaseAdapter } from "#storage/types.ts";
@@ -83,7 +84,7 @@ export interface HomeserverOptions {
   /** Maximum `/sync` long-poll duration in ms. Default: 30000. */
   maxSyncTimeoutMs?: number;
   /**
-   * How many `/sync` responses one process builds at once (default 4). Requests woken together
+   * How many `/sync` responses one process builds at once (default 16). Requests woken together
    * wait in the process instead of queueing their database reads ahead of everything else.
    */
   maxConcurrentSyncs?: number;
@@ -180,6 +181,11 @@ export class Homeserver extends EventEmitter {
   readonly serverName: string;
   readonly config: ResolvedConfig;
   readonly db: DatabaseAdapter;
+  /**
+   * Where keys last changed, when this is the only instance on its database (no cluster
+   * adapter): /sync skips the reads that would find nothing new (#51). Null in a cluster.
+   */
+  readonly changes: ChangeTracker | null;
   readonly media: MediaAdapter;
   readonly userAuth: ResolvedUserAuth;
   readonly logger: Logger;
@@ -243,10 +249,13 @@ export class Homeserver extends EventEmitter {
       defaultRoomVersion,
       accessTokenLifetimeMs: options.accessTokenLifetimeMs ?? null,
       maxSyncTimeoutMs: options.maxSyncTimeoutMs ?? 30000,
-      // Measured with the load test on Postgres (1000 users, 50 messages/s): 4, 8 and 16 gave the
-      // same sync throughput, and 4 the shortest waits for everything else (send p50 48 ms, against
-      // 115 ms with 8 and 171 ms with 16). https://github.com/k18k/matrix-nodejs-homeserver/issues/35
-      maxConcurrentSyncs: Math.max(1, options.maxConcurrentSyncs ?? 4),
+      // Measured with the load test (1000 users, 50 messages/s). Before #43, 4, 8 and 16 gave the
+      // same sync throughput on Postgres, and 4 the shortest waits for everything else (#35).
+      // Since #43–#52, builds need fewer reads and hand over in turns of their own: with 16,
+      // delivery p50 went from 1.8 to 1.2 s on Postgres without a cluster and from 1.4 to 1.2 s on
+      // SQLite, with sends still at 35 ms and 11 ms.
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/52
+      maxConcurrentSyncs: Math.max(1, options.maxConcurrentSyncs ?? 16),
       urlPreviews: options.urlPreviews
         ? { allowPrivateAddresses: typeof options.urlPreviews === "object" && !!options.urlPreviews.allowPrivateAddresses }
         : null,
@@ -259,22 +268,28 @@ export class Homeserver extends EventEmitter {
       },
     };
 
-    const db = options.databaseAdapter as DatabaseAdapter | undefined;
-    if (db && typeof db.findOne === "function") {
-      // https://github.com/k18k/matrix-nodejs-homeserver/issues/43: reads issued together by
-      // concurrent requests go to the database as one statement.
-      this.db = coalesceReads(db);
-    } else {
+    this.changes = options.cluster ? null : new ChangeTracker();
+    let db = options.databaseAdapter as DatabaseAdapter | undefined;
+    if (!db || typeof db.findOne !== "function") {
       this.logger.warn("No database adapter given; using in-memory storage (data is lost on restart)");
-      this.db = memoryAdapter();
+      db = memoryAdapter();
     }
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/43: reads issued together by
+    // concurrent requests go to the database as one statement.
+    this.db = coalesceReads(this.changes ? this.changes.wrap(db) : db);
     const media = options.mediaAdapter as MediaAdapter | undefined;
     this.media = media && typeof media.put === "function" ? media : memoryMedia();
     this.userAuth = resolveUserAuth(options.userAuthAdapter);
     this.cluster = options.cluster ?? localCluster();
     this.instanceId = newInstanceId();
     this.streams = new StreamManager(this.cluster, this.instanceId, (...args) => this.logger.warn(...args));
-    this.notifier = new Notifier(this.cluster, this.instanceId, () => this.streams.lastAllocated);
+    this.notifier = new Notifier(
+      this.cluster,
+      this.instanceId,
+      () => this.streams.lastAllocated,
+      (fresh) => this.streams.position(fresh),
+    );
+    this.streams.onAdvance = () => this.notifier.advanced();
 
     this.auth = new AuthService(this);
     this.rooms = new RoomService(this, !options.cluster);
@@ -340,6 +355,8 @@ export class Homeserver extends EventEmitter {
     }
     const snap = await this.db.max("state_snapshots", "id");
     if (snap !== null) await this.streams.advanceTo(snap);
+    // Changes up to here happened before the tracker saw every write (a previous run).
+    this.changes?.start(await this.streams.position(true));
     const oldest = await this.db.findMany("events", { sortBy: { field: "stream", direction: "asc" }, limit: 1 });
     if (oldest[0] && oldest[0].stream < 0) await this.streams.lowerBackfillTo(oldest[0].stream);
     const oldestSnap = await this.db.findMany("state_snapshots", { sortBy: { field: "id", direction: "asc" }, limit: 1 });

@@ -2,6 +2,8 @@ import type { ClusterAdapter } from "#core/cluster.ts";
 
 /** Users whose latest wake-up position is remembered (#50); the oldest are forgotten first. */
 const RECENT_USERS = 100_000;
+/** How soon held wake-ups are looked at again while the position has not reached them. */
+const RELEASE_RETRY_MS = 10;
 
 /** A registration for wake-ups from the moment it was made (see `Notifier.listen`). */
 export interface Listener {
@@ -24,9 +26,10 @@ export interface Listener {
  * are broadcast through the cluster adapter so waiters on other instances wake too.
  *
  * https://github.com/k18k/matrix-nodejs-homeserver/issues/50: every wake-up carries the stream
- * position of its change, or an upper bound of it. A request that wakes but finds nothing new
- * (because another write still holds the position back) knows which position to wait for,
- * instead of rebuilding whenever anything on the server moves the position.
+ * position of its change, or an upper bound of it. Writes can complete out of order, so a change
+ * may be committed while an earlier write still holds the position below it. As in Synapse
+ * (`Notifier._notify_pending_new_room_events`), such a wake-up is held here until the position
+ * reaches it: a request is only woken for changes it can see.
  */
 export class Notifier {
   private listeners = new Map<string, Set<(pos: number) => void>>();
@@ -35,14 +38,29 @@ export class Notifier {
   private cluster: ClusterAdapter;
   private instanceId: string;
   private lastAllocated: () => number;
+  private position: (fresh: boolean) => Promise<number>;
+  /** Wake-ups whose change is beyond the position known to be visible. */
+  private held: { users: string[]; pos: number }[] = [];
+  /** The highest position known to be visible. */
+  private visible = 0;
+  private release: ReturnType<typeof setTimeout> | null = null;
 
-  /** `lastAllocated`: the highest stream position this instance has allocated (an upper bound). */
-  constructor(cluster: ClusterAdapter, instanceId: string, lastAllocated: () => number = () => 0) {
+  /**
+   * `lastAllocated`: the highest stream position this instance has allocated (an upper bound of
+   * its changes); `position`: the position below which everything is visible.
+   */
+  constructor(
+    cluster: ClusterAdapter,
+    instanceId: string,
+    lastAllocated: () => number = () => 0,
+    position: (fresh: boolean) => Promise<number> = async () => Number.POSITIVE_INFINITY,
+  ) {
     this.cluster = cluster;
     this.instanceId = instanceId;
     this.lastAllocated = lastAllocated;
+    this.position = position;
     cluster.subscribe("notify", (msg: { from: string; users: string[]; pos?: number }) => {
-      if (msg?.from !== this.instanceId && Array.isArray(msg?.users)) this.wakeLocal(msg.users, Number(msg.pos) || 0);
+      if (msg?.from !== this.instanceId && Array.isArray(msg?.users)) this.hold(msg.users, Number(msg.pos) || 0);
     });
   }
 
@@ -54,8 +72,42 @@ export class Notifier {
     const users = [...userIds];
     if (!users.length) return;
     const at = pos ?? this.lastAllocated();
-    this.wakeLocal(users, at);
+    this.hold(users, at);
     void this.cluster.publish("notify", { from: this.instanceId, users, pos: at }).catch(() => {});
+  }
+
+  /** The position may have moved (a write of this instance completed): release what it covers. */
+  advanced(): void {
+    if (this.held.length) this.scheduleRelease(0);
+  }
+
+  /** Wake now if the change is visible, otherwise once the position reaches it. */
+  private hold(users: string[], pos: number): void {
+    if (pos <= this.visible) return this.wakeLocal(users, pos);
+    this.held.push({ users, pos });
+    this.scheduleRelease(0);
+  }
+
+  private scheduleRelease(delay: number): void {
+    if (this.release) return;
+    this.release = setTimeout(() => {
+      this.release = null;
+      void this.releaseHeld().catch(() => this.scheduleRelease(RELEASE_RETRY_MS));
+    }, delay);
+    this.release.unref?.();
+  }
+
+  private async releaseHeld(): Promise<void> {
+    const highest = Math.max(...this.held.map((h) => h.pos));
+    // The cached position first: it often covers everything held already.
+    let pos = await this.position(false);
+    if (pos < highest) pos = await this.position(true);
+    if (pos > this.visible) this.visible = pos;
+    const due = this.held.filter((h) => h.pos <= this.visible);
+    this.held = this.held.filter((h) => h.pos > this.visible);
+    for (const h of due) this.wakeLocal(h.users, h.pos);
+    // Still held: a write elsewhere (another instance) keeps the position back. Look again soon.
+    if (this.held.length) this.scheduleRelease(RELEASE_RETRY_MS);
   }
 
   private wakeLocal(userIds: Iterable<string>, pos: number): void {

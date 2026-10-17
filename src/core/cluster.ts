@@ -139,6 +139,8 @@ export class StreamManager {
   private heartbeat: ReturnType<typeof setInterval>;
   private positionCache: { value: number; at: number } | null = null;
   private highestAllocated = 0;
+  /** Called after a write of this instance completed, when the position may have moved (#50). */
+  onAdvance: () => void = () => {};
   // https://github.com/k18k/matrix-nodejs-homeserver/issues/30: every allocation from idle and every
   // completion used to append to one chain of round trips (read the sequence, write the state),
   // so all stream writes of an instance completed one at a time. Publishes are now shared: a
@@ -227,6 +229,7 @@ export class StreamManager {
         this.inflight.delete(id);
         await this.flush();
         this.positionCache = null;
+        this.onAdvance();
       },
     };
     return lease;

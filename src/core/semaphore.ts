@@ -15,8 +15,11 @@ export class Semaphore {
       return await fn();
     } finally {
       const next = this.waiting.shift();
-      // The slot passes straight to the next task, so `active` stays the same.
-      if (next) next();
+      // The slot passes straight to the next task, so `active` stays the same. It starts in a turn
+      // of its own (https://github.com/k18k/matrix-nodejs-homeserver/issues/52): resolved here, each
+      // task would start in the microtasks of the one before, and with a synchronous database a
+      // queue of tasks ran as one chain that kept the event loop from anything else.
+      if (next) setImmediate(next);
       else this.active--;
     }
   }

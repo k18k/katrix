@@ -6,6 +6,7 @@ import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { BatchQuery, Row } from "#storage/types.ts";
 import { readBatch } from "#storage/batch.ts";
+import { trackedReads } from "#core/changes.ts";
 import { Semaphore } from "#core/semaphore.ts";
 import { longPoll } from "#api/longpoll.ts";
 import { deviceListChangesQuery } from "#core/keys.ts";
@@ -347,37 +348,46 @@ async function changesSince(
     { field: "stream", operator: "gt" as const, value: since },
     { field: "stream", operator: "lte" as const, value: p.to },
   ];
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/51: on a single instance, the change
+  // tracker knows which rooms had new events, receipts, completed state or membership changes after
+  // the token; only those are asked about, and usually there are none. In a cluster, all are.
+  const logs = hs.changes?.logs;
+  const mayHaveChanged = (log: keyof NonNullable<typeof logs>, rooms: string[]) => (logs ? logs[log].filterChanged(rooms, since) : rooms);
   // https://github.com/k18k/matrix-nodejs-homeserver/issues/34: these reads go to the database
   // together. IN lists are chunked, so a user in thousands of rooms stays within parameter limits.
   const chunks = <T>(list: T[]) => Array.from({ length: Math.ceil(list.length / 500) }, (_, i) => list.slice(i * 500, i * 500 + 500));
   const inRooms = (chunk: string[]) => ({ field: "room_id", operator: "in" as const, value: chunk });
   const queries: BatchQuery[] = [];
-  for (const chunk of chunks(joined)) {
-    queries.push({ model: "events", opts: { where: [inRooms(chunk), ...range], fields: ["room_id"] } });
-    queries.push({ model: "receipts", opts: { where: [inRooms(chunk), ...range] } });
-    // Rooms whose state became complete are sent again as if newly joined (MSC3902).
-    queries.push({
+  const kinds: ("events" | "receipts" | "completed" | "members")[] = [];
+  const add = (kind: (typeof kinds)[number], query: BatchQuery) => {
+    kinds.push(kind);
+    queries.push(query);
+  };
+  for (const chunk of chunks(mayHaveChanged("roomEvents", joined)))
+    add("events", { model: "events", opts: { where: [inRooms(chunk), ...range], fields: ["room_id"] } });
+  for (const chunk of chunks(mayHaveChanged("roomReceipts", joined)))
+    add("receipts", { model: "receipts", opts: { where: [inRooms(chunk), ...range] } });
+  // Rooms whose state became complete are sent again as if newly joined (MSC3902).
+  for (const chunk of chunks(mayHaveChanged("roomPartialState", joined)))
+    add("completed", {
       model: "partial_state_rooms",
       opts: { where: [inRooms(chunk), { field: "completed_stream", operator: "gt", value: since }], fields: ["room_id"] },
     });
-  }
   // Membership changes in the user's rooms (presence, profiles and device lists use them).
-  for (const chunk of chunks(anyMembership))
-    queries.push({ model: "memberships", opts: { where: [inRooms(chunk), { field: "stream", operator: "gt", value: since }] } });
-  const results = await readBatch(hs.db, queries);
+  for (const chunk of chunks(mayHaveChanged("roomMembers", anyMembership)))
+    add("members", { model: "memberships", opts: { where: [inRooms(chunk), { field: "stream", operator: "gt", value: since }] } });
+  const results = queries.length ? await readBatch(hs.db, queries) : [];
   const touched = new Set<string>();
   const receipts = new Map<string, Row[]>();
-  const joinedChunks = Math.ceil(joined.length / 500);
-  for (let c = 0; c < joinedChunks; c++) {
-    const [events, receiptRows, completed] = results.slice(c * 3, c * 3 + 3);
-    for (const r of events) touched.add(r.room_id);
-    for (const r of receiptRows) {
-      touched.add(r.room_id);
-      receipts.set(r.room_id, [...(receipts.get(r.room_id) ?? []), r]);
+  const memberChanges: Row[] = [];
+  results.forEach((rows, i) => {
+    const kind = kinds[i];
+    for (const r of rows) {
+      if (kind === "members") memberChanges.push(r);
+      else touched.add(r.room_id);
+      if (kind === "receipts") receipts.set(r.room_id, [...(receipts.get(r.room_id) ?? []), r]);
     }
-    for (const r of completed) touched.add(r.room_id);
-  }
-  const memberChanges = results.slice(joinedChunks * 3).flat();
+  });
   const accountData = new Map<string, Row[]>();
   for (const r of accountRows) {
     if (r.room_id) touched.add(r.room_id);
@@ -420,38 +430,61 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   const acknowledged = p.since?.ack
     ? hs.db.delete("to_device", [...deviceWhere, { field: "stream", operator: "lte", value: p.since.toDevice }])
     : Promise.resolve(0);
-  const [memberships, ignoredRows, toDeviceRows, oneTimeKeyRows, fallbackRows, accountRows = []] = await readBatch(hs.db, [
-    { model: "memberships", opts: { where: [{ field: "user_id", value: userId }] } },
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/51: on a single instance, the change
+  // tracker answers the reads whose result it knows: values kept since they last changed (the
+  // user's rooms, ignored users, key counts), and nothing new where nothing was written after the
+  // token (to-device messages, account data).
+  const device = `${userId}|${p.session.deviceId}`;
+  const [memberships, ignoredRows, toDeviceRows, oneTimeKeyRows, fallbackRows, accountRows = []] = await trackedReads(hs.db, hs.changes, [
     {
-      model: "account_data",
-      opts: {
-        where: [
-          { field: "user_id", value: userId },
-          { field: "room_id", value: "" },
-          { field: "type", value: M.IGNORED_USER_LIST },
-        ],
-      },
+      query: { model: "memberships", opts: { where: [{ field: "user_id", value: userId }] } },
+      cached: { name: "userMemberships", key: userId },
     },
     {
-      model: "to_device",
-      opts: {
-        where: [...deviceWhere, { field: "stream", operator: "gt", value: p.since?.toDevice ?? 0 }],
-        sortBy: { field: "stream", direction: "asc" },
-        limit: 100,
+      query: {
+        model: "account_data",
+        opts: {
+          where: [
+            { field: "user_id", value: userId },
+            { field: "room_id", value: "" },
+            { field: "type", value: M.IGNORED_USER_LIST },
+          ],
+        },
       },
+      cached: { name: "ignoredUsers", key: userId },
     },
-    { model: "one_time_keys", opts: { where: [...deviceWhere, { field: "fallback", value: false }], fields: ["algorithm"] } },
-    { model: "fallback_keys", opts: { where: [...deviceWhere, { field: "used", value: false }], fields: ["algorithm"] } },
+    {
+      query: {
+        model: "to_device",
+        opts: {
+          where: [...deviceWhere, { field: "stream", operator: "gt", value: p.since?.toDevice ?? 0 }],
+          sortBy: { field: "stream", direction: "asc" },
+          limit: 100,
+        },
+      },
+      unlessChanged: { log: "toDevice", key: device, after: p.since?.toDevice ?? 0 },
+    },
+    {
+      query: { model: "one_time_keys", opts: { where: [...deviceWhere, { field: "fallback", value: false }], fields: ["algorithm"] } },
+      cached: { name: "oneTimeKeys", key: device },
+    },
+    {
+      query: { model: "fallback_keys", opts: { where: [...deviceWhere, { field: "used", value: false }], fields: ["algorithm"] } },
+      cached: { name: "fallbackKeys", key: device },
+    },
     ...(incremental
       ? [
           {
-            model: "account_data",
-            opts: {
-              where: [
-                { field: "user_id", value: userId },
-                { field: "stream", operator: "gt" as const, value: since },
-              ],
+            query: {
+              model: "account_data",
+              opts: {
+                where: [
+                  { field: "user_id", value: userId },
+                  { field: "stream", operator: "gt" as const, value: since },
+                ],
+              },
             },
+            unlessChanged: { log: "accountData" as const, key: userId, after: since },
           },
         ]
       : []),
@@ -623,10 +656,13 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       : wantPresence
         ? recent("presence")
         : { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: [] }] } };
-  let [presenceRows = [], newlySharedPresence = [], deviceRows] = await readBatch(hs.db, [
-    presenceQuery,
-    { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: [...newlyShared] }] } },
-    ...(since !== null ? [recent("device_list_changes")] : []),
+  // #51: and not at all when the change tracker knows that none happened after the token.
+  let [presenceRows = [], newlySharedPresence = [], deviceRows] = await trackedReads(hs.db, hs.changes, [
+    since === null ? { query: presenceQuery } : { query: presenceQuery, unlessChanged: { log: "presence", key: "*", after: since } },
+    { query: { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: [...newlyShared] }] } } },
+    ...(since !== null
+      ? [{ query: recent("device_list_changes"), unlessChanged: { log: "deviceLists" as const, key: "*", after: since } }]
+      : []),
   ]);
   if (since !== null) {
     if (presenceRows.length > RECENT_CHANGES)
@@ -721,7 +757,9 @@ const LAST_ACTIVE_GRANULARITY_MS = 60_000;
 
 async function touchPresence(hs: Homeserver, userId: string, presence: string): Promise<void> {
   const state = presence === "unavailable" ? "unavailable" : "online";
-  const row = await hs.db.findOne("presence", [{ field: "user_id", value: userId }]);
+  // #51: the row is kept until it is written (single instance only).
+  const read = () => hs.db.findOne("presence", [{ field: "user_id", value: userId }]);
+  const row = hs.changes ? await hs.changes.values.presenceRow.get(userId, read) : await read();
   if (row && row.presence === state) {
     if (Date.now() - row.last_active_ts >= LAST_ACTIVE_GRANULARITY_MS)
       await hs.db.update("presence", [{ field: "user_id", value: userId }], { last_active_ts: Date.now() });
