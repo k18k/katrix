@@ -1,5 +1,15 @@
 # matrix-nodejs-homeserver
 
+## 0.3.4
+
+### Patch Changes
+
+- 7e7b256: A homeserver running as the only instance on its database (no `cluster` adapter) now keeps track of where each user's, device's and room's data last changed. `/sync` uses it to skip most database reads that would find nothing new, such as to-device messages, account data, presence, receipts, membership changes and key counts. Memory use is bounded. With a cluster adapter, nothing changes ([#51](https://github.com/k18k/matrix-nodejs-homeserver/issues/51)).
+- 5b0379f: `device_lists.changed` in `/sync` no longer lists room members whose membership was only rewritten, for example when a partial-state join completes. Only users who actually joined after the sync token are listed, as Synapse does ([#53](https://github.com/k18k/matrix-nodejs-homeserver/issues/53)).
+- b1fb8e4: A waiting `/sync` (and sliding sync) no longer rebuilds its response whenever anything changes on the server, only when something changes for its user. Under load, most rebuilds used to find nothing new. Presence changes of local users and room state rebuilt after state resolution now wake the users concerned ([#50](https://github.com/k18k/matrix-nodejs-homeserver/issues/50)).
+- 7e7b256: On SQLite, sends stay fast while many `/sync` requests are answered. In the load test, sends took 6 ms at the median instead of 0.1 s, and 19 ms at the 95th percentile instead of 2.5 s. `maxConcurrentSyncs` now defaults to 16 instead of 4, which brings messages to other users sooner on both SQLite and Postgres ([#52](https://github.com/k18k/matrix-nodejs-homeserver/issues/52)).
+- 6fa306b: The homeserver logs a warning, with where it was allocated, when a stream position is held for more than 5 seconds: until it is released, no `/sync` gets past it ([#48](https://github.com/k18k/matrix-nodejs-homeserver/issues/48)).
+
 ## 0.3.3
 
 ### Patch Changes

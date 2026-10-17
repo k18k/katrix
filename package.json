@@ -1,6 +1,6 @@
 {
   "name": "matrix-nodejs-homeserver",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "A framework- and database-agnostic Matrix homeserver library for Node.js",
   "keywords": [
     "chat",
