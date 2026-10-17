@@ -5,8 +5,17 @@ import { procedure } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, fail } from "#http/input.ts";
 
-export interface TurnOptions {
+/** Credentials for `/voip/turnServer`. */
+export interface TurnCredentials {
+  username: string;
+  password: string;
   uris: string[];
+  ttl: number;
+}
+
+export interface TurnOptions {
+  /** TURN URIs. Not needed with `credentials`, which returns its own. */
+  uris?: string[];
   /** coturn `static-auth-secret`: time-limited credentials are derived from it. */
   sharedSecret?: string;
   /** Static credentials, when not using a shared secret. */
@@ -16,6 +25,48 @@ export interface TurnOptions {
   ttlSeconds?: number;
   /** Whether guests may obtain credentials. Default: false. */
   allowGuests?: boolean;
+  /** Credentials from a service, e.g. a managed TURN provider (see `cloudflareTurn`). */
+  credentials?: (userId: string) => Promise<TurnCredentials>;
+}
+
+/**
+ * Cloudflare's managed TURN service (Realtime TURN): credentials come from its API, so no TURN
+ * server has to run, and no port has to be open, on the homeserver's host. `keyId` and `apiToken`
+ * are the TURN key's ID and API token from the Cloudflare dashboard.
+ *
+ * Credentials are kept per user for half their lifetime (at most 10 000 users), so that clients
+ * asking again do not each cost an API call.
+ */
+export function cloudflareTurn(opts: { keyId: string; apiToken: string; ttlSeconds?: number; fetch?: typeof fetch }): TurnOptions {
+  const ttl = opts.ttlSeconds ?? 86400;
+  const cache = new Map<string, { value: TurnCredentials; until: number }>();
+  const doFetch = opts.fetch ?? fetch;
+  return {
+    ttlSeconds: ttl,
+    async credentials(userId) {
+      const hit = cache.get(userId);
+      if (hit && hit.until > Date.now()) return hit.value;
+      const res = await doFetch(
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(opts.keyId)}/credentials/generate-ice-servers`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${opts.apiToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ ttl }),
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (!res.ok) throw new Error(`Cloudflare TURN answered ${res.status}`);
+      const { iceServers } = (await res.json()) as { iceServers: { urls: string | string[]; username?: string; credential?: string }[] };
+      const turn = iceServers.find((s) => s.username && s.credential);
+      if (!turn) throw new Error("Cloudflare TURN returned no credentials");
+      // Browsers block port 53, and a client without trickle ICE would wait for it to time out.
+      const uris = (Array.isArray(turn.urls) ? turn.urls : [turn.urls]).filter((u) => /^turns?:/.test(u) && !/:53(\?|$)/.test(u));
+      const value = { username: turn.username!, password: turn.credential!, uris, ttl };
+      if (cache.size >= 10_000) cache.clear();
+      cache.set(userId, { value, until: Date.now() + (ttl * 1000) / 2 });
+      return value;
+    },
+  };
 }
 
 export interface RtcOptions {
@@ -37,16 +88,18 @@ export function registerRtcRoutes(r: Router): void {
       handler: async (ctx) => {
         const s = ctx.session;
         const turn = ctx.hs.config.rtc.turn;
-        if (!turn || !turn.uris.length) return {};
+        if (!turn || (!turn.credentials && !turn.uris?.length)) return {};
         if (s.isGuest && !turn.allowGuests) throw errors.forbidden("Guests may not use TURN");
+        if (turn.credentials) return turn.credentials(s.userId);
+        const uris = turn.uris!;
         const ttl = turn.ttlSeconds ?? 86400;
         if (turn.sharedSecret) {
           // coturn REST API: username = "<expiry>:<user>", password = base64(HMAC-SHA1(secret, username)).
           const username = `${Math.floor(Date.now() / 1000) + ttl}:${s.userId}`;
           const password = createHmac("sha1", turn.sharedSecret).update(username).digest("base64");
-          return { username, password, uris: turn.uris, ttl };
+          return { username, password, uris, ttl };
         }
-        return { username: turn.username ?? "", password: turn.password ?? "", uris: turn.uris, ttl };
+        return { username: turn.username ?? "", password: turn.password ?? "", uris, ttl };
       },
     }),
   );

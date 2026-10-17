@@ -14,6 +14,13 @@ export interface PublicConfig {
   policyUrl?: string;
   /** User IDs that are server admins (set when the account is created, and at every start). */
   admins: string[];
+  /** Cloudflare's managed TURN, for calls between two clients (legacy 1:1 calls). */
+  turn: { keyId: string; apiToken: string } | null;
+  /**
+   * The MatrixRTC authorization service (lk-jwt-service) for Element Call and Element X, reached
+   * by the server at this URL and by clients through `{publicBaseUrl}/livekit/jwt/`.
+   */
+  livekitJwtUrl: string | null;
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -50,6 +57,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PublicConfig {
     provider: loginProvider(env),
     termsUrl: env.TERMS_URL || undefined,
     policyUrl: env.POLICY_URL || undefined,
+    turn: env.CLOUDFLARE_TURN_KEY_ID ? { keyId: env.CLOUDFLARE_TURN_KEY_ID, apiToken: required(env, "CLOUDFLARE_TURN_API_TOKEN") } : null,
+    livekitJwtUrl: (env.LIVEKIT_JWT_URL || "").replace(/\/$/, "") || null,
     admins: (env.ADMINS ?? "")
       .split(",")
       .map((s) => s.trim())

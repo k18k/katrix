@@ -50,7 +50,7 @@ export { localCluster, postgresCluster, type ClusterAdapter, type PgClusterPoolL
 
 // Federation, auth and admin
 export type { FederationOptions } from "#federation/index.ts";
-export type { RtcOptions, TurnOptions } from "#api/rtc.ts";
+export { cloudflareTurn, type RtcOptions, type TurnCredentials, type TurnOptions } from "#api/rtc.ts";
 export type { DelayedEventsOptions } from "#core/delayed.ts";
 export type { OAuthDelegationOptions } from "#core/oauth.ts";
 export type { OAuthServerOptions } from "#core/oauthserver.ts";
