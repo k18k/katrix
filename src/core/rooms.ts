@@ -778,6 +778,14 @@ export class RoomService {
     this.stateCache.delete(roomId);
     this.sharingCache.clear();
     this.invalidate({ rooms: [roomId], events: touched, sharing: true });
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/50: local members whose membership
+    // changed see it in their next sync; nothing else wakes them for it.
+    const changedMembers = new Set<string>();
+    for (const k of new Set([...Object.keys(oldIds), ...Object.keys(newIds)])) {
+      const [type, userId] = splitStateKey(k);
+      if (type === M.ROOM.MEMBER && oldIds[k] !== newIds[k] && this.hs.isLocalUser(userId)) changedMembers.add(userId);
+    }
+    if (changedMembers.size) this.hs.notifier.notify([...changedMembers, ...(await this.interestedUsers(roomId))]);
     // Remote users we wrongly believed to be in the room are no longer tracked.
     for (const k of Object.keys(oldIds)) {
       const [type, userId] = splitStateKey(k);
@@ -1032,7 +1040,7 @@ export class RoomService {
           await this.hs.appservices.onEvent(view, newState).catch((err) => this.hs.logger.warn("Appservice push failed", err));
         if (isState) await this.hs.delayedEvents.onStateEvent(roomId, pdu.type, pdu.state_key!, sender).catch(() => {});
         wake = async () => {
-          this.hs.notifier.notify(await this.interestedUsers(roomId));
+          this.hs.notifier.notify(await this.interestedUsers(roomId), backfill ? undefined : stream);
           this.hs.emit("event", toClientEvent(view));
           // Admin room commands run in the background so the sender's request is not delayed.
           if (this.hs.adminRoom) void this.hs.adminRoom.onEvent(view).catch((err) => this.hs.logger.error("Admin command failed", err));

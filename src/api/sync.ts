@@ -7,6 +7,7 @@ import type { Homeserver } from "#homeserver.ts";
 import type { BatchQuery, Row } from "#storage/types.ts";
 import { readBatch } from "#storage/batch.ts";
 import { Semaphore } from "#core/semaphore.ts";
+import { longPoll } from "#api/longpoll.ts";
 import { deviceListChangesQuery } from "#core/keys.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
@@ -697,25 +698,19 @@ async function sync(ctx: RequestContext) {
   const setPresence = ctx.query.get("set_presence") ?? "online";
   if (setPresence !== "offline") await touchPresence(hs, session.userId, setPresence);
 
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    const to = await hs.streams.position();
-    // buildSync reads the ignored-users list with its other reads (#34).
-    const ignored = new Set<string>();
-    const stable = ctx.query.get("use_state_after") === "true";
-    const unstable = ctx.query.get(UNSTABLE.ORG.MATRIX.MSC4222.USE_STATE_AFTER) === "true";
-    const useStateAfter = stable || unstable;
-    const stateAfterKey = stable ? "state_after" : UNSTABLE.ORG.MATRIX.MSC4222.STATE_AFTER;
+  // buildSync reads the ignored-users list with its other reads (#34).
+  const ignored = new Set<string>();
+  const stable = ctx.query.get("use_state_after") === "true";
+  const unstable = ctx.query.get(UNSTABLE.ORG.MATRIX.MSC4222.USE_STATE_AFTER) === "true";
+  const useStateAfter = stable || unstable;
+  const stateAfterKey = stable ? "state_after" : UNSTABLE.ORG.MATRIX.MSC4222.STATE_AFTER;
+  const { value } = await longPoll(hs, session.userId, timeout, ctx.request.signal, async (to) => {
     const { body, empty } = await syncSlots(hs).run(() =>
       buildSync(hs, { session, ignored, since, to, filter, fullState, useStateAfter, stateAfterKey }),
     );
-    const remaining = deadline - Date.now();
-    if (!since || !empty || remaining <= 0 || fullState) return body;
-    // Something happened while we were building the response: rebuild immediately.
-    if ((await hs.streams.position()) > to) continue;
-    await hs.notifier.wait(session.userId, remaining, ctx.request.signal);
-    if (ctx.request.signal?.aborted) return body;
-  }
+    return { value: body, done: !since || !empty || fullState };
+  });
+  return value;
 }
 
 // https://github.com/k18k/matrix-nodejs-homeserver/issues/26: last_active_ts was written on every
@@ -732,9 +727,18 @@ async function touchPresence(hs: Homeserver, userId: string, presence: string): 
       await hs.db.update("presence", [{ field: "user_id", value: userId }], { last_active_ts: Date.now() });
     return;
   }
-  await hs.streams.write((stream) =>
-    hs.db.upsert("presence", { user_id: userId, presence: state, status_msg: row?.status_msg ?? null, last_active_ts: Date.now(), stream }),
-  );
+  const stream = await hs.streams.write(async (stream) => {
+    await hs.db.upsert("presence", {
+      user_id: userId,
+      presence: state,
+      status_msg: row?.status_msg ?? null,
+      last_active_ts: Date.now(),
+      stream,
+    });
+    return stream;
+  });
+  // #50: the users sharing a room see the change in their next sync; wake them for it.
+  hs.notifier.notify([userId, ...(await hs.rooms.usersSharingRooms(userId))], stream);
   await hs.federation.onPresence(userId, state, row?.status_msg ?? null).catch(() => {});
 }
 

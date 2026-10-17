@@ -274,7 +274,7 @@ export class Homeserver extends EventEmitter {
     this.cluster = options.cluster ?? localCluster();
     this.instanceId = newInstanceId();
     this.streams = new StreamManager(this.cluster, this.instanceId, (...args) => this.logger.warn(...args));
-    this.notifier = new Notifier(this.cluster, this.instanceId);
+    this.notifier = new Notifier(this.cluster, this.instanceId, () => this.streams.lastAllocated);
 
     this.auth = new AuthService(this);
     this.rooms = new RoomService(this, !options.cluster);

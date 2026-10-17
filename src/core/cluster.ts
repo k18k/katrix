@@ -138,6 +138,7 @@ export class StreamManager {
   private lastPos = 0;
   private heartbeat: ReturnType<typeof setInterval>;
   private positionCache: { value: number; at: number } | null = null;
+  private highestAllocated = 0;
   // https://github.com/k18k/matrix-nodejs-homeserver/issues/30: every allocation from idle and every
   // completion used to append to one chain of round trips (read the sequence, write the state),
   // so all stream writes of an instance completed one at a time. Publishes are now shared: a
@@ -201,6 +202,7 @@ export class StreamManager {
       await this.flush();
       id = await this.cluster.nextId("stream");
       this.inflight.add(id);
+      if (id > this.highestAllocated) this.highestAllocated = id;
     } finally {
       this.allocating--;
     }
@@ -245,9 +247,17 @@ export class StreamManager {
     return -(await this.cluster.nextId("backfill"));
   }
 
-  /** The highest position below which everything is persisted, cluster-wide. */
-  async position(): Promise<number> {
-    if (this.positionCache && Date.now() - this.positionCache.at < 20) return this.positionCache.value;
+  /** The highest position this instance has allocated: an upper bound of its changes so far. */
+  get lastAllocated(): number {
+    return this.highestAllocated;
+  }
+
+  /**
+   * The highest position below which everything is persisted, cluster-wide. `fresh` skips the
+   * 20 ms cache, for a caller that knows a change has completed elsewhere.
+   */
+  async position(fresh = false): Promise<number> {
+    if (!fresh && this.positionCache && Date.now() - this.positionCache.at < 20) return this.positionCache.value;
     // Read the global sequence first, then the writers (see class comment).
     const global = await this.cluster.currentId("stream");
     let pos = global;
@@ -257,6 +267,24 @@ export class StreamManager {
     if (this.inflight.size) pos = Math.min(pos, Math.min(...this.inflight) - 1);
     this.positionCache = { value: pos, at: Date.now() };
     return pos;
+  }
+
+  /**
+   * Resolve once the position has reached `pos` (true), or false after `timeoutMs` or on abort.
+   * For a request woken by a change that another write in flight still keeps out of sight
+   * (https://github.com/k18k/matrix-nodejs-homeserver/issues/50). It checks again at growing
+   * intervals: writes finish in milliseconds, and the position may be held by another instance.
+   */
+  async waitFor(pos: number, timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    let delay = 5;
+    for (;;) {
+      if ((await this.position(true)) >= pos) return true;
+      const left = deadline - Date.now();
+      if (left <= 0 || signal?.aborted) return false;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delay, left)));
+      delay = Math.min(delay * 2, 200);
+    }
   }
 
   async advanceTo(value: number): Promise<void> {

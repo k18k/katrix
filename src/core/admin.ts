@@ -257,6 +257,8 @@ export class AdminService {
         stream,
       }),
     );
+    // The tag is account data: wake the user's sync for it (#50).
+    this.hs.notifier.notify([userId]);
     return room_id;
   }
 }

@@ -1,4 +1,5 @@
 import { MatrixError } from "#core/errors.ts";
+import { longPoll } from "#api/longpoll.ts";
 import { getState } from "#core/authrules.ts";
 import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
 import { isObject } from "#core/json.ts";
@@ -118,26 +119,21 @@ async function slidingSync(ctx: ProcedureContext<"user", z.output<typeof sliding
     }
   }
 
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    const to = await hs.streams.position();
-    const { response, empty, next } = await buildResponse(hs, s, body, conn, since, to);
-    const remaining = deadline - Date.now();
-    if (since === null || !empty || remaining <= 0) {
-      await hs.db.upsert("sliding_sync_connections", {
-        user_id: s.userId,
-        device_id: s.deviceId,
-        conn_id: connId,
-        pos: to,
-        state: { ...next, prevPos: since },
-        updated_ts: Date.now(),
-      });
-      return { pos: String(to), ...response };
-    }
-    if ((await hs.streams.position()) > to) continue;
-    await hs.notifier.wait(s.userId, remaining, ctx.request.signal);
-    if (ctx.request.signal?.aborted) return { pos: String(since), lists: {}, rooms: {}, extensions: {} };
-  }
+  // The long-poll loop is shared with /sync (#50).
+  const { value, to, aborted } = await longPoll(hs, s.userId, timeout, ctx.request.signal, async (to) => {
+    const built = await buildResponse(hs, s, body, conn, since, to);
+    return { value: built, done: since === null || !built.empty };
+  });
+  if (aborted && value.empty) return { pos: String(since), lists: {}, rooms: {}, extensions: {} };
+  await hs.db.upsert("sliding_sync_connections", {
+    user_id: s.userId,
+    device_id: s.deviceId,
+    conn_id: connId,
+    pos: to,
+    state: { ...value.next, prevPos: since },
+    updated_ts: Date.now(),
+  });
+  return { pos: String(to), ...value.response };
 }
 
 async function buildResponse(
