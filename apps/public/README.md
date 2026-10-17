@@ -14,25 +14,19 @@ A public Matrix homeserver built on [`matrix-nodejs-homeserver`](../../packages/
 
 ## Local development
 
+No Docker: one process runs the homeserver on SQLite and, in place of GitHub, the
+[development identity provider](../dev-idp), where you sign in by picking Alice, Bob or Carol.
+
 ```sh
 cd apps/public
-docker compose up --build
+npm run dev
 ```
 
-This starts Postgres, the homeserver at http://localhost:8008 and, in place of GitHub, the
-[development identity provider](../dev-idp) at http://dev-idp.localhost:3001. There you sign in
-by picking Alice, Bob or Carol. `@alice:localhost` is a server admin. Point a client at
-`http://localhost:8008`, for example https://app.element.io (Chrome and Firefox allow it to
-talk to localhost).
-
-Without Docker, the app also runs on SQLite:
-
-```sh
-npm start -w @matrix-nodejs-homeserver/dev-idp &
-SERVER_NAME=localhost PUBLIC_BASE_URL=http://localhost:8008 LOGIN_PROVIDER=dev \
-  DEV_IDP_ISSUER=http://dev-idp.localhost:3001/api/auth DEV_IDP_CLIENT_ID=matrix-dev \
-  DEV_IDP_CLIENT_SECRET=matrix-dev-secret npm start -w @matrix-nodejs-homeserver/public
-```
+- Homeserver: http://localhost:8008 (data in `apps/public/.dev-data`; delete it to start over)
+- Dev login: http://localhost:3001
+- `@alice:localhost` is a server admin. Point a client at `http://localhost:8008`, for example
+  https://app.element.io (Chrome and Firefox allow it to talk to localhost).
+- Other ports: `PORT=8009 DEV_IDP_PORT=3002 npm run dev`.
 
 `npm test` runs the whole login (dev provider → consent → token → `/whoami`) against a real
 server on SQLite.

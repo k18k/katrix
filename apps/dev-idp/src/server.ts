@@ -86,7 +86,10 @@ export async function startDevIdp(options: DevIdpOptions) {
     });
   });
   const host = options.host ?? "127.0.0.1";
-  await new Promise<void>((resolve) => server.listen(options.port ?? 0, host, resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(options.port ?? 0, host, resolve);
+  });
   const port = (server.address() as AddressInfo).port;
   const baseUrl = (options.baseUrl ?? `http://${host}:${port}`).replace(/\/$/, "");
 
@@ -123,7 +126,13 @@ export async function startDevIdp(options: DevIdpOptions) {
   // Creating a client needs a signed-in user.
   const client = await auth.api.adminCreateOAuthClient({
     headers: new Headers({ cookie: firstCookie }),
-    body: { redirect_uris: options.redirectUris, skip_consent: true, client_name: "Matrix homeserver (dev)" },
+    body: {
+      redirect_uris: options.redirectUris,
+      skip_consent: true,
+      client_name: "Matrix homeserver (dev)",
+      // Better Auth allows http redirect URIs (http://localhost:8008/…) only for native clients.
+      application_type: options.redirectUris.some((u) => u.startsWith("http:")) ? "native" : "web",
+    },
   });
 
   const betterAuthHandler = toNodeHandler(auth);

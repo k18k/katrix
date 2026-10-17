@@ -5,17 +5,18 @@ clicking one of a few made-up users (Alice, Bob, Carol). The [public server](../
 locally in place of GitHub, so the whole OAuth login can be tried without a GitHub app.
 
 **Development only.** Anyone who reaches it can sign in as any of its users. Everything is kept
-in memory and created again at each start. The local compose file binds it to 127.0.0.1.
+in memory and created again at each start. It listens on 127.0.0.1.
 
-```sh
-npm start -w @matrix-nodejs-homeserver/dev-idp
+It is a library: `npm run dev` in [apps/public](../public) starts it in the same process as the
+homeserver, and tests start it on a random port.
+
+```ts
+import { startDevIdp } from "@matrix-nodejs-homeserver/dev-idp";
+
+const idp = await startDevIdp({ port: 3001, baseUrl: "http://localhost:3001",
+  redirectUris: ["http://localhost:8008/_matrix/client/v3/login/sso/callback/dev"] });
+// idp.issuer, idp.clientId ("matrix-dev"), idp.clientSecret ("matrix-dev-secret"), idp.close()
 ```
 
-| Variable | Default |
-|---|---|
-| `DEV_IDP_BASE_URL` | `http://dev-idp.localhost:3001`: the URL browsers and the homeserver both use. |
-| `DEV_IDP_REDIRECT_URIS` | `http://localhost:8008/_matrix/client/v3/login/sso/callback/dev` |
-| `PORT`, `HOST` | `3001`, `0.0.0.0` |
-
-The client it registers is `matrix-dev` / `matrix-dev-secret`. Tests import `startDevIdp()`
-from this package and run it on a random port.
+The client is registered as a native client when its redirect URIs use http: Better Auth allows
+http redirect URIs (on localhost) only for those.
