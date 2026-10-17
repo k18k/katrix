@@ -12,7 +12,9 @@ import { toMsisdn } from "#core/phone.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
 import { M, UNSTABLE } from "#core/m.ts";
-import { checkRedirectUrl, type SsoResult } from "#core/sso.ts";
+import { checkRedirectUrl, legacyClientRedirect, type SsoResult } from "#core/sso.ts";
+import { OAUTH_PREFIX } from "#core/oauthserver.ts";
+import { readWebSession, setWebUser } from "#api/oauthserver.ts";
 import { escapeHtml } from "#core/html.ts";
 
 // Fields shared by login and registration requests.
@@ -43,12 +45,17 @@ const sharedSecretRegisterBody = body({
 function loginFlows(hs: Homeserver): Record<string, unknown>[] {
   // With delegated OAuth, clients must use the authorization server instead.
   if (hs.oauth) return [];
+  // The spec: a server without the legacy API answers 404 M_UNRECOGNIZED.
+  if (hs.oauthServer && !hs.oauthServer.legacyApi) throw errors.unrecognized("Log in with the OAuth 2.0 API");
   const flows: Record<string, unknown>[] = [];
   if (hs.userAuth.passwordLoginEnabled) flows.push({ type: M.LOGIN.PASSWORD });
-  if (hs.sso) {
+  if (hs.sso || hs.oauthServer) {
     flows.push({
       type: M.LOGIN.SSO,
-      identity_providers: hs.sso.providers.map((p) => ({ id: p.id, name: p.name, icon: p.icon, brand: p.brand })),
+      identity_providers: (hs.sso?.providers ?? []).map((p) => ({ id: p.id, name: p.name, icon: p.icon, brand: p.brand })),
+      // OAuth 2.0 aware clients (spec v1.18): with the OAuth server, SSO goes through its login
+      // page, which offers the password and every provider, so clients should only offer this.
+      ...(hs.oauthServer ? { oauth_aware_preferred: true } : {}),
     });
   }
   flows.push({ type: M.LOGIN.TOKEN, ...(hs.config.loginViaExistingSession ? { get_login_token: true } : {}) });
@@ -57,6 +64,7 @@ function loginFlows(hs: Homeserver): Record<string, unknown>[] {
 
 /** Endpoints that manage passwords are unavailable when an OAuth provider owns the accounts. */
 function rejectIfDelegated(hs: Homeserver): void {
+  if (hs.oauthServer && !hs.oauthServer.legacyApi) throw errors.unrecognized("Use the OAuth 2.0 API");
   if (hs.oauth)
     throw new MatrixError(
       403,
@@ -66,7 +74,7 @@ function rejectIfDelegated(hs: Homeserver): void {
     );
 }
 
-async function validateNewUsername(hs: Homeserver, raw: unknown): Promise<string> {
+export async function validateNewUsername(hs: Homeserver, raw: unknown): Promise<string> {
   if (typeof raw !== "string" || raw.length === 0) throw errors.invalidUsername("Username must be a non-empty string");
   const localpart = raw.startsWith("@") ? raw.slice(1).split(":")[0] : raw;
   if (!LOCALPART_RE.test(localpart)) throw errors.invalidUsername("Username contains invalid characters");
@@ -106,6 +114,43 @@ export async function createUser(
   return userId;
 }
 
+/**
+ * Check a password login, with the audit entries and automatic provisioning of `/login`; returns
+ * the user ID. Shared with the OAuth server's login page.
+ */
+export async function checkPasswordLogin(
+  hs: Homeserver,
+  userId: string,
+  password: string,
+  request: { ip: string | null; userAgent: string | null },
+): Promise<string> {
+  let user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
+  const ok = await hs.userAuth.checkPassword({
+    userId,
+    localpart: userId.slice(1).split(":")[0],
+    password,
+    storedHash: user?.password_hash ?? null,
+  });
+  if (!ok) {
+    await hs.audit.record({
+      action: "login_failed",
+      actor: userId,
+      ip: request.ip,
+      userAgent: request.userAgent,
+      outcome: "failure",
+      details: { type: M.LOGIN.PASSWORD },
+    });
+    throw errors.forbidden("Invalid username or password");
+  }
+  if (!user) {
+    if (!(await hs.userAuth.autoProvision(userId))) throw errors.forbidden("Invalid username or password");
+    await createUser(hs, userId.slice(1).split(":")[0], {});
+    user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
+  }
+  if (user!.deactivated) throw errors.userDeactivated();
+  return userId;
+}
+
 async function resolveLoginUser(hs: Homeserver, body: Record<string, any>): Promise<string> {
   let user: unknown;
   // Third-party identifiers (and the legacy top-level medium/address) log in the account they belong to.
@@ -138,6 +183,28 @@ async function resolveLoginUser(hs: Homeserver, body: Record<string, any>): Prom
   return `@${user.toLowerCase()}:${hs.serverName}`;
 }
 
+// https://github.com/k18k/matrix-nodejs-homeserver/issues/19: the page that hands the login
+// token to a client the operator has not allowlisted. It names the client and only continues
+// when the user clicks, and it may not be framed, so another site cannot click it for them.
+export const ssoConfirmPage = (serverName: string, result: SsoResult) => {
+  const client = escapeHtml(result.client);
+  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Continue to ${client}</title>
+<style>body{font:16px system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}a.button{display:inline-block;padding:.6rem 1.2rem;background:#0b7a55;color:#fff;border-radius:6px;text-decoration:none}</style>
+<h1>Continue to ${client}?</h1>
+<p>You signed in to <b>${escapeHtml(serverName)}</b>. <b>${client}</b> will get access to your account.</p>
+<p>If you did not just sign in with this app, close this page.</p>
+<p><a class="button" href="${escapeHtml(result.url)}">Continue to ${client}</a></p>`;
+  return new Response(html, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "referrer-policy": "no-referrer",
+      "x-frame-options": "DENY",
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+    },
+  });
+};
+
 export function registerAccountRoutes(r: Router): void {
   r.client("GET", "/login", procedure({ handler: (ctx) => ({ flows: loginFlows(ctx.hs) }) }));
 
@@ -146,6 +213,7 @@ export function registerAccountRoutes(r: Router): void {
     "/auth_metadata",
     procedure({
       handler: async (ctx) => {
+        if (ctx.hs.oauthServer) return ctx.hs.oauthServer.metadata();
         if (!ctx.hs.oauth) throw errors.unrecognized("OAuth is not enabled");
         return ctx.hs.oauth.serverMetadata();
       },
@@ -157,6 +225,7 @@ export function registerAccountRoutes(r: Router): void {
     "/auth_issuer",
     procedure({
       handler: (ctx) => {
+        if (ctx.hs.oauthServer) return { issuer: ctx.hs.oauthServer.issuer };
         if (!ctx.hs.oauth) throw errors.unrecognized("OAuth is not enabled");
         return { issuer: ctx.hs.oauth.options.issuer };
       },
@@ -164,33 +233,24 @@ export function registerAccountRoutes(r: Router): void {
     ["v1"],
   );
 
-  // https://github.com/k18k/matrix-nodejs-homeserver/issues/19: the page that hands the login
-  // token to a client the operator has not allowlisted. It names the client and only continues
-  // when the user clicks, and it may not be framed, so another site cannot click it for them.
-  const ssoConfirmPage = (serverName: string, result: SsoResult) => {
-    const client = escapeHtml(result.client);
-    const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Continue to ${client}</title>
-<style>body{font:16px system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}a.button{display:inline-block;padding:.6rem 1.2rem;background:#0b7a55;color:#fff;border-radius:6px;text-decoration:none}</style>
-<h1>Continue to ${client}?</h1>
-<p>You signed in to <b>${escapeHtml(serverName)}</b>. <b>${client}</b> will get access to your account.</p>
-<p>If you did not just sign in with this app, close this page.</p>
-<p><a class="button" href="${escapeHtml(result.url)}">Continue to ${client}</a></p>`;
-    return new Response(html, {
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store",
-        "referrer-policy": "no-referrer",
-        "x-frame-options": "DENY",
-        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
-      },
-    });
-  };
-
   const ssoRedirect = async (ctx: RequestContext) => {
-    if (!ctx.hs.sso) throw errors.unrecognized("SSO is not enabled");
+    const hs = ctx.hs;
     const redirectUrl = checkRedirectUrl(ctx.query.get("redirectUrl"));
+    if (hs.oauthServer) {
+      if (!hs.oauthServer.legacyApi) throw errors.unrecognized("Log in with the OAuth 2.0 API");
+      if (!redirectUrl) throw errors.missingParam("Missing or invalid redirectUrl");
+      // Through the OAuth server's pages, which then hand the client a login token.
+      const id = randomString(24);
+      await hs.cluster.set(`oauth:legacy:${id}`, redirectUrl, 30 * 60_000);
+      const next = `${OAUTH_PREFIX}/legacy/${id}`;
+      const idp = ctx.params.idpId;
+      if (idp && !hs.sso?.providers.some((p) => p.id === idp)) throw errors.notFound("Unknown identity provider");
+      const page = idp ? `/upstream/${encodeURIComponent(idp)}` : ctx.query.get("action") === "register" ? "/register-account" : "/login";
+      return Response.redirect(`${hs.oauthServer.url(page)}?next=${encodeURIComponent(next)}`, 302);
+    }
+    if (!hs.sso) throw errors.unrecognized("SSO is not enabled");
     if (!redirectUrl) throw errors.missingParam("Missing or invalid redirectUrl");
-    return Response.redirect(await ctx.hs.sso.startLogin(ctx.params.idpId ?? null, redirectUrl), 302);
+    return Response.redirect(await hs.sso.startLogin(ctx.params.idpId ?? null, { kind: "client", redirectUrl }), 302);
   };
   // A logged-in client hands a one-time token to a new device (spec "Login via an existing session").
   r.client(
@@ -200,9 +260,9 @@ export function registerAccountRoutes(r: Router): void {
       auth: "user",
       handler: async (ctx) => {
         const s = ctx.session;
-        if (!ctx.hs.config.loginViaExistingSession || ctx.hs.oauth || s.isGuest) throw errors.unrecognized();
+        if (!ctx.hs.config.loginViaExistingSession || ctx.hs.oauth || s.oauth || s.isGuest) throw errors.unrecognized();
         await ctx.rateLimit("login");
-        await requireUia(ctx.hs, await ctx.json(), [[M.LOGIN.PASSWORD]], s.userId);
+        await requireUia(ctx.hs, await ctx.json(), [[M.LOGIN.PASSWORD]], s.userId, { session: s });
         const ttl = 2 * 60_000;
         return { login_token: await ctx.hs.auth.createLoginToken(s.userId, ttl), expires_in_ms: ttl };
       },
@@ -217,9 +277,19 @@ export function registerAccountRoutes(r: Router): void {
     "/login/sso/callback/:idpId",
     procedure({
       handler: async (ctx) => {
-        if (!ctx.hs.sso) throw errors.unrecognized("SSO is not enabled");
-        const result = await ctx.hs.sso.finishLogin(ctx.params.idpId, ctx.query);
-        return result.confirm ? ssoConfirmPage(ctx.hs.serverName, result) : Response.redirect(result.url, 302);
+        const hs = ctx.hs;
+        if (!hs.sso) throw errors.unrecognized("SSO is not enabled");
+        const { userId, target } = await hs.sso.finishLogin(ctx.params.idpId, ctx.query);
+        if (target.kind === "web") {
+          // The login was started in this browser's session of the OAuth server's pages; another
+          // browser may not finish it (it would log that browser in to this account).
+          const web = await readWebSession(ctx);
+          if (!web || web.sid !== target.sid) throw errors.forbidden("This login was started in another browser");
+          await setWebUser(hs, web, userId);
+          return Response.redirect(hs.oauthServer!.url(target.next.slice(OAUTH_PREFIX.length)), 302);
+        }
+        const result = await legacyClientRedirect(hs, userId, target.redirectUrl);
+        return result.confirm ? ssoConfirmPage(hs.serverName, result) : Response.redirect(result.url, 302);
       },
     }),
   );
@@ -234,6 +304,7 @@ export function registerAccountRoutes(r: Router): void {
         const body = ctx.input;
         const hs = ctx.hs;
         if (hs.oauth) throw errors.unrecognized("Log in through the OAuth provider");
+        if (hs.oauthServer && !hs.oauthServer.legacyApi) throw errors.unrecognized("Log in with the OAuth 2.0 API");
         if (body.type === M.LOGIN.APPLICATION_SERVICE) {
           const reg = ctx.accessToken() ? hs.appservices.byToken(ctx.accessToken()!) : null;
           if (!reg) throw errors.unknownToken("An application service token is required");
@@ -278,31 +349,8 @@ export function registerAccountRoutes(r: Router): void {
         if (body.type !== M.LOGIN.PASSWORD || !hs.userAuth.passwordLoginEnabled) throw errors.unknown("Unsupported login type");
         const userId = await resolveLoginUser(hs, body);
         if (body.password === undefined) throw errors.missingParam("Missing password");
-        let user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
-        const ok = await hs.userAuth.checkPassword({
-          userId,
-          localpart: userId.slice(1).split(":")[0],
-          password: body.password,
-          storedHash: user?.password_hash ?? null,
-        });
         const ua = ctx.request.headers.get("user-agent");
-        if (!ok) {
-          await hs.audit.record({
-            action: "login_failed",
-            actor: userId,
-            ip: ctx.ip,
-            userAgent: ua,
-            outcome: "failure",
-            details: { type: M.LOGIN.PASSWORD },
-          });
-          throw errors.forbidden("Invalid username or password");
-        }
-        if (!user) {
-          if (!(await hs.userAuth.autoProvision(userId))) throw errors.forbidden("Invalid username or password");
-          await createUser(hs, userId.slice(1).split(":")[0], {});
-          user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
-        }
-        if (user!.deactivated) throw errors.userDeactivated();
+        await checkPasswordLogin(hs, userId, body.password, { ip: ctx.ip, userAgent: ua });
         const session = await hs.auth.createSession(userId, {
           deviceId: body.device_id,
           displayName: body.initial_device_display_name,
@@ -329,7 +377,7 @@ export function registerAccountRoutes(r: Router): void {
       handler: async (ctx) => {
         const body = ctx.input;
         if (body.refresh_token === undefined) throw errors.missingParam("Missing refresh_token");
-        const { access_token, refresh_token, expires_in_ms } = await ctx.hs.auth.refresh(body.refresh_token);
+        const { access_token, refresh_token, expires_in_ms } = await ctx.hs.auth.refresh(body.refresh_token, { clientId: null });
         return { access_token, refresh_token, expires_in_ms };
       },
     }),
@@ -497,7 +545,7 @@ export function registerAccountRoutes(r: Router): void {
         let s: { userId: string; deviceId: string | null };
         if (ctx.accessToken()) {
           const session = await ctx.auth();
-          await requireUia(hs, body, [[M.LOGIN.PASSWORD]], session.userId);
+          await requireUia(hs, body, [[M.LOGIN.PASSWORD]], session.userId, { session });
           s = { userId: session.userId, deviceId: session.deviceId };
         } else {
           const { threepids } = await requireUia(hs, body, [[M.LOGIN.EMAIL.IDENTITY], [M.LOGIN.MSISDN]], null);
@@ -532,7 +580,7 @@ export function registerAccountRoutes(r: Router): void {
         const hs = ctx.hs;
         rejectIfDelegated(hs);
         const s = await ctx.auth();
-        await requireUia(hs, ctx.input, [[M.LOGIN.PASSWORD]], s.userId);
+        await requireUia(hs, ctx.input, [[M.LOGIN.PASSWORD]], s.userId, { session: s });
         for (const membership of ["join", "invite", "knock"]) {
           for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
             try {
@@ -622,7 +670,11 @@ export async function registrationTokenValid(hs: Homeserver, token: string): Pro
 
 async function consumeRegistrationToken(hs: Homeserver, body: Record<string, any>): Promise<void> {
   if (body.auth?.type !== M.LOGIN.REGISTRATION_TOKEN) return;
-  const token = body.auth?.token;
+  await redeemRegistrationToken(hs, body.auth?.token);
+}
+
+/** Count one use of a registration token. */
+export async function redeemRegistrationToken(hs: Homeserver, token: string): Promise<void> {
   const row = await hs.db.findOne("registration_tokens", [{ field: "token", value: token }]);
   if (row) await hs.db.update("registration_tokens", [{ field: "token", value: token }], { completed: row.completed + 1 });
 }

@@ -1,4 +1,5 @@
 import { errors } from "#core/errors.ts";
+import { allowCrossSigningReset } from "#core/oauthserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { z } from "zod";
@@ -137,6 +138,19 @@ export function registerAdminRoutes(r: Router): void {
         }
         if (body.deactivated === true) await ctx.hs.admin.deactivateUser(userId);
         return ctx.hs.admin.getUser(userId);
+      },
+    }),
+  );
+  // Synapse's endpoint for an OAuth server: the user approved replacing their cross-signing keys,
+  // so the m.oauth UIA stage passes for a few minutes (#65). matrix-authentication-service calls it.
+  r.post(
+    "/_synapse/admin/v1/users/:userId/_allow_cross_signing_replacement_without_uia",
+    procedure({
+      guard: adminGuard,
+      handler: async (ctx) => {
+        const userId = ctx.params.userId;
+        if (!ctx.hs.isLocalUser(userId) || !(await ctx.hs.admin.getUser(userId))) throw errors.notFound("Unknown user");
+        return { updatable_without_uia_before_ms: await allowCrossSigningReset(ctx.hs, userId) };
       },
     }),
   );

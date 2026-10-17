@@ -31,9 +31,29 @@ export const schema: Schema = {
     primaryKey: ["user_id", "device_id"],
   },
   access_tokens: {
-    fields: { token: s, user_id: s, device_id: s, refresh_token: sn, expires_ts: nn },
+    fields: {
+      token: s,
+      user_id: s,
+      device_id: s,
+      refresh_token: sn,
+      expires_ts: nn,
+      // OAuth 2.0 API: the client the token was issued to (null for the legacy API).
+      client_id: sn,
+      // OAuth 2.0 API: the scope granted, returned again on refresh.
+      scope: sn,
+      // Refresh token rotation: the row this one replaced, until this one's access token is used.
+      refresh_parent: sn,
+      // The refresh token was rotated and its successor used; using it again revokes the device.
+      refresh_used: bn,
+    },
     primaryKey: ["token"],
-    indexes: [["user_id"], ["refresh_token"]],
+    indexes: [["user_id"], ["refresh_token"], ["client_id"], ["refresh_parent"]],
+  },
+  // OAuth 2.0 API: clients registered through dynamic client registration (RFC 7591).
+  oauth_clients: {
+    fields: { client_id: s, metadata: j, created_ts: n },
+    primaryKey: ["client_id"],
+    indexes: [["created_ts"]],
   },
   rooms: {
     fields: { room_id: s, room_version: s, creator: s, is_public: b, created_ts: n },

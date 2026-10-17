@@ -104,7 +104,7 @@ export function registerThreepidRoutes(r: Router): void {
         notDelegated(ctx);
         const s = await ctx.auth();
         const body = ctx.input;
-        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId);
+        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId, { session: s });
         const validated = await ctx.hs.threepids.validated({ sid: body.sid, client_secret: body.client_secret });
         if (!validated) throw new MatrixError(400, "M_THREEPID_AUTH_FAILED", "The address has not been validated");
         await ctx.hs.threepids.add(s.userId, validated);

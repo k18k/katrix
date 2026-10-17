@@ -238,7 +238,7 @@ export function registerUserRoutes(r: Router): void {
           { field: "device_id", value: ctx.params.deviceId },
         ];
         if (!(await ctx.hs.db.findOne("devices", where))) throw errors.notFound("Device not found");
-        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId);
+        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId, { session: s });
         await ctx.hs.auth.deleteDevice(s.userId, ctx.params.deviceId);
         return {};
       },
@@ -253,7 +253,7 @@ export function registerUserRoutes(r: Router): void {
       handler: async (ctx) => {
         const s = ctx.session;
         const body = ctx.input;
-        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId);
+        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId, { session: s });
         for (const d of body.devices) if (typeof d === "string") await ctx.hs.auth.deleteDevice(s.userId, d);
         return {};
       },
@@ -348,7 +348,7 @@ export function registerUserRoutes(r: Router): void {
           );
           const types = ["master", "self_signing", "user_signing"].filter((type) => body[`${type}_key`] !== undefined);
           if (types.every((type) => stored.get(type) === canonicalJson(body[`${type}_key`]))) return {};
-          await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId);
+          await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId, { session: s, crossSigningReset: true });
         }
         await ctx.hs.keys.uploadCrossSigning(s.userId, body);
         return {};

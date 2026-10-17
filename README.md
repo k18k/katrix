@@ -137,8 +137,9 @@ createHomeserver({
   `await hs.auth.createLoginToken(userId)` and let the client exchange the token via
   `m.login.token`. You can also call `hs.auth.createSession(userId)` to issue an
   access token directly.
-- **SSO with upstream OpenID Connect providers** (Google, GitHub via an OIDC
-  bridge, Keycloak, Authentik, …). Users can sign in with `m.login.sso`:
+- **SSO with upstream providers:** OpenID Connect (Google, Keycloak,
+  Authentik, Better Auth, …) or plain OAuth 2.0 such as GitHub
+  (`githubProvider({ clientId, clientSecret })`). Users can sign in with `m.login.sso`:
   ```ts
   sso: { providers: [{ id: "google", name: "Google", issuer: "https://accounts.google.com",
     clientId, clientSecret, mapUser: (claims) => ({ localpart: claims.email.split("@")[0] }) }] },
@@ -147,6 +148,37 @@ createHomeserver({
   After signing in, users confirm the client the login token goes to, on a page
   that names it. Clients you trust skip that page:
   `sso: { providers, clientAllowlist: ["https://app.element.io/"] }`.
+- **The OAuth 2.0 API, served by the homeserver** (spec v1.15–v1.18). Clients
+  such as Element X register themselves, and users sign in, register, approve
+  the client and manage their account on the server's own web pages. Those pages
+  offer the password and the providers of `sso`. Login only with GitHub:
+  ```ts
+  import { createHomeserver, githubProvider } from "matrix-nodejs-homeserver";
+
+  createHomeserver({
+    homeserver: "example.com",
+    publicBaseUrl: "https://matrix.example.com",
+    oauthServer: { termsUrl: "https://example.com/terms", policyUrl: "https://example.com/privacy" },
+    userAuthAdapter: { passwordLoginEnabled: false },
+    sso: { providers: [githubProvider({ clientId, clientSecret })] },
+  });
+  ```
+  The GitHub OAuth app's callback URL is
+  `https://matrix.example.com/_matrix/client/v3/login/sso/callback/github`. The first
+  login creates the account. Users are matched by their GitHub ID, so a renamed
+  GitHub account keeps its Matrix account.
+
+  What is served: dynamic client registration with the spec's redirect URI
+  rules, the authorization code grant with PKCE (S256), the device authorization
+  grant (for CLIs and TVs), refresh tokens and revocation. It also covers
+  `prompt=create`, the account management page with every action the spec
+  lists, `m.oauth` for cross-signing resets, and ID tokens for clients that ask
+  for `openid`. Access tokens live 5 minutes (`accessTokenLifetimeMs`). Refresh
+  tokens rotate: a client whose response got lost can retry, and a refresh
+  token used again after it was replaced logs the device out. The pages are
+  under `/_synapse/client/oauth2/`. The legacy API stays available
+  (`legacyApi: false` turns it off), and its `m.login.sso` goes through the same
+  pages.
 - **Delegated OAuth 2.0** (the Matrix OAuth API, e.g. with
   matrix-authentication-service, Keycloak or Authentik). The provider owns the
   accounts, and the homeserver validates its access tokens by introspection:
@@ -342,8 +374,9 @@ paths (server admins only), so existing tools keep working.
 | `cluster` | Cluster adapter for running several instances. |
 | `adminRoom` | `true` or `{ firstUserIsAdmin, firstUserCanRegister, botLocalpart, … }`. Disabled by default. |
 | `audit` | `{ enabled, database, sink, actions, retentionDays }`. Disabled by default. |
-| `publicBaseUrl` | Advertised via `/.well-known/matrix/client`. Required for SSO. |
-| `oauth`, `sso` | Delegated OAuth or upstream OIDC SSO. |
+| `publicBaseUrl` | Advertised via `/.well-known/matrix/client`. Required for SSO and `oauthServer`. |
+| `oauthServer` | `true` or `{ legacyApi, accessTokenLifetimeMs, termsUrl, policyUrl, webSessionLifetimeMs }`: the OAuth 2.0 API, served by the homeserver. |
+| `oauth`, `sso` | Delegated OAuth, and upstream identity providers (OIDC or OAuth 2.0, e.g. `githubProvider`). |
 | `federation` | `{ enabled, verifyTls, allowedServers, blockedServers, fasterJoins }`. Off unless `enabled: true`. |
 | `allowPrivateAddresses` | Lets requests to addresses that users or remote servers choose (federation, push gateways, identity servers, URL previews, remote media) reach private addresses: `true`, or ranges such as `["127.0.0.1/32"]`. Blocked by default. |
 | `rtc` | `{ turn, transports }` |
@@ -376,9 +409,6 @@ available for integration and metrics.
 - **Push:** rule evaluation, notification counts, pushers, `/notifications`
 - **Media:** legacy and authenticated endpoints, async uploads, thumbnails, the remote media proxy, URL previews
 - **Federation, VoIP/MatrixRTC, admin, server notices**
-
-Not implemented: third-party identifiers (email/phone), application services,
-and a built-in OAuth authorization server. For OAuth, delegate to an existing provider.
 
 ## Development
 

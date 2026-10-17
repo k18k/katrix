@@ -3,6 +3,8 @@ import { randomString } from "#core/crypto.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import { M, UNSTABLE } from "#core/m.ts";
+import type { Session } from "#core/auth.ts";
+import { crossSigningResetAllowed } from "#core/oauthserver.ts";
 
 interface UiaSession {
   completed: string[];
@@ -22,17 +24,40 @@ const UIA_TTL_MS = 10 * 60_000;
 /**
  * User-interactive authentication. Resolves when one of `flows` has been
  * completed; otherwise throws the 401 response describing what is required.
- * `userId` binds password stages to an already-authenticated user.
+ * `userId` binds password stages to an already-authenticated user. `session` is the caller's,
+ * and `crossSigningReset` marks `/keys/device_signing/upload`, the one endpoint where tokens of
+ * the OAuth 2.0 API may use UIA (the `m.oauth` stage).
  */
 export async function requireUia(
   hs: Homeserver,
   body: Record<string, any>,
   flows: string[][],
   userId: string | null,
+  opts: { session?: Session; crossSigningReset?: boolean } = {},
 ): Promise<{ threepids: ValidatedThreepid[] }> {
-  // With delegated OAuth there are no passwords; sensitive actions are approved at the provider.
-  if (hs.oauth && flows.some((f) => f.includes(M.LOGIN.PASSWORD))) {
+  // With OAuth (this server's or a delegated one) there are no passwords to ask for.
+  const viaOAuth = !!opts.session?.oauth || (!!hs.oauth && flows.some((f) => f.includes(M.LOGIN.PASSWORD)));
+  let oauthUrl: string | undefined;
+  if (viaOAuth) {
+    // The spec: UIA does not work with OAuth tokens, apart from m.oauth for cross-signing.
+    // Everything else is done on the account management page.
+    const accountUri = hs.oauthServer?.accountManagementUri ?? hs.oauth?.options.accountManagementUrl;
+    if (!opts.crossSigningReset)
+      throw new MatrixError(
+        403,
+        "M_FORBIDDEN",
+        "Do this on the account management page",
+        accountUri ? { account_management_uri: accountUri } : {},
+      );
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/65: the stage completed as soon as
+    // the client named it. It completes now only after the user approved the reset (on the
+    // account page, or at the delegated provider through the admin API), and the client retries
+    // with just the session, as the spec describes.
+    if (userId && (await crossSigningResetAllowed(hs, userId))) return { threepids: [] };
     flows = [[M.OAUTH], [UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET]];
+    oauthUrl = hs.oauthServer
+      ? `${hs.oauthServer.accountManagementUri}?action=org.matrix.cross_signing_reset`
+      : (hs.oauth!.options.accountManagementUrl ?? hs.oauth!.options.issuer);
   }
   // Sessions live in the cluster KV so that any instance can continue them.
   const auth = isObject(body.auth) ? body.auth : null;
@@ -50,8 +75,7 @@ export async function requireUia(
       { completed: [...session.completed], userId: session.userId, threepids: session.threepids },
       UIA_TTL_MS,
     );
-  const oauthUrl = hs.oauth?.options.accountManagementUrl ?? hs.oauth?.options.issuer;
-  const params = hs.oauth ? { [M.OAUTH]: { url: oauthUrl }, [UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET]: { url: oauthUrl } } : {};
+  const params = oauthUrl ? { [M.OAUTH]: { url: oauthUrl }, [UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET]: { url: oauthUrl } } : {};
   const challenge = (extra: Record<string, unknown> = {}) =>
     new MatrixError(401, extra.errcode ? String(extra.errcode) : "M_FORBIDDEN", String(extra.error ?? "Authentication required"), {
       flows: flows.map((stages) => ({ stages })),
@@ -75,10 +99,9 @@ export async function requireUia(
         break;
       case M.OAUTH:
       case UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET:
-        // The client retries after the user approved the action at the provider.
-        if (!hs.oauth) throw challenge({ errcode: "M_UNRECOGNIZED", error: "OAuth is not enabled" });
-        session.completed.add(auth.type);
-        break;
+        // Approved resets returned above (#65); naming the stage does not complete it.
+        if (!viaOAuth) throw challenge({ errcode: "M_UNRECOGNIZED", error: "OAuth is not enabled" });
+        throw challenge({ errcode: "M_FORBIDDEN", error: "The reset has not been approved on the account page" });
       case M.LOGIN.REGISTRATION_TOKEN: {
         const { registrationTokenValid } = await import("#api/account.ts");
         if (typeof auth.token !== "string" || !(await registrationTokenValid(hs, auth.token))) {

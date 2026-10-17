@@ -14,6 +14,7 @@ import { TypingService } from "#core/typing.ts";
 import { PushService } from "#core/push.ts";
 import { AdminService, type ServerNoticesOptions } from "#core/admin.ts";
 import { OAuthDelegation, type OAuthDelegationOptions } from "#core/oauth.ts";
+import { OAuthServer, type OAuthServerOptions } from "#core/oauthserver.ts";
 import { SsoService, type SsoOptions } from "#core/sso.ts";
 import { FederationService, type FederationOptions } from "#federation/index.ts";
 import { DelayedEventService, type DelayedEventsOptions } from "#core/delayed.ts";
@@ -109,7 +110,16 @@ export interface HomeserverOptions {
    */
   /** Delegate authentication to an external OAuth 2.0 / OIDC provider (disables password login and registration). */
   oauth?: OAuthDelegationOptions;
-  /** Upstream OpenID Connect providers for `m.login.sso`. Requires `publicBaseUrl`. */
+  /**
+   * Serve the spec's OAuth 2.0 API: users log in on the server's own web pages, with a password
+   * and/or the upstream providers of `sso` (e.g. `githubProvider`). Requires `publicBaseUrl`.
+   * Cannot be combined with `oauth`.
+   */
+  oauthServer?: boolean | OAuthServerOptions;
+  /**
+   * Upstream identity providers (OpenID Connect, or OAuth 2.0 such as GitHub) for `m.login.sso`
+   * and the `oauthServer` login page. Requires `publicBaseUrl`.
+   */
   sso?: SsoOptions;
   /**
    * Coordination between instances. The default (`localCluster()`) supports one process;
@@ -202,6 +212,7 @@ export class Homeserver extends EventEmitter {
   readonly rateLimits: RateLimits;
   readonly admin: AdminService;
   readonly oauth: OAuthDelegation | null;
+  readonly oauthServer: OAuthServer | null;
   readonly sso: SsoService | null;
   readonly federation: FederationService;
   readonly delayedEvents: DelayedEventService;
@@ -298,6 +309,11 @@ export class Homeserver extends EventEmitter {
     this.push = new PushService(this);
     this.admin = new AdminService(this);
     this.oauth = options.oauth ? new OAuthDelegation(this, options.oauth) : null;
+    if (options.oauthServer && options.oauth) throw new Error("`oauthServer` and `oauth` (delegated OAuth) cannot be used together");
+    if (options.oauthServer && !options.publicBaseUrl) throw new Error("`publicBaseUrl` is required for `oauthServer`");
+    this.oauthServer = options.oauthServer
+      ? new OAuthServer(this, options.oauthServer === true ? {} : options.oauthServer, options.publicBaseUrl!)
+      : null;
     this.fetch = options.fetch ?? globalThis.fetch;
     this.addressPolicy = addressPolicy(options.allowPrivateAddresses);
     this.publicFetch = policyFetch(this.addressPolicy, options.fetch);
@@ -312,7 +328,8 @@ export class Homeserver extends EventEmitter {
     this.identityServers = new IdentityServers(this);
     const adminRoom = options.adminRoom === true ? {} : options.adminRoom || null;
     this.adminRoom = adminRoom && adminRoom.enabled !== false ? new AdminRoomService(this, adminRoom) : null;
-    this.sso = options.sso?.providers.length ? new SsoService(this, options.sso) : null;
+    // With the OAuth server, `sso` may hold only the client allowlist of legacy SSO logins.
+    this.sso = options.sso && (options.sso.providers.length || options.oauthServer) ? new SsoService(this, options.sso) : null;
     if (this.sso && !options.publicBaseUrl) throw new Error("`publicBaseUrl` is required when SSO is configured");
     this.rateLimits =
       options.rateLimits === false
@@ -371,7 +388,13 @@ export class Homeserver extends EventEmitter {
   /** Remove expired tokens, abandoned uploads and old notifications. */
   async cleanup(): Promise<void> {
     const now = Date.now();
-    await this.db.delete("access_tokens", [{ field: "expires_ts", operator: "lt", value: now - 7 * 24 * 3600_000 }]);
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/67: every row expired for a week
+    // was deleted, with its refresh token, which does not expire; only spent ones go now.
+    await this.db.delete("access_tokens", [
+      { field: "expires_ts", operator: "lt", value: now - 7 * 24 * 3600_000 },
+      { field: "refresh_used", value: true },
+    ]);
+    await this.oauthServer?.prune();
     await this.db.delete("login_tokens", [{ field: "expires_ts", operator: "lt", value: now }]);
     for (const m of await this.db.findMany("media", {
       where: [

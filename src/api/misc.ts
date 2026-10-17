@@ -94,13 +94,13 @@ export function registerMiscRoutes(r: Router): void {
         for (const v of SUPPORTED_ROOM_VERSIONS) available[v] = /^\d+$/.test(v) ? "stable" : "unstable";
         return {
           capabilities: {
-            [M.CHANGE_PASSWORD]: { enabled: !ctx.hs.oauth && ctx.hs.userAuth.passwordLoginEnabled },
+            [M.CHANGE_PASSWORD]: { enabled: !ctx.hs.oauth && !ctx.session.oauth && ctx.hs.userAuth.passwordLoginEnabled },
             [M.ROOM_VERSIONS]: { default: ctx.hs.config.defaultRoomVersion, available },
             [M.SET_DISPLAYNAME]: { enabled: true },
             [M.SET_AVATAR_URL]: { enabled: true },
             [M.PROFILE_FIELDS]: { enabled: true },
-            [M.THREEPID_CHANGES]: { enabled: ctx.hs.threepids.enabled && !ctx.hs.oauth },
-            [M.GET_LOGIN_TOKEN]: { enabled: ctx.hs.config.loginViaExistingSession && !ctx.hs.oauth },
+            [M.THREEPID_CHANGES]: { enabled: ctx.hs.threepids.enabled && !ctx.hs.oauth && !ctx.session.oauth },
+            [M.GET_LOGIN_TOKEN]: { enabled: ctx.hs.config.loginViaExistingSession && !ctx.hs.oauth && !ctx.session.oauth },
           },
         };
       },

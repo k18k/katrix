@@ -107,6 +107,7 @@ export class OAuthDelegation {
       accessToken: token,
       isGuest: false,
       isAdmin: !!user!.is_admin || scopes.includes(this.options.adminScope ?? "urn:synapse:admin:*"),
+      oauth: true,
     };
     const ttl = this.options.cacheTtlMs ?? 60_000;
     const exp = typeof claims.exp === "number" ? claims.exp * 1000 : Infinity;

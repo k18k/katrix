@@ -1,5 +1,6 @@
 import type { Router } from "#http/router.ts";
 import { registerAccountRoutes } from "#api/account.ts";
+import { registerOAuthServerRoutes } from "#api/oauthserver.ts";
 import { registerBackupRoutes } from "#api/backup.ts";
 import { registerSearchRoutes } from "#api/search.ts";
 import { registerPreviewRoutes } from "#api/preview.ts";
@@ -24,6 +25,7 @@ import { registerUserRoutes } from "#api/user.ts";
 export function registerRoutes(r: Router): void {
   registerMiscRoutes(r);
   registerAccountRoutes(r);
+  registerOAuthServerRoutes(r);
   registerProfileRoutes(r);
   registerRoomRoutes(r);
   registerLegacyRoutes(r);

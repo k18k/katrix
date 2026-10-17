@@ -13,7 +13,7 @@ export interface RateLimitRule {
   burst: number;
 }
 
-export type RateLimitAction = "login" | "register" | "message" | "join" | "invite" | "upload" | "createRoom" | "keyQuery";
+export type RateLimitAction = "login" | "register" | "message" | "join" | "invite" | "upload" | "createRoom" | "keyQuery" | "oauthClient";
 
 export const DEFAULT_RATE_LIMITS: Record<RateLimitAction, RateLimitRule> = {
   login: { perSecond: 0.17, burst: 5 },
@@ -24,6 +24,8 @@ export const DEFAULT_RATE_LIMITS: Record<RateLimitAction, RateLimitRule> = {
   upload: { perSecond: 1, burst: 10 },
   createRoom: { perSecond: 0.1, burst: 5 },
   keyQuery: { perSecond: 5, burst: 50 },
+  // OAuth 2.0 client registration: clients register again at every login.
+  oauthClient: { perSecond: 0.5, burst: 10 },
 };
 
 /** In-process token bucket limiter. */
