@@ -1,5 +1,5 @@
 # Production: https://matrix.mwdapis.stream through a Cloudflare tunnel (no port is opened on the
-# host). GitHub is the only login; the database is Postgres on PlanetScale. Secrets come from
+# host). GitHub is the only login; the database is Postgres in a container. Secrets come from
 # msecrets.json (environment "production"):
 #
 #   npm run deploy      # msecrets run -e production -- docker compose -f compose.prod.yaml up -d --build
@@ -9,6 +9,21 @@
 name: matrix-public
 
 services:
+  # One Postgres, no cluster adapter: the homeserver runs as a single process.
+  postgres:
+    image: postgres:18.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: matrix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?missing in msecrets.json}
+      POSTGRES_DB: matrix
+    # Postgres 18 images keep data under /var/lib/postgresql/18 and expect the volume one level up.
+    volumes: [postgres:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matrix"]
+      interval: 5s
+      retries: 30
+
   homeserver:
     build:
       context: ../..
@@ -17,10 +32,11 @@ services:
     environment:
       SERVER_NAME: matrix.mwdapis.stream
       PUBLIC_BASE_URL: https://matrix.mwdapis.stream
-      # Postgres on PlanetScale (outside this host). The URL carries the TLS setting, e.g.
-      # postgresql://user:password@host:5432/db?sslmode=verify-full
-      DATABASE_URL: ${DATABASE_URL:?missing in msecrets.json}
-      DB_POOL: ${DB_POOL:-10}
+      # The password goes separately (pg reads PGPASSWORD): in the URL, characters such as @ / #
+      # would have to be percent-encoded.
+      DATABASE_URL: postgres://matrix@postgres:5432/matrix
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      DB_POOL: ${DB_POOL:-20}
       LOGIN_PROVIDER: github
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?missing in msecrets.json}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?missing in msecrets.json}
@@ -29,6 +45,8 @@ services:
       TERMS_URL: ${TERMS_URL:-}
       POLICY_URL: ${POLICY_URL:-}
     volumes: [data:/data]
+    depends_on:
+      postgres: { condition: service_healthy }
 
   # The tunnel's only route goes to the homeserver (cloudflared/config.yml).
   cloudflared:
@@ -38,8 +56,10 @@ services:
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?missing in msecrets.json (npm run tunnel)}
     volumes: ["./cloudflared/config.yml:/etc/cloudflared/config.yml:ro"]
-    depends_on:
-      homeserver: { condition: service_healthy }
+    # Started without waiting for the homeserver to be healthy: waiting made the first deploy
+    # after a change leave the tunnel down. Until the homeserver answers, it returns 502.
+    depends_on: [homeserver]
 
 volumes:
+  postgres:
   data:
