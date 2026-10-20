@@ -58,7 +58,11 @@ export class AuthService {
       if (this.hs.oauth) return this.hs.oauth.authenticate(token);
       throw errors.unknownToken();
     }
-    if (row.expires_ts !== null && row.expires_ts < Date.now()) throw errors.unknownToken("Access token expired", true);
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/55 — insufficient session expiration (CWE-613): a refresh
+    // ends the old access token by setting its expiry to "now", and a strict `<` kept it valid for the rest of that
+    // millisecond, on every node. Other nodes drop their cached session when `refresh` publishes it on the "auth"
+    // channel, as for any revocation.
+    if (row.expires_ts !== null && row.expires_ts <= Date.now()) throw errors.unknownToken("Access token expired", true);
     const user = await this.hs.db.findOne("users", [{ field: "user_id", value: row.user_id }]);
     if (!user || user.deactivated) throw errors.unknownToken();
     const session: Session = {
