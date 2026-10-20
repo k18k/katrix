@@ -328,7 +328,14 @@ function requestClientId(ctx: RequestContext, form: URLSearchParams): string | n
   const header = ctx.request.headers.get("authorization");
   if (header?.startsWith("Basic ")) {
     const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
-    return decodeURIComponent(decoded.split(":")[0]);
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/76 — improper exception handling (CWE-755):
+    // a bad percent-escape made decodeURIComponent throw, which any anonymous caller could turn into a 500.
+    // Undecodable credentials now name no client, so the caller gets 401 invalid_client.
+    try {
+      return decodeURIComponent(decoded.split(":")[0]);
+    } catch {
+      return null;
+    }
   }
   return form.get("client_id");
 }

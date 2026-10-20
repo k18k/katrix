@@ -591,3 +591,15 @@ test("cleanup keeps refresh tokens whose access token expired long ago (#67)", a
     await t.close();
   }
 });
+
+test("undecodable Basic credentials at the token endpoint are an unknown client, not a server error (#76)", async () => {
+  const t = await server();
+  try {
+    // "JQ==" is base64 for a lone "%", which is not a valid percent-escape.
+    const res = await form(t, `${P}/token`, { grant_type: "authorization_code", code: "x" }, { authorization: "Basic JQ==" });
+    assert.equal(res.status, 401);
+    assert.equal(res.json.error, "invalid_client");
+  } finally {
+    await t.close();
+  }
+});
