@@ -448,6 +448,20 @@ vulnerabilities privately as described in [SECURITY.md](https://github.com/k18k/
 - **Media:** legacy and authenticated endpoints, async uploads, thumbnails, the remote media proxy, URL previews
 - **Federation, VoIP/MatrixRTC, admin, server notices**
 
+[SPEC-COVERAGE.md](SPEC-COVERAGE.md) lists every endpoint of the latest stable spec (v1.19), whether
+the server implements it, and whether Complement or a test here exercises it; all 156 client-server
+and 35 server-server endpoints are implemented. Regenerate it with `scripts/spec-coverage.ts` after
+a full Complement run.
+
+Behaviour that changed between v1.12 and v1.19 was audited against the spec's changelogs. The gaps
+found are tracked as issues ([#85](https://github.com/k18k/matrix-nodejs-homeserver/issues/85),
+[#86](https://github.com/k18k/matrix-nodejs-homeserver/issues/86),
+[#87](https://github.com/k18k/matrix-nodejs-homeserver/issues/87),
+[#88](https://github.com/k18k/matrix-nodejs-homeserver/issues/88)); `/versions` will list v1.12 and
+later once they are closed ([#89](https://github.com/k18k/matrix-nodejs-homeserver/issues/89)).
+Unstable features (MSCs) are advertised in `/versions` under `unstable_features`: simplified sliding
+sync (MSC4186), MatrixRTC (MSC4143), thread subscriptions (MSC4306) and others.
+
 ## Development
 
 The repository is an npm workspace: this package is `packages/core`, and `apps/` holds the

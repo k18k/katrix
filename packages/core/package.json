@@ -22,6 +22,7 @@
   "files": [
     "AUDITBOT.md",
     "PRODUCTION.md",
+    "SPEC-COVERAGE.md",
     "LICENSE",
     "README.md",
     "dist"
