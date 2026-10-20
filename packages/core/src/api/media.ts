@@ -9,6 +9,22 @@ const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif|apng)|video\/(mp4|webm|og
 
 const maxUpload = maxRequestBody;
 
+/**
+ * Headers on every media response. Media is user content served from the homeserver's origin, so it is sandboxed.
+ *
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/79 — protection mechanism failure (CWE-693), defence
+ * against stored XSS (CWE-79): thumbnails were served inline without the sandbox, so a thumbnailer that passes
+ * an SVG through would have let an uploaded script run on the homeserver's origin. nosniff stops browsers from
+ * guessing a different type than the one served.
+ */
+const MEDIA_HEADERS = {
+  "content-security-policy":
+    "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; media-src 'self'; object-src 'self';",
+  "x-content-type-options": "nosniff",
+  "cross-origin-resource-policy": "cross-origin",
+  "cache-control": "public, max-age=86400, immutable",
+};
+
 async function storeUpload(ctx: RequestContext, mediaId: string): Promise<void> {
   const hs = ctx.hs;
   // ctx.bytes() enforces the upload limit while the body arrives (#77).
@@ -78,10 +94,7 @@ async function download(ctx: RequestContext): Promise<Response> {
       headers: {
         "content-type": remote.contentType ?? "application/octet-stream",
         "content-disposition": contentDisposition(remote.contentType, filename),
-        "content-security-policy":
-          "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; media-src 'self'; object-src 'self';",
-        "cross-origin-resource-policy": "cross-origin",
-        "cache-control": "public, max-age=86400, immutable",
+        ...MEDIA_HEADERS,
       },
     });
   }
@@ -96,10 +109,7 @@ async function download(ctx: RequestContext): Promise<Response> {
     headers: {
       "content-type": meta.content_type ?? "application/octet-stream",
       "content-disposition": contentDisposition(meta.content_type, filename),
-      "content-security-policy":
-        "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; media-src 'self'; object-src 'self';",
-      "cross-origin-resource-policy": "cross-origin",
-      "cache-control": "public, max-age=86400, immutable",
+      ...MEDIA_HEADERS,
     },
   });
 }
@@ -149,8 +159,7 @@ async function thumbnail(ctx: RequestContext): Promise<Response> {
     headers: {
       "content-type": contentType,
       "content-disposition": "inline",
-      "cross-origin-resource-policy": "cross-origin",
-      "cache-control": "public, max-age=86400, immutable",
+      ...MEDIA_HEADERS,
     },
   });
 }
