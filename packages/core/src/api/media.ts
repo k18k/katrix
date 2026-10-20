@@ -1,19 +1,18 @@
 import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
-import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
+import { maxRequestBody } from "#http/handler.ts";
 import { M } from "#core/m.ts";
 
-const DEFAULT_MAX_UPLOAD = 50 * 1024 * 1024;
 const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif|apng)|video\/(mp4|webm|ogg)|audio\/(mpeg|ogg|wav|webm|mp4|aac|flac)|text\/plain)$/;
 
-const maxUpload = (hs: Homeserver) => hs.media.maxUploadSize ?? DEFAULT_MAX_UPLOAD;
+const maxUpload = maxRequestBody;
 
 async function storeUpload(ctx: RequestContext, mediaId: string): Promise<void> {
   const hs = ctx.hs;
+  // ctx.bytes() enforces the upload limit while the body arrives (#77).
   const data = await ctx.bytes();
-  if (data.length > maxUpload(hs)) throw errors.tooLarge("Upload too large");
   const contentType = ctx.request.headers.get("content-type");
   const filename = ctx.query.get("filename");
   await hs.media.put(mediaId, data, { contentType, filename, size: data.length });

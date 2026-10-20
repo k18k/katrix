@@ -30,6 +30,47 @@ function withCors(res: Response): Response {
   return out;
 }
 
+/** Default limit for a request body, and so for an upload, when the media adapter sets no `maxUploadSize`. */
+const DEFAULT_MAX_BODY = 50 * 1024 * 1024;
+
+/** The largest request body the server accepts. Uploads are the largest bodies, so it follows the media upload limit, like Synapse's. */
+export const maxRequestBody = (hs: Homeserver) => hs.media.maxUploadSize ?? DEFAULT_MAX_BODY;
+
+/**
+ * Read a request body, refusing it as soon as it is known to be larger than `limit`.
+ *
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/77 — uncontrolled resource consumption (CWE-400, CWE-770):
+ * bodies used to be read in full before any size check, so one oversized request could exhaust the server's memory.
+ * The declared Content-Length is checked first and the bytes are counted as they arrive, so at most `limit` is held.
+ * The reader is released rather than cancelled: cancelling a Node request stream destroys the socket, and the
+ * client would get a reset instead of the 413.
+ */
+async function readBody(request: Request, limit: number): Promise<Uint8Array> {
+  if (Number(request.headers.get("content-length")) > limit) throw errors.tooLarge("Request body too large");
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) throw errors.tooLarge("Request body too large");
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
+}
+
 export interface HandleOptions {
   ip?: string | null;
 }
@@ -66,7 +107,7 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
     if (!matched) throw errors.unrecognized();
 
     let bodyBytes: Promise<Uint8Array> | null = null;
-    const readBytes = () => (bodyBytes ??= request.arrayBuffer().then((b) => new Uint8Array(b)));
+    const readBytes = () => (bodyBytes ??= readBody(request, maxRequestBody(hs)));
     let session: Promise<Session> | null = null;
     const token = () => extractToken(request, url);
 

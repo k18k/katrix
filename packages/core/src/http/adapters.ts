@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { Homeserver } from "#homeserver.ts";
-import { handleRequest } from "#http/handler.ts";
+import { handleRequest, maxRequestBody } from "#http/handler.ts";
 
 /** Paths this library serves. Framework adapters forward only these. */
 export function isMatrixPath(pathname: string): boolean {
@@ -15,7 +15,37 @@ export function getFetchHandler(hs: Homeserver): (request: Request) => Promise<R
 
 type NodeRequestWithBody = IncomingMessage & { body?: unknown; originalUrl?: string };
 
-async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Promise<Request> {
+/** The body of a Node request as a web stream that reads from the socket only when pulled, so nothing is read ahead. */
+function bodyStream(chunks: AsyncIterator<Buffer>): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        const { done, value } = await chunks.next();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
+/** Read and drop what is left of a request body; false when more than `budget` bytes are left. */
+async function drain(req: IncomingMessage, chunks: AsyncIterator<Buffer>, budget: number): Promise<boolean> {
+  if (Number(req.headers["content-length"]) > budget) return false;
+  let dropped = 0;
+  try {
+    for (;;) {
+      const { done, value } = await chunks.next();
+      if (done) return true;
+      dropped += value.length;
+      if (dropped > budget) return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Promise<{ request: Request; unread?: AsyncIterator<Buffer> }> {
   const proto = (req.socket as any)?.encrypted ? "https" : "http";
   const host = req.headers.host ?? "localhost";
   const url = new URL(req.originalUrl ?? req.url ?? "/", `${proto}://${host}`);
@@ -27,6 +57,7 @@ async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Pro
   }
   const method = req.method ?? "GET";
   let body: any = undefined;
+  let unread: AsyncIterator<Buffer> | undefined;
   if (method !== "GET" && method !== "HEAD") {
     const pre = presetBody !== undefined ? presetBody : req.body;
     if (pre !== undefined && pre !== null && (req as any).readableEnded !== false) {
@@ -37,12 +68,14 @@ async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Pro
       else body = JSON.stringify(pre);
       headers.delete("content-length");
     } else {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) chunks.push(chunk as Buffer);
-      body = Buffer.concat(chunks);
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/77 — uncontrolled resource consumption (CWE-400):
+      // the whole body used to be buffered here, before routing and authentication, with no limit. It is now
+      // passed on as a stream, read only by a handler that needs it, under the size limit in handler.ts.
+      unread = req[Symbol.asyncIterator]();
+      body = bodyStream(unread);
     }
   }
-  return new Request(url, { method, headers, body });
+  return { request: new Request(url, { method, headers, body, duplex: "half" } as RequestInit), unread };
 }
 
 async function writeWebResponse(res: ServerResponse, response: Response): Promise<void> {
@@ -72,8 +105,13 @@ export function getNodeHandler(hs: Homeserver): NodeHandler {
       return;
     }
     (async () => {
-      const request = await toWebRequest(req as NodeRequestWithBody);
+      const { request, unread } = await toWebRequest(req as NodeRequestWithBody);
       const response = await handleRequest(hs, request, { ip: req.socket?.remoteAddress ?? null });
+      // #77: the handler may answer without reading the whole body: refused as too large, or not needed, as when
+      // authentication fails. Closing the connection with unread data resets it, and the client may lose the
+      // response (and with it, say, the 401 that tells it to refresh its token). So the rest is read and dropped,
+      // but only up to the body limit; past it the connection is closed instead, as Synapse does.
+      if (unread && !(await drain(req, unread, maxRequestBody(hs)))) res.setHeader("connection", "close");
       await writeWebResponse(res, response);
     })().catch((err) => {
       if (next) next(err);
@@ -111,7 +149,7 @@ export function getFastifyPlugin(hs: Homeserver): (fastify: FastifyLike, opts: u
     fastify.removeAllContentTypeParsers();
     fastify.addContentTypeParser("*", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
     const handler = async (request: any, reply: any) => {
-      const webRequest = await toWebRequest(request.raw, request.body ?? new Uint8Array());
+      const { request: webRequest } = await toWebRequest(request.raw, request.body ?? new Uint8Array());
       const response = await handleRequest(hs, webRequest, { ip: request.ip ?? null });
       reply.status(response.status);
       response.headers.forEach((value: string, key: string) => reply.header(key, value));
