@@ -226,8 +226,12 @@ export class AuthService {
   /** Redeem a login token; returns the user ID or throws. */
   async consumeLoginToken(token: string): Promise<string> {
     const row = await this.hs.db.findOne("login_tokens", [{ field: "token", value: token }]);
-    if (row) await this.hs.db.delete("login_tokens", [{ field: "token", value: token }]);
-    if (!row || row.expires_ts < Date.now()) throw errors.forbidden("Invalid or expired login token");
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/56 — race condition (CWE-362): two concurrent
+    // logins could both read the token before either deleted it, and both got a session. The delete is atomic
+    // in every adapter and reports whether it removed the row, so only the request that removed it wins.
+    // (Refresh tokens are rotated under a cluster lock, see `refresh`.)
+    const removed = row ? await this.hs.db.delete("login_tokens", [{ field: "token", value: token }]) : 0;
+    if (!row || !removed || row.expires_ts < Date.now()) throw errors.forbidden("Invalid or expired login token");
     return row.user_id;
   }
 
