@@ -351,6 +351,9 @@ export class Homeserver extends EventEmitter {
   }
 
   private async init(options: HomeserverOptions): Promise<void> {
+    // The storage contract (#58, see DatabaseAdapter): without transactions, writes are applied one by one.
+    if (!this.db.transaction)
+      this.logger.warn("The database adapter has no transaction(): a crash during a write can leave a room event half stored");
     // Several instances may start at once: migrate and create the signing key under a cluster lock.
     await this.cluster.lock("startup", async () => {
       await this.db.migrate?.(schema);

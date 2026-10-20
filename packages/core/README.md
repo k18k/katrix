@@ -84,6 +84,26 @@ To use another store, implement `DatabaseAdapter` (`create`, `upsert`, `findOne`
 The exported `schema` describes every model. If your driver can run parameterised
 SQL, `sqlAdapter({ dialect, executor, transaction })` handles the SQL generation for you.
 
+The guarantees an adapter must keep (atomic single writes with row counts, rollback, unique
+primary keys under concurrency, idempotent migrations, value round-trips) are documented on
+`DatabaseAdapter`, and the exported `adapterConformance` checks them, independent of a test framework:
+
+```ts
+import { adapterConformance, CONFORMANCE_SCHEMA } from "matrix-nodejs-homeserver";
+
+for (const check of adapterConformance)
+  test(check.name, async () => {
+    const db = myAdapter(); // a fresh, empty store for each check
+    await db.migrate?.(CONFORMANCE_SCHEMA);
+    await check.run(db);
+  });
+```
+
+The bundled adapters pass it in CI (memory, SQLite, Postgres). `memoryAdapter` keeps nothing across
+restarts, and `sqliteAdapter` serves one process; several instances need Postgres (or MySQL) with
+`postgresCluster`. An adapter without `transaction()` works, but a crash during a write can leave
+a room event half stored; the server warns about it at startup.
+
 ## Scaling horizontally
 
 By default a homeserver assumes it is the only process using its database. To run

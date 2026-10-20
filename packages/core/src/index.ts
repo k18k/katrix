@@ -15,6 +15,7 @@ export { M, UNSTABLE } from "#core/m.ts";
 // Database adapters
 export type { DatabaseAdapter, Schema, ModelDef, FieldDef, WhereClause, Row, FindManyOptions, Operator } from "#storage/types.ts";
 export { memoryAdapter } from "#storage/memory.ts";
+export { adapterConformance, CONFORMANCE_SCHEMA, type ConformanceCheck } from "#storage/conformance.ts";
 export {
   sqlAdapter,
   sqliteAdapter,

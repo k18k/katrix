@@ -57,6 +57,30 @@ export interface FindManyOptions {
  * A storage backend. Implement this interface to plug in any database
  * (the "raw adapter"), or use one of the bundled adapters.
  * All `where` clauses are combined with AND.
+ *
+ * What the homeserver relies on (`adapterConformance` checks it; run it against your adapter):
+ * - **Durability**: a write whose promise resolved survives a restart (except `memoryAdapter`).
+ * - **Atomic single operations**: each `create`, `upsert`, `update` and `delete` call applies
+ *   completely or not at all, also under concurrency. `create` rejects an existing primary key
+ *   (exactly one of concurrent creates succeeds). `update` and `delete` resolve to the number of
+ *   rows they changed, and of concurrent deletes of a row exactly one reports it: single-use
+ *   tokens are redeemed this way.
+ * - **Transactions**: `transaction(fn)` applies all writes made through `tx` or none (when `fn`
+ *   throws, the error reaches the caller). Reads through `tx` see its own writes. Nothing stronger
+ *   than read-committed isolation is assumed: conflicting writers (room events, sequences) are
+ *   serialised by the cluster adapter's locks, not by the database. Without `transaction`, a
+ *   crash between the writes of one room event can leave it half stored; the homeserver warns
+ *   at startup (#58).
+ * - **Ordering**: rows come back in no particular order unless `sortBy` is given; `limit` applies
+ *   after sorting.
+ * - **Values**: every field type round-trips unchanged (JSON values, booleans, integers up to
+ *   `Number.MAX_SAFE_INTEGER`, Unicode strings); a `null` in `where` matches nothing.
+ * - **Schema**: `migrate` is idempotent and keeps existing rows, and adds columns introduced by
+ *   newer versions.
+ *
+ * Deployment limits of the bundled adapters: `memoryAdapter` keeps nothing across restarts;
+ * `sqliteAdapter` serves one process; several instances need a shared server database
+ * (`postgresAdapter`, `mysqlAdapter`) together with `postgresCluster`.
  */
 export interface DatabaseAdapter {
   /**
