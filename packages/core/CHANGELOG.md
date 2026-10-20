@@ -1,5 +1,14 @@
 # matrix-nodejs-homeserver
 
+## 0.3.7
+
+### Patch Changes
+
+- f6706fd: Security fix: thumbnails were served without the sandboxing `Content-Security-Policy` that downloads carry. With a thumbnailer that passes some formats through (such as SVG), an uploaded script could run on the homeserver's origin. All media responses now carry the sandbox and `X-Content-Type-Options: nosniff`. [#79](https://github.com/k18k/matrix-nodejs-homeserver/issues/79)
+- 6e32ebb: Security fix: `GET /rooms/{roomId}/members?at=…` let a user who had left or been banned from a room read its member list at any later point, including the current one. `at` now has to point to a moment the user may see under the room's history visibility; otherwise the answer is `403`. [#78](https://github.com/k18k/matrix-nodejs-homeserver/issues/78)
+- f1da38e: Security fix: the OAuth 2.0 token endpoint answered `500` to `Authorization: Basic` credentials with a malformed percent-escape, which any anonymous client could trigger. It now answers `401 invalid_client`. [#76](https://github.com/k18k/matrix-nodejs-homeserver/issues/76)
+- a79edfd: Security fix: request bodies were read into memory in full before the upload limit was checked, so one oversized request could exhaust the server's memory; with the Node and Express handlers even without an access token. Bodies are now refused as soon as they pass the limit (`413 M_TOO_LARGE`), and the Node handler no longer reads a body before a handler asks for it. The limit (the media adapter's `maxUploadSize`, 50 MiB by default) now applies to every request body, not only uploads. [#77](https://github.com/k18k/matrix-nodejs-homeserver/issues/77)
+
 ## 0.3.6
 
 ### Patch Changes
