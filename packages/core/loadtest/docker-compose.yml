@@ -84,6 +84,7 @@ services:
       ROOMS: ${ROOMS:-50}
       RAMP: ${RAMP:-2m}
       DURATION: ${DURATION:-5m}
+      SEND_P95_MS: ${SEND_P95_MS:-1000}
     volumes:
       - ./k6:/scripts:ro
       - ./results:/results

@@ -52,7 +52,8 @@ export const options = {
   },
   thresholds: {
     http_req_failed: ["rate<0.01"],
-    "http_req_duration{name:send}": ["p(95)<1000"],
+    // SEND_P95_MS lets CI force a threshold failure, to check that a crossed threshold fails the workflow.
+    "http_req_duration{name:send}": [`p(95)<${Number(__ENV.SEND_P95_MS || 1000)}`],
     // Listed so that the summary breaks these requests out; the limits are loose on purpose.
     "http_req_duration{name:register}": ["p(95)<60000"],
     "http_req_duration{name:join}": ["p(95)<60000"],

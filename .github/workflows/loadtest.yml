@@ -11,6 +11,11 @@ on:
     branches: [main]
     paths: ["packages/core/src/**", "packages/core/loadtest/**", "package-lock.json", ".github/workflows/loadtest.yml"]
   workflow_dispatch:
+    inputs:
+      force_threshold_failure:
+        description: Set an impossible send threshold, to check that crossed thresholds fail the run
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,6 +31,10 @@ env:
   ROOMS: 25
   RAMP: 30s
   DURATION: 30s
+  # https://github.com/k18k/matrix-nodejs-homeserver/issues/62: k6's exit codes used to be swallowed, so a run
+  # that crossed its thresholds still passed. Each scenario's exit code is kept next to its summary (the badges
+  # show it), and the last step fails the run when any scenario did not pass.
+  SEND_P95_MS: ${{ inputs.force_threshold_failure && '1' || '1000' }}
 
 jobs:
   run:
@@ -52,8 +61,9 @@ jobs:
           server=$!
           for i in $(seq 60); do curl -sf http://localhost:8008/_matrix/client/versions >/dev/null && break; sleep 1; done
           docker run --rm --network host -v "$PWD/loadtest/k6:/scripts:ro" -v "$PWD/loadtest/results:/results" \
-            -e BASE_URL=http://localhost:8008 -e ONLINE_USERS -e MESSAGES_PER_SECOND -e ROOMS -e RAMP -e DURATION \
-            grafana/k6:2.3.0 run --summary-export=/results/sqlite.json /scripts/matrix.js || echo "thresholds crossed"
+            -e BASE_URL=http://localhost:8008 -e ONLINE_USERS -e MESSAGES_PER_SECOND -e ROOMS -e RAMP -e DURATION -e SEND_P95_MS \
+            grafana/k6:2.3.0 run --summary-export=/results/sqlite.json /scripts/matrix.js && code=0 || code=$?
+          echo "$code" > loadtest/results/sqlite.exit
           kill "$server"
 
       - name: Postgres scenarios
@@ -63,7 +73,8 @@ jobs:
           for scenario in "pg-nocluster 0 1" "pg-cluster-1 1 1" "pg-cluster-2 1 2"; do
             set -- $scenario
             SUMMARY=$1 CLUSTER=$2 $compose up --scale "homeserver=$3" --abort-on-container-exit --exit-code-from k6 k6 \
-              || echo "$1: thresholds crossed"
+              && code=0 || code=$?
+            echo "$code" > "loadtest/results/$1.exit"
             $compose logs homeserver --no-log-prefix | grep "req/s" > "loadtest/results/$1-server.log" || true
             $compose down -v
           done
@@ -81,12 +92,27 @@ jobs:
           name: loadtest-results
           path: packages/core/loadtest/results/
 
+      # After the upload, so the badges are published either way.
+      - name: Thresholds
+        run: |
+          failed=0
+          for f in loadtest/results/*.exit; do
+            code=$(cat "$f"); name=$(basename "$f" .exit)
+            case "$code" in
+              0) ;;
+              99) echo "::error::$name: k6 thresholds crossed"; failed=1 ;;
+              *) echo "::error::$name: the run failed (k6 exit $code)"; failed=1 ;;
+            esac
+          done
+          exit "$failed"
+
   # Commits the badge data to the loadtest-results branch, which the README badges read. Only this
   # job may write to the repository, and it runs no code from the checkout.
   publish:
     name: Publish badges
     needs: run
-    if: github.ref == 'refs/heads/main'
+    # Also when thresholds were crossed: the badges say so.
+    if: always() && github.ref == 'refs/heads/main' && needs.run.result != 'cancelled' && !inputs.force_threshold_failure
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -111,7 +137,8 @@ jobs:
           mkdir -p badges results
           cp "$RESULTS"/badges/*.json badges/
           cp "$RESULTS"/*.json results/ 2>/dev/null || true
-          printf 'Load test results for %s.\n' "$SHA" > README.md
+          printf 'Load test results for %s: %s online users, %s messages/s, %s rooms, %s ramp + %s.\n' \
+            "$SHA" "$ONLINE_USERS" "$MESSAGES_PER_SECOND" "$ROOMS" "$RAMP" "$DURATION" > README.md
           git add -A badges results README.md
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -qm "Load test results for $SHA" || exit 0
