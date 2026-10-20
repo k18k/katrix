@@ -115,3 +115,14 @@ test("the Node handler answers before reading a body it does not need or will no
     await t.close();
   }
 });
+
+test("CORS preflights allow the methods the spec lists (#86)", async () => {
+  const t = await testServer();
+  try {
+    const res = await t.call("OPTIONS", "/_matrix/client/v3/sync");
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get("access-control-allow-methods"), "GET, HEAD, POST, PUT, DELETE, OPTIONS");
+  } finally {
+    await t.close();
+  }
+});

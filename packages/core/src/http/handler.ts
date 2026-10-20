@@ -7,7 +7,8 @@ import { UNSTABLE } from "#core/m.ts";
 
 const CORS_HEADERS: Record<string, string> = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/86: the spec (v1.13, MSC4138) lists HEAD too.
+  "access-control-allow-methods": "GET, HEAD, POST, PUT, DELETE, OPTIONS",
   "access-control-allow-headers": "X-Requested-With, Content-Type, Authorization",
 };
 
