@@ -371,9 +371,15 @@ export class FederationService {
     ]);
     if (!row) throw errors.notFound("Unknown room");
     const previous = await this.hs.rooms.getPdu(row.event_id);
-    const create = (previous?.unsigned?.invite_room_state ?? previous?.unsigned?.knock_room_state ?? []).find(
-      (e: any) => e?.type === M.ROOM.CREATE,
-    );
+    const strippedCreate = (p: PDU | null | undefined) =>
+      (p?.unsigned?.invite_room_state ?? p?.unsigned?.knock_room_state ?? []).find((e: any) => e?.type === M.ROOM.CREATE);
+    let create = strippedCreate(previous);
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/84: after a rejected knock or rescinded invite the latest
+    // event is a leave without stripped state, the version fell back to 1, and the next event (from a newer room
+    // version) was dropped. The version now comes from any stored event of the room that has the create event.
+    if (!create)
+      for (const o of await this.hs.db.findMany("outliers", { where: [{ field: "room_id", value: roomId }] }))
+        if ((create = strippedCreate(o.json))) break;
     const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
     const { pdu } = await this.verifyPdu(raw, version, roomId);
     if (domainOf(pdu.sender) !== origin && domainOf(pdu.sender) !== domainOf(raw.state_key)) throw errors.forbidden("Unexpected sender");
