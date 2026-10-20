@@ -131,3 +131,35 @@ test("a former member cannot read later member lists with /members?at= (#78)", a
     await t.close();
   }
 });
+
+test("guests join only rooms that allow guest access, and leave when it is turned off (#87)", async () => {
+  const t = await testServer({ userAuthAdapter: { registrationEnabled: true, guestAccessEnabled: true } });
+  try {
+    const alice = await t.user("alice");
+    const guest = (await t.call("POST", "/_matrix/client/v3/register?kind=guest", { body: {} })).json;
+    const closed = (await t.call("POST", "/_matrix/client/v3/createRoom", { token: alice, body: { preset: "public_chat" } })).json.room_id;
+    const open = (
+      await t.call("POST", "/_matrix/client/v3/createRoom", {
+        token: alice,
+        body: {
+          preset: "public_chat",
+          initial_state: [{ type: M.ROOM.GUEST_ACCESS, state_key: "", content: { guest_access: "can_join" } }],
+        },
+      })
+    ).json.room_id;
+    const join = (room: string) =>
+      t.call("POST", `/_matrix/client/v3/join/${encodeURIComponent(room)}`, { token: guest.access_token, body: {} });
+    assert.equal((await join(closed)).status, 403);
+    assert.equal((await join(open)).status, 200);
+
+    await t.call("PUT", state(open, M.ROOM.GUEST_ACCESS), { token: alice, body: { guest_access: "forbidden" } });
+    let membership = "join";
+    for (let i = 0; i < 50 && membership === "join"; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      membership = (await t.call("GET", state(open, M.ROOM.MEMBER, guest.user_id), { token: alice })).json.membership;
+    }
+    assert.equal(membership, "leave");
+  } finally {
+    await t.close();
+  }
+});

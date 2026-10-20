@@ -1039,6 +1039,9 @@ export class RoomService {
         if (this.hs.appservices.registrations.length)
           await this.hs.appservices.onEvent(view, newState).catch((err) => this.hs.logger.warn("Appservice push failed", err));
         if (isState) await this.hs.delayedEvents.onStateEvent(roomId, pdu.type, pdu.state_key!, sender).catch(() => {});
+        // Guests leave rooms that stop allowing them (#87). In the background: it sends events, under the room lock.
+        if (key === stateKey(M.ROOM.GUEST_ACCESS, "") && pdu.content?.guest_access !== "can_join")
+          void this.removeGuests(roomId).catch((err) => this.hs.logger.warn("Could not remove guests from", roomId, err));
         wake = async () => {
           this.hs.notifier.notify(await this.interestedUsers(roomId), backfill ? undefined : stream);
           this.hs.emit("event", toClientEvent(view));
@@ -1540,6 +1543,13 @@ export class RoomService {
     extra: { reason?: string; content?: Record<string, any>; servers?: string[] } = {},
   ): Promise<string> {
     const version = await this.roomVersion(roomId);
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/87 — improper authorization (CWE-285): guests could
+    // join any room, also rooms whose admins keep guests out. The spec allows guests only in rooms whose
+    // m.room.guest_access is can_join; a room we do not know cannot be checked, so guests cannot join it.
+    if ((await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]))?.is_guest) {
+      const access = version ? getState(await this.currentState(roomId), M.ROOM.GUEST_ACCESS)?.content?.guest_access : undefined;
+      if (access !== "can_join") throw errors.forbidden("Guest access is not allowed in this room");
+    }
     // The client asked us to join via ourselves and we hold the room's state: decide locally.
     if (
       version &&
@@ -1698,6 +1708,16 @@ export class RoomService {
       const signed = await this.hs.federation.sendInvite(pdu, version, inviteState);
       await this.persistEvent(roomId, version, signed, { local: true });
     });
+  }
+
+  /** Make this server's guests leave a room that no longer allows guests (spec, guest access module; #87). */
+  private async removeGuests(roomId: string): Promise<void> {
+    for (const [k, ev] of await this.currentState(roomId)) {
+      const [type, userId] = splitStateKey(k);
+      if (type !== M.ROOM.MEMBER || ev.content?.membership !== "join" || !this.hs.isLocalUser(userId)) continue;
+      if ((await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]))?.is_guest)
+        await this.setMembership(roomId, userId, userId, "leave");
+    }
   }
 
   async setMembership(
