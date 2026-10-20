@@ -759,24 +759,34 @@ export function registerRoomRoutes(r: Router): void {
         let state = await visibleState(hs, ctx.params.roomId, s.userId);
         const at = parseToken(ctx.query.get("at"));
         if (at !== null) {
-          const rows = await hs.db.findMany("events", {
-            where: [
-              { field: "room_id", value: ctx.params.roomId },
-              { field: "stream", operator: "lte", value: at },
-            ],
-            sortBy: { field: "stream", direction: "desc" },
-            limit: 1,
-          });
-          if (rows[0]) {
-            state = await hs.rooms.stateAtSnapshot(rows[0].state_snapshot);
-          } else {
+          let row = (
+            await hs.db.findMany("events", {
+              where: [
+                { field: "room_id", value: ctx.params.roomId },
+                { field: "stream", operator: "lte", value: at },
+              ],
+              sortBy: { field: "stream", direction: "desc" },
+              limit: 1,
+            })
+          )[0];
+          if (!row) {
             // Tokens from before the room existed resolve to the room's initial state (creator joined).
             const first = await hs.db.findMany("events", {
               where: [{ field: "room_id", value: ctx.params.roomId }],
               sortBy: { field: "stream", direction: "asc" },
               limit: 2,
             });
-            if (first.length) state = await hs.rooms.stateAtSnapshot(first[first.length - 1].state_snapshot);
+            row = first[first.length - 1];
+          }
+          if (row) {
+            // https://github.com/k18k/matrix-nodejs-homeserver/issues/78 — authorization bypass (CWE-639): `at` replaced
+            // the state visibleState allows with the state at any position, so a user who had left or been banned
+            // could read the current member list of a private room. The event at `at` must now be visible to the
+            // user under history visibility, as in /context and in Synapse.
+            if (!(await hs.rooms.filterVisible(s.userId, ctx.params.roomId, [hs.rooms.rowToStored(row)])).length) {
+              throw errors.forbidden("You may not view the room at this point");
+            }
+            state = await hs.rooms.stateAtSnapshot(row.state_snapshot);
           }
         }
         const membership = ctx.query.get("membership");

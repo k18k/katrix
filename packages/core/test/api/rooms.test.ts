@@ -99,3 +99,35 @@ test("a redacted message loses its content", async () => {
     await t.close();
   }
 });
+
+test("a former member cannot read later member lists with /members?at= (#78)", async () => {
+  const t = await testServer();
+  try {
+    const alice = await t.user("alice");
+    const bob = await t.user("bob");
+    const carol = await t.user("carol");
+    const room = (
+      await t.call("POST", "/_matrix/client/v3/createRoom", { token: alice, body: { preset: "private_chat", invite: ["@bob:localhost"] } })
+    ).json.room_id;
+    const r = encodeURIComponent(room);
+    await t.call("POST", `/_matrix/client/v3/rooms/${r}/join`, { token: bob, body: {} });
+    const whileJoined = (await t.call("GET", "/_matrix/client/v3/sync?timeout=0", { token: bob })).json.next_batch;
+    await t.call("POST", `/_matrix/client/v3/rooms/${r}/leave`, { token: bob, body: {} });
+    await t.call("POST", `/_matrix/client/v3/rooms/${r}/invite`, { token: alice, body: { user_id: "@carol:localhost" } });
+    await t.call("POST", `/_matrix/client/v3/rooms/${r}/join`, { token: carol, body: {} });
+    const now = (await t.call("GET", "/_matrix/client/v3/sync?timeout=0", { token: alice })).json.next_batch;
+    const members = (token: string, at?: string) =>
+      t.call("GET", `/_matrix/client/v3/rooms/${r}/members${at ? `?at=${encodeURIComponent(at)}` : ""}`, { token });
+    const ids = (res: { json: any }) => res.json.chunk.map((e: any) => e.state_key).sort();
+
+    // After leaving, bob sees the room as it was when he left, with or without `at`.
+    assert.deepEqual(ids(await members(bob)), ["@alice:localhost", "@bob:localhost"]);
+    assert.deepEqual(ids(await members(bob, whileJoined)), ["@alice:localhost", "@bob:localhost"]);
+    const later = await members(bob, now);
+    assert.equal(later.status, 403, later.text);
+    // Members still see the current list at any point.
+    assert.deepEqual(ids(await members(alice, now)), ["@alice:localhost", "@bob:localhost", "@carol:localhost"]);
+  } finally {
+    await t.close();
+  }
+});
