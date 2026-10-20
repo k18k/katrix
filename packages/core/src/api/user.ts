@@ -3,6 +3,7 @@ import { canonicalJson, isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
+import { jsonResponse } from "#http/handler.ts";
 import { requireUia } from "#api/uia.ts";
 import { z } from "zod";
 import { body, fail } from "#http/input.ts";
@@ -215,9 +216,15 @@ export function registerUserRoutes(r: Router): void {
           { field: "user_id", value: s.userId },
           { field: "device_id", value: ctx.params.deviceId },
         ];
-        if (!(await ctx.hs.db.findOne("devices", where))) throw errors.notFound("Device not found");
+        if (body.display_name !== undefined && typeof body.display_name !== "string") throw errors.badJson("display_name must be a string");
+        if (!(await ctx.hs.db.findOne("devices", where))) {
+          // https://github.com/k18k/matrix-nodejs-homeserver/issues/85: application services create their users'
+          // devices here (spec v1.17, MSC4190), answered with 201; for everyone else an unknown device is 404.
+          if (!s.appservice) throw errors.notFound("Device not found");
+          await ctx.hs.auth.createDevice(s.userId, ctx.params.deviceId, body.display_name);
+          return jsonResponse({}, 201);
+        }
         if (body.display_name !== undefined) {
-          if (typeof body.display_name !== "string") throw errors.badJson("display_name must be a string");
           await ctx.hs.db.update("devices", where, { display_name: body.display_name });
           await ctx.hs.keys.deviceChanged(s.userId);
         }
@@ -238,7 +245,8 @@ export function registerUserRoutes(r: Router): void {
           { field: "device_id", value: ctx.params.deviceId },
         ];
         if (!(await ctx.hs.db.findOne("devices", where))) throw errors.notFound("Device not found");
-        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId, { session: s });
+        // Application services delete their users' devices without UIA (#85, MSC4190).
+        if (!s.appservice) await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId, { session: s });
         await ctx.hs.auth.deleteDevice(s.userId, ctx.params.deviceId);
         return {};
       },
@@ -253,7 +261,7 @@ export function registerUserRoutes(r: Router): void {
       handler: async (ctx) => {
         const s = ctx.session;
         const body = ctx.input;
-        await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId, { session: s });
+        if (!s.appservice) await requireUia(ctx.hs, body, [[M.LOGIN.PASSWORD]], s.userId, { session: s });
         for (const d of body.devices) if (typeof d === "string") await ctx.hs.auth.deleteDevice(s.userId, d);
         return {};
       },

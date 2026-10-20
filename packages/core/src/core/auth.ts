@@ -130,21 +130,26 @@ export class AuthService {
         );
       }
     } else {
-      await this.hs.db.create("devices", {
-        user_id: userId,
-        device_id: deviceId,
-        display_name: opts.displayName ?? null,
-        last_seen_ts: Date.now(),
-        last_seen_ip: null,
-      });
-      await this.hs.keys.deviceChanged(userId);
-      await this.hs.audit.record({ action: "device_create", actor: userId, target: deviceId });
+      await this.createDevice(userId, deviceId, opts.displayName);
     }
     return this.issueToken(userId, deviceId, !!opts.refreshToken, {
       clientId: opts.clientId,
       lifetimeMs: opts.lifetimeMs,
       scope: opts.scope,
     });
+  }
+
+  /** Create a device without tokens (also used by application services, MSC4190). */
+  async createDevice(userId: string, deviceId: string, displayName?: string): Promise<void> {
+    await this.hs.db.create("devices", {
+      user_id: userId,
+      device_id: deviceId,
+      display_name: displayName ?? null,
+      last_seen_ts: Date.now(),
+      last_seen_ip: null,
+    });
+    await this.hs.keys.deviceChanged(userId);
+    await this.hs.audit.record({ action: "device_create", actor: userId, target: deviceId });
   }
 
   async issueToken(
