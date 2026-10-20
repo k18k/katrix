@@ -51,11 +51,26 @@ export function pgConnectionString(raw: string): string {
 
 // Headers that belong to one connection, not to the request passed on.
 const HOP_BY_HOP = new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "host", "content-length"]);
+/** Largest request body passed on to the MatrixRTC authorization service. */
+const MAX_PROXY_BODY = 64 * 1024;
 
 /** Pass a request on to the MatrixRTC authorization service, without the /livekit/jwt prefix. */
 async function proxyLivekitJwt(target: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/83 — uncontrolled resource consumption (CWE-400): the
+  // body was read in full with no limit, on a route without authentication, so anyone could exhaust the server's
+  // memory. The authorization service takes small JSON requests; larger bodies are refused as they arrive.
+  const tooLarge = () => {
+    res.writeHead(413, { "content-type": "application/json", connection: "close" });
+    res.end(JSON.stringify({ errcode: "M_TOO_LARGE", error: "Request body too large" }));
+  };
+  if (Number(req.headers["content-length"]) > MAX_PROXY_BODY) return tooLarge();
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > MAX_PROXY_BODY) return tooLarge();
+    chunks.push(chunk as Buffer);
+  }
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string" && !HOP_BY_HOP.has(k)) headers.set(k, v);
   const path = req.url!.slice("/livekit/jwt".length) || "/";

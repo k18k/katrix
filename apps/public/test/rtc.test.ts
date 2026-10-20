@@ -43,6 +43,9 @@ test("calls: the LiveKit transport is advertised and /livekit/jwt/ reaches the a
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("access-control-allow-origin"), "*");
     assert.deepEqual(await res.json(), { method: "POST", url: "/get_token", body: '{"room_id":"!r"}', jwt: "token" });
+    // Oversized bodies are refused, not buffered (#83).
+    const big = await fetch(`${base}/livekit/jwt/get_token`, { method: "POST", body: "x".repeat(65 * 1024) });
+    assert.equal(big.status, 413);
   } finally {
     await app.close();
     jwt.close();
