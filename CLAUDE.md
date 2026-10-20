@@ -6,6 +6,8 @@ The repository is an npm workspace: the published library is `packages/core` (np
 
 Every finding gets a GitHub issue first, before it is fixed. A finding is anything a security scan, code review or bug report turns up. Label the issue `security` for vulnerabilities and `bug` for other defects.
 
+Each finding is then fixed in its own commit, which closes its issue (`Closes #N` in the message). Several findings from one scan are several issues and several commits, not one.
+
 Then, at each place in the code that fixes it, add a short comment with:
 - the issue link;
 - in a sentence or two, what was wrong and why the code now looks the way it does.
