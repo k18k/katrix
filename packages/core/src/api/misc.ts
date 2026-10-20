@@ -33,6 +33,17 @@ export const SPEC_VERSIONS = [
   "v1.9",
   "v1.10",
   "v1.11",
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/89: clients enable features by these versions. v1.12 to
+  // v1.19 are listed since every endpoint is implemented (SPEC-COVERAGE.md) and their behaviour changes were
+  // audited (#85-#88).
+  "v1.12",
+  "v1.13",
+  "v1.14",
+  "v1.15",
+  "v1.16",
+  "v1.17",
+  "v1.18",
+  "v1.19",
 ];
 
 export function registerMiscRoutes(r: Router): void {

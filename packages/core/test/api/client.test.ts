@@ -59,3 +59,13 @@ test("capabilities and login flows use the spec identifiers", async () => {
     await t.close();
   }
 });
+
+test("/versions lists every stable spec version the server implements (#89)", async () => {
+  const t = await testServer();
+  try {
+    const versions = (await t.call("GET", "/_matrix/client/versions")).json.versions;
+    assert.ok(versions.includes("v1.11") && versions.includes("v1.19"), String(versions));
+  } finally {
+    await t.close();
+  }
+});
