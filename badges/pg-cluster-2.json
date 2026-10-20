@@ -1,1 +1,1 @@
-{"schemaVersion":1,"label":"load · Postgres cluster ×2","message":"307 req/s · delivery p95 19.0 s · only 73% of messages sent","color":"red"}
+{"schemaVersion":1,"label":"load · Postgres cluster ×2","message":"310 req/s · delivery p95 7.1 s · thresholds crossed · only 95% of messages sent","color":"red"}

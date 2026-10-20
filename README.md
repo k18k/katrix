@@ -1,1 +1,1 @@
-Load test results for a3ae21f7e49b0f1a4d5258acc1a95dbe8b6d8c5e.
+Load test results for 372092bcf6becba423310f615b574743c4bc160b: 1000 online users, 50 messages/s, 25 rooms, 30s ramp + 30s.
