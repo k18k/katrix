@@ -21,6 +21,7 @@
   },
   "files": [
     "AUDITBOT.md",
+    "PRODUCTION.md",
     "LICENSE",
     "README.md",
     "dist"

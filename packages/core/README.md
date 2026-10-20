@@ -432,6 +432,12 @@ Call `await hs.close()` on shutdown. It ends long-polls, stops background jobs a
 leaves the cluster cleanly. `hs.on("event", …)` and `hs.on("request", …)` are
 available for integration and metrics.
 
+## Security
+
+Before running a server in production, go through [PRODUCTION.md](PRODUCTION.md): the threat model,
+what the library guarantees (with the tests that show it) and the operator's checklist. Report
+vulnerabilities privately as described in [SECURITY.md](https://github.com/k18k/matrix-nodejs-homeserver/blob/main/SECURITY.md).
+
 ## Spec coverage
 
 - **Accounts:** registration (open, closed or token-gated), password, SSO, OAuth, login tokens, refresh tokens, devices, deactivation
