@@ -64,3 +64,25 @@ for (const lifetime of [undefined, 3_600_000]) {
     }
   });
 }
+
+test("a registration token registers no more accounts than it allows, even concurrently (#81)", async () => {
+  const t = await testServer({ userAuthAdapter: { registrationEnabled: true, registrationRequiresToken: true }, rateLimits: false });
+  try {
+    const { token } = await t.hs.admin.createRegistrationToken({ token: "invite", usesAllowed: 2 });
+    /** Register: the first request opens a UIA session, the second completes the token stage. */
+    const register = async (username: string) => {
+      const start = await t.call("POST", "/_matrix/client/v3/register", { body: { username, password: "Passw0rd!long" } });
+      const session = start.json.session;
+      const staged = await t.call("POST", "/_matrix/client/v3/register", {
+        body: { username, password: "Passw0rd!long", auth: { type: "m.login.registration_token", token, session } },
+      });
+      return staged.status;
+    };
+    const statuses = await Promise.all(["a1", "a2", "a3", "a4", "a5"].map(register));
+    assert.equal(statuses.filter((s) => s === 200).length, 2, String(statuses));
+    const row = await t.hs.db.findOne("registration_tokens", [{ field: "token", value: token }]);
+    assert.equal(row!.completed, 2);
+  } finally {
+    await t.close();
+  }
+});

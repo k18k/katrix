@@ -15,7 +15,6 @@ import {
   createUser,
   redeemRegistrationToken,
   registrationFlows,
-  registrationTokenValid,
   ssoConfirmPage,
   validateNewUsername,
 } from "#api/account.ts";
@@ -579,7 +578,7 @@ ${code ? `<p class="error">That code is unknown or expired.</p>` : ""}
         if (hs.appservices.exclusiveUserOwner(`@${localpart}:${hs.serverName}`)) throw errors.exclusive("This username is reserved");
         const problem = await hs.userAuth.validatePassword(password);
         if (problem || !password) throw new MatrixError(400, "M_WEAK_PASSWORD", problem ?? "Choose a password");
-        if (reg.token && !(await registrationTokenValid(hs, token))) throw errors.forbidden("Invalid registration token");
+        // Checks and counts the use in one step (#81).
         if (reg.token) await redeemRegistrationToken(hs, token);
         userId = await createUser(hs, localpart, { password });
       } catch (err) {

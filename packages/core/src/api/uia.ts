@@ -11,6 +11,8 @@ interface UiaSession {
   userId: string | null;
   /** Addresses validated through email/msisdn stages. */
   threepids?: ValidatedThreepid[];
+  /** The token of a completed `m.login.registration_token` stage, redeemed when the account is created (#81). */
+  registrationToken?: string;
 }
 
 export interface ValidatedThreepid {
@@ -34,7 +36,7 @@ export async function requireUia(
   flows: string[][],
   userId: string | null,
   opts: { session?: Session; crossSigningReset?: boolean } = {},
-): Promise<{ threepids: ValidatedThreepid[] }> {
+): Promise<{ threepids: ValidatedThreepid[]; registrationToken?: string }> {
   // With OAuth (this server's or a delegated one) there are no passwords to ask for.
   const viaOAuth = !!opts.session?.oauth || (!!hs.oauth && flows.some((f) => f.includes(M.LOGIN.PASSWORD)));
   let oauthUrl: string | undefined;
@@ -67,12 +69,18 @@ export async function requireUia(
     completed: new Set<string>(stored?.completed ?? []),
     userId: stored ? stored.userId : userId,
     threepids: stored?.threepids ?? [],
+    registrationToken: stored?.registrationToken,
   };
   if (!stored) sessionId = randomString(24);
   const save = () =>
     hs.cluster.set(
       `uia:${sessionId}`,
-      { completed: [...session.completed], userId: session.userId, threepids: session.threepids },
+      {
+        completed: [...session.completed],
+        userId: session.userId,
+        threepids: session.threepids,
+        registrationToken: session.registrationToken,
+      },
       UIA_TTL_MS,
     );
   const params = oauthUrl ? { [M.OAUTH]: { url: oauthUrl }, [UNSTABLE.ORG.MATRIX.CROSS_SIGNING_RESET]: { url: oauthUrl } } : {};
@@ -108,6 +116,7 @@ export async function requireUia(
           throw challenge({ errcode: "M_FORBIDDEN", error: "Invalid registration token" });
         }
         session.completed.add(M.LOGIN.REGISTRATION_TOKEN);
+        session.registrationToken = auth.token;
         break;
       }
       case M.LOGIN.PASSWORD: {
@@ -159,5 +168,5 @@ export async function requireUia(
     throw new MatrixError(401, "M_FORBIDDEN", "", { ...e.extra, errcode: undefined, error: undefined });
   }
   await hs.cluster.delete(`uia:${sessionId}`);
-  return { threepids: session.threepids };
+  return { threepids: session.threepids, registrationToken: session.registrationToken };
 }

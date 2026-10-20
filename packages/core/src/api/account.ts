@@ -513,8 +513,8 @@ export function registerAccountRoutes(r: Router): void {
           if (problem) throw new MatrixError(400, "M_WEAK_PASSWORD", problem);
         }
         const flows = await registrationFlows(hs);
-        const { threepids } = await requireUia(hs, body, flows, null);
-        await consumeRegistrationToken(hs, body);
+        const { threepids, registrationToken } = await requireUia(hs, body, flows, null);
+        if (registrationToken) await redeemRegistrationToken(hs, registrationToken);
         // Re-check after UIA in case of a race between two registrations.
         if (await hs.db.findOne("users", [{ field: "localpart", value: localpart }])) throw errors.userInUse();
         const userId = await createUser(hs, localpart, { password: body.password });
@@ -674,15 +674,20 @@ export async function registrationTokenValid(hs: Homeserver, token: string): Pro
   return row.uses_allowed === null || row.completed < row.uses_allowed;
 }
 
-async function consumeRegistrationToken(hs: Homeserver, body: Record<string, any>): Promise<void> {
-  if (body.auth?.type !== M.LOGIN.REGISTRATION_TOKEN) return;
-  await redeemRegistrationToken(hs, body.auth?.token);
-}
-
-/** Count one use of a registration token. */
+/**
+ * Count one use of a registration token; throws when it has expired or has no uses left.
+ *
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/81 — race condition (CWE-362), limit bypass (CWE-841):
+ * the use was checked at the UIA stage and counted later in a separate read and write, so concurrent registrations
+ * all passed the check, and a use was not counted at all when the token stage was not the last one. The token now
+ * comes from the UIA session, and the check and the count happen together under a lock per token.
+ */
 export async function redeemRegistrationToken(hs: Homeserver, token: string): Promise<void> {
-  const row = await hs.db.findOne("registration_tokens", [{ field: "token", value: token }]);
-  if (row) await hs.db.update("registration_tokens", [{ field: "token", value: token }], { completed: row.completed + 1 });
+  await hs.cluster.lock(`registration-token:${token}`, async () => {
+    if (!(await registrationTokenValid(hs, token))) throw errors.forbidden("Invalid registration token");
+    const row = (await hs.db.findOne("registration_tokens", [{ field: "token", value: token }]))!;
+    await hs.db.update("registration_tokens", [{ field: "token", value: token }], { completed: row.completed + 1 });
+  });
 }
 
 export function wellKnown(hs: Homeserver): Record<string, any> | null {
