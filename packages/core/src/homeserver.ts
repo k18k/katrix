@@ -8,7 +8,7 @@ import { loadSigningKey, randomString, type SigningKey } from "#core/crypto.ts";
 import { DEFAULT_ROOM_VERSION, SUPPORTED_ROOM_VERSIONS } from "#core/events.ts";
 import { KeyService } from "#core/keys.ts";
 import { Notifier } from "#core/notifier.ts";
-import { localCluster, newInstanceId, StreamManager, type ClusterAdapter } from "#core/cluster.ts";
+import { assertLeases, localCluster, newInstanceId, StreamManager, type ClusterAdapter } from "#core/cluster.ts";
 import { RoomService } from "#core/rooms.ts";
 import { TypingService } from "#core/typing.ts";
 import { PushService } from "#core/push.ts";
@@ -452,7 +452,14 @@ export class Homeserver extends EventEmitter {
 
   /** Run `fn` atomically when the database adapter supports transactions. */
   transaction<T>(fn: (db: DatabaseAdapter) => Promise<T>): Promise<T> {
-    return this.db.transaction ? this.db.transaction(fn) : fn(this.db);
+    // A transaction under a cluster lock whose lease was lost neither starts nor commits (#57).
+    const fenced = async (db: DatabaseAdapter) => {
+      assertLeases();
+      const out = await fn(db);
+      assertLeases();
+      return out;
+    };
+    return this.db.transaction ? this.db.transaction(fenced) : fenced(this.db);
   }
 
   /** The user's current profile, as included in member events. */

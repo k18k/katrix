@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomString } from "#core/crypto.ts";
 
 /**
@@ -25,6 +26,19 @@ export interface ClusterAdapter {
   /** All live entries whose key starts with `prefix`. */
   entries<T = unknown>(prefix: string): Promise<[string, T][]>;
   close?(): Promise<void>;
+}
+
+/** Checks of the leased cluster locks the current code runs under, innermost last. */
+const leases = new AsyncLocalStorage<(() => void)[]>();
+
+/** Run `fn` under a leased lock whose `check` throws once the lease is lost. */
+export function underLease<T>(check: () => void, fn: () => Promise<T>): Promise<T> {
+  return leases.run([...(leases.getStore() ?? []), check], fn);
+}
+
+/** Throw when a leased cluster lock the current code runs under has been lost (#57). */
+export function assertLeases(): void {
+  for (const check of leases.getStore() ?? []) check();
 }
 
 /** In-process cluster adapter: a single homeserver instance. */

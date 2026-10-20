@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ClusterAdapter } from "#core/cluster.ts";
+import { underLease, type ClusterAdapter } from "#core/cluster.ts";
 
 export { localCluster, type ClusterAdapter } from "#core/cluster.ts";
 
@@ -157,15 +157,32 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
         // Releasing now notifies, and a waiter retries at once; polling stays as the fallback for a
         // lost notification.
         for (let delay = 5; !(await acquire()); delay = Math.min(delay * 2, 200)) await releasedOrAfter(lockKey, delay);
-        const renew = setInterval(
-          () =>
-            void pool
-              .query(`UPDATE ${kv} SET expires_at = $3 WHERE key = $1 AND value = $2`, [lockKey, token, Date.now() + LOCK_TTL_MS])
-              .catch(() => {}),
-          LOCK_TTL_MS / 3,
-        );
+        // https://github.com/k18k/matrix-nodejs-homeserver/issues/57: failed renewals were ignored, so an owner
+        // whose lease had expired (database unreachable, event loop stalled) or been taken over by another node
+        // carried on as if it still held the lock. The lease now counts as lost when a renewal finds it taken, or
+        // when no renewal succeeded for a whole TTL; transactions under a lost lease then refuse to start or
+        // commit (`assertLeases` in Homeserver.transaction), so a stale owner's writes roll back.
+        // shortcut: writes outside a transaction are not fenced, and the check runs just before the commit, not
+        // in it; a fencing token in the protected tables would close that if it ever matters.
+        let lost: Error | null = null;
+        let renewedAt = Date.now();
+        const renew = setInterval(() => {
+          const sentAt = Date.now();
+          void pool.query(`UPDATE ${kv} SET expires_at = $3 WHERE key = $1 AND value = $2`, [lockKey, token, sentAt + LOCK_TTL_MS]).then(
+            (res) => {
+              if ((res.rowCount ?? 0) > 0) renewedAt = sentAt;
+              else lost ??= new Error(`Cluster lock ${key} was lost: another instance took over its lease`);
+            },
+            () => {},
+          );
+        }, LOCK_TTL_MS / 3);
+        const check = () => {
+          if (!lost && Date.now() - renewedAt >= LOCK_TTL_MS)
+            lost = new Error(`Cluster lock ${key} was lost: its lease could not be renewed`);
+          if (lost) throw lost;
+        };
         try {
-          return await fn();
+          return await underLease(check, fn);
         } finally {
           clearInterval(renew);
           await pool
