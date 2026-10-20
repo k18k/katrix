@@ -456,7 +456,7 @@ export function registerFederationRoutes(r: Router): void {
     if (await hs.rooms.exists(raw.room_id)) await checkAcl(hs, raw.room_id, origin);
     const { pdu } = await hs.federation.verifyPdu(raw, version, raw.room_id);
     if (pdu.event_id !== ctx.params.eventId) throw errors.badJson("Event ID mismatch");
-    if ((await inviteDecision(hs, target, raw.sender)) === "block") throw errors.forbidden("This user does not accept invites from you");
+    if ((await inviteDecision(hs, target, raw.sender)) === "block") throw errors.inviteBlocked();
     // Ignore invites from ignored users.
     const ignored = await hs.db.findOne("account_data", [
       { field: "user_id", value: target },

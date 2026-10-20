@@ -17,6 +17,7 @@ export class MatrixError extends Error {
 
 export const errors = {
   forbidden: (msg = "Forbidden") => new MatrixError(403, "M_FORBIDDEN", msg),
+  inviteBlocked: (msg = "This user does not accept invites from you") => new MatrixError(403, "M_INVITE_BLOCKED", msg),
   notFound: (msg = "Not found") => new MatrixError(404, "M_NOT_FOUND", msg),
   unrecognized: (msg = "Unrecognized request") => new MatrixError(404, "M_UNRECOGNIZED", msg),
   badJson: (msg = "Bad JSON") => new MatrixError(400, "M_BAD_JSON", msg),

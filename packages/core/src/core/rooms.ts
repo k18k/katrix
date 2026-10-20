@@ -29,7 +29,7 @@ import type { Homeserver } from "#homeserver.ts";
 import type { Row } from "#storage/types.ts";
 import { copyRoomPushRules } from "#core/pushrules.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
-import { M, UNSTABLE } from "#core/m.ts";
+import { M } from "#core/m.ts";
 
 const PARTIAL_REJECTION = "Partial state: ";
 
@@ -1439,7 +1439,10 @@ export class RoomService {
       });
     }
     for (const invitee of body.invite ?? []) {
-      await this.invite(roomId, sender, invitee, { isDirect: !!body.is_direct });
+      // A user who blocks invites is left out; the room is still created (spec, invite blocking; #88).
+      await this.invite(roomId, sender, invitee, { isDirect: !!body.is_direct }).catch((err) => {
+        if (!(err instanceof MatrixError && err.errcode === "M_INVITE_BLOCKED")) throw err;
+      });
     }
     return alias ? { room_id: roomId, room_alias: alias } : { room_id: roomId };
   }
@@ -1677,9 +1680,7 @@ export class RoomService {
       throw errors.notFound("Unknown user");
     }
     if (local && (await inviteDecision(this.hs, target, sender)) === "block") {
-      throw new MatrixError(403, "M_FORBIDDEN", "This user does not accept invites from you", {
-        [UNSTABLE.ORG.MATRIX.MSC4155.ERRCODE]: "M_INVITE_BLOCKED",
-      });
+      throw errors.inviteBlocked();
     }
     await this.requireJoined(roomId, sender);
     const state = await this.currentState(roomId);

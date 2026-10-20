@@ -1,7 +1,7 @@
 import { isObject } from "#core/json.ts";
 import { globMatch } from "#core/glob.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { UNSTABLE } from "#core/m.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 export const INVITE_CONFIG_TYPE = UNSTABLE.ORG.MATRIX.MSC4155.INVITE_PERMISSION_CONFIG;
 
@@ -13,6 +13,14 @@ export const INVITE_CONFIG_TYPE = UNSTABLE.ORG.MATRIX.MSC4155.INVITE_PERMISSION_
  * User rules take precedence over server rules; within each, allow > ignore > block.
  */
 export async function inviteDecision(hs: Homeserver, target: string, inviter: string): Promise<"allow" | "ignore" | "block"> {
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/88: the stable invite blocking of spec v1.18 (MSC4380)
+  // was ignored. `default_action: "block"` in m.invite_permission_config refuses every invite.
+  const stable = await hs.db.findOne("account_data", [
+    { field: "user_id", value: target },
+    { field: "room_id", value: "" },
+    { field: "type", value: M.INVITE_PERMISSION_CONFIG },
+  ]);
+  if (stable?.content?.default_action === "block") return "block";
   const row = await hs.db.findOne("account_data", [
     { field: "user_id", value: target },
     { field: "room_id", value: "" },

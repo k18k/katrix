@@ -9,6 +9,7 @@ import { assertNotSuspended, type Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
+import { inviteDecision } from "#core/invitefilter.ts";
 import { z } from "zod";
 import { body, fail, lenient } from "#http/input.ts";
 import { matchesFilter, parseRoomEventFilter, type EventFilter } from "#api/filters.ts";
@@ -695,6 +696,14 @@ export function registerRoomRoutes(r: Router): void {
     const key = ctx.params.stateKey ?? "";
     if (!(type === M.ROOM.MEMBER && key === s.userId && content?.membership === "leave")) await assertNotSuspended(ctx.hs, s, roomId);
     await validateStateEvent(ctx.hs, roomId, type, content, key);
+    // Invites by member state are subject to invite blocking too (#88).
+    if (
+      type === M.ROOM.MEMBER &&
+      content?.membership === "invite" &&
+      ctx.hs.isLocalUser(key) &&
+      (await inviteDecision(ctx.hs, key, s.userId)) === "block"
+    )
+      throw errors.inviteBlocked();
     const delay = ctx.query.get(UNSTABLE.ORG.MATRIX.MSC4140.DELAY);
     if (delay !== null) {
       return {

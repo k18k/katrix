@@ -163,3 +163,45 @@ test("guests join only rooms that allow guest access, and leave when it is turne
     await t.close();
   }
 });
+
+test("m.invite_permission_config with default_action block refuses every invite path (#88)", async () => {
+  const t = await testServer();
+  try {
+    const alice = await t.user("alice");
+    const bob = await t.user("bob");
+    await t.call("PUT", "/_matrix/client/v3/user/@bob:localhost/account_data/m.invite_permission_config", {
+      token: bob,
+      body: { default_action: "block" },
+    });
+    const room = (await t.call("POST", "/_matrix/client/v3/createRoom", { token: alice, body: { preset: "private_chat" } })).json.room_id;
+    const invite = await t.call("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(room)}/invite`, {
+      token: alice,
+      body: { user_id: "@bob:localhost" },
+    });
+    assert.equal(invite.status, 403);
+    assert.equal(invite.json.errcode, "M_INVITE_BLOCKED");
+    const byState = await t.call("PUT", state(room, M.ROOM.MEMBER, "@bob:localhost"), { token: alice, body: { membership: "invite" } });
+    assert.equal(byState.json.errcode, "M_INVITE_BLOCKED");
+    // createRoom still succeeds, without the blocked invitee.
+    const created = await t.call("POST", "/_matrix/client/v3/createRoom", { token: alice, body: { invite: ["@bob:localhost"] } });
+    assert.equal(created.status, 200, created.text);
+    const members = await t.call("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(created.json.room_id)}/members`, { token: alice });
+    assert.deepEqual(
+      members.json.chunk.map((e: any) => e.state_key),
+      ["@alice:localhost"],
+    );
+    // Without default_action, invites work again.
+    await t.call("PUT", "/_matrix/client/v3/user/@bob:localhost/account_data/m.invite_permission_config", { token: bob, body: {} });
+    assert.equal(
+      (
+        await t.call("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(room)}/invite`, {
+          token: alice,
+          body: { user_id: "@bob:localhost" },
+        })
+      ).status,
+      200,
+    );
+  } finally {
+    await t.close();
+  }
+});

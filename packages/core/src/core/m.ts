@@ -34,6 +34,7 @@ export const M = deepFreeze({
   IGNORED_USER_LIST: "m.ignored_user_list",
   IN_REPLY_TO: "m.in_reply_to",
   INVITED_MEMBER_COUNT: "m.invited_member_count",
+  INVITE_PERMISSION_CONFIG: "m.invite_permission_config",
   JOINED_MEMBER_COUNT: "m.joined_member_count",
   LOGIN: {
     APPLICATION_SERVICE: "m.login.application_service",
