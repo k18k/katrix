@@ -1,5 +1,22 @@
 # matrix-nodejs-homeserver
 
+## 0.3.8
+
+### Patch Changes
+
+- 372092b: New: the guarantees a `DatabaseAdapter` must keep are documented on the interface, and `adapterConformance` (with `CONFORMANCE_SCHEMA`) lets you check a custom adapter against them with any test framework. The server now warns at startup when the adapter has no `transaction()`. [#58](https://github.com/k18k/matrix-nodejs-homeserver/issues/58)
+- 096bdae: Application services can create their users' devices with `PUT /devices/{deviceId}` (answered with 201) and delete them without User-Interactive Authentication, as spec v1.17 (MSC4190) allows. Bridges no longer need `/login` to get devices. [#85](https://github.com/k18k/matrix-nodejs-homeserver/issues/85)
+- 569a83e: CORS responses now allow `HEAD`, as the spec (v1.13) lists. [#86](https://github.com/k18k/matrix-nodejs-homeserver/issues/86)
+- 8b8c801: Security fix: with guest access enabled, guests could join any room, also rooms whose `m.room.guest_access` does not allow them. Guests now join only rooms with `guest_access: can_join`, and leave a room when that setting is turned off, as the spec requires. [#87](https://github.com/k18k/matrix-nodejs-homeserver/issues/87)
+- 42a99ac: Invite blocking from spec v1.18: with `m.invite_permission_config` set to `{ "default_action": "block" }` in a user's account data, every invite to them is refused with `403 M_INVITE_BLOCKED` (client invites, member state, federation), `createRoom` leaves them out of its invites, and pending invites are hidden from `/sync`. Blocked invites now use the error code `M_INVITE_BLOCKED` instead of `M_FORBIDDEN`, also for the unstable MSC4155 rules. [#88](https://github.com/k18k/matrix-nodejs-homeserver/issues/88)
+- e0be361: `postgresCluster`: an instance that lost a cluster lock's lease (it could not renew it for 30 seconds, for example while the database was unreachable, or another instance took it over) carried on as if it still held the lock. Its database transactions under that lock now fail and roll back instead of committing alongside the new owner's. [#57](https://github.com/k18k/matrix-nodejs-homeserver/issues/57)
+- e9b4dab: Security fix: an `m.login.token` sent in several concurrent login requests could log in more than once. Exactly one of them now gets a session. [#56](https://github.com/k18k/matrix-nodejs-homeserver/issues/56)
+- a3ae21f: Fix: after a knock was rejected or an invite rescinded in a remote room, the next membership change for that user (a second rejection, an invite) was dropped in rooms of version 3 and later. [#84](https://github.com/k18k/matrix-nodejs-homeserver/issues/84)
+- e1f2e55: Security fix: after a token refresh, the old access token was still accepted for the rest of that millisecond, on every node of a cluster. It is now rejected at once. [#55](https://github.com/k18k/matrix-nodejs-homeserver/issues/55)
+- f2f2dfb: Security fix: a registration token with `uses_allowed` could register more accounts than allowed, through concurrent registrations, or when the token stage was not the last registration stage (its use was then not counted). Uses are now checked and counted together when the account is created. [#81](https://github.com/k18k/matrix-nodejs-homeserver/issues/81)
+- 6dbae7d: `/versions` now lists spec versions v1.12 to v1.19. Clients that enable features by version (such as the OAuth 2.0 API from v1.15 on) now use them. [#89](https://github.com/k18k/matrix-nodejs-homeserver/issues/89)
+- 4ffe9ea: Fix: when a user knocked again on a remote room right after their knock was rejected, the rejection could arrive over federation after the new knock and replace it, so the new knock never showed up in `/sync`. Membership events for rooms the server is not in no longer replace newer ones. [#48](https://github.com/k18k/matrix-nodejs-homeserver/issues/48)
+
 ## 0.3.7
 
 ### Patch Changes
