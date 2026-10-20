@@ -22,7 +22,8 @@ permissions:
 
 # A newer push makes a running load test pointless.
 concurrency:
-  group: loadtest-${{ github.ref }}
+  # Manual runs (such as the forced threshold failure) are not cancelled by pushes.
+  group: loadtest-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
