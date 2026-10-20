@@ -377,6 +377,10 @@ export class FederationService {
     const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
     const { pdu } = await this.verifyPdu(raw, version, roomId);
     if (domainOf(pdu.sender) !== origin && domainOf(pdu.sender) !== domainOf(raw.state_key)) throw errors.forbidden("Unexpected sender");
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/48: such an event can arrive after a newer one we
+    // recorded ourselves (a kick rejecting a knock, delivered after the user knocked again), and it replaced it:
+    // the new knock vanished from /sync. An event older than the one we have (smaller depth) is ignored.
+    if (typeof previous?.depth === "number" && typeof pdu.depth === "number" && pdu.depth < previous.depth) return pdu.event_id!;
     const membership = pdu.content?.membership;
     // Only the original inviter (or the user themselves) can rescind an invite.
     if (
