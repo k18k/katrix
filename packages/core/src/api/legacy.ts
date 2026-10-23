@@ -6,7 +6,8 @@ import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
-import { paginate, visibleState } from "#api/rooms.ts";
+import { visibleState } from "#api/rooms.ts";
+import { paginate } from "#api/timeline.ts";
 
 // Endpoints from before /sync (deprecated since r0 but still in the spec), and room previews
 // ("peeking") through /rooms/{roomId}/initialSync and /events?room_id=.

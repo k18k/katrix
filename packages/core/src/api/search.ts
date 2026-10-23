@@ -6,7 +6,7 @@ import { procedure } from "#http/procedure.ts";
 import { z } from "zod";
 import { body, fail } from "#http/input.ts";
 import { matchesFilter, type EventFilter } from "#api/filters.ts";
-import { paginate, topoToken } from "#api/rooms.ts";
+import { paginate, topoToken } from "#api/timeline.ts";
 import { M } from "#core/m.ts";
 
 const DEFAULT_KEYS = ["content.body", "content.name", "content.topic"];
