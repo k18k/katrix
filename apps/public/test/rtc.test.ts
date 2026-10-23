@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import type { AddressInfo } from "node:net";
+import { connect, type AddressInfo } from "node:net";
 import { loadConfig } from "../src/config.ts";
 import { startPublicServer } from "../src/server.ts";
 
@@ -43,6 +43,17 @@ test("calls: the LiveKit transport is advertised and /livekit/jwt/ reaches the a
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("access-control-allow-origin"), "*");
     assert.deepEqual(await res.json(), { method: "POST", url: "/get_token", body: '{"room_id":"!r"}', jwt: "token" });
+    // A client that aborts its upload does not take the server down (#99).
+    await new Promise<void>((resolve) => {
+      const sock = connect((app.server.address() as AddressInfo).port, "127.0.0.1", () => {
+        sock.write("POST /livekit/jwt/get_token HTTP/1.1\r\nHost: x\r\nContent-Length: 1000\r\n\r\n0123456789");
+        setTimeout(() => {
+          sock.destroy();
+          setTimeout(resolve, 50);
+        }, 50);
+      });
+    });
+    assert.equal((await fetch(`${base}/.well-known/matrix/server`)).status, 200);
     // Oversized bodies are refused, not buffered (#83).
     const big = await fetch(`${base}/livekit/jwt/get_token`, { method: "POST", body: "x".repeat(65 * 1024) });
     assert.equal(big.status, 413);

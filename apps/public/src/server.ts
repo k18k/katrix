@@ -141,7 +141,13 @@ export async function startPublicServer(config: PublicConfig): Promise<{ hs: Hom
       return res.end(page);
     }
     if (config.livekitJwtUrl && req.url?.startsWith("/livekit/jwt/")) {
-      void proxyLivekitJwt(config.livekitJwtUrl, req, res);
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/99 — uncaught exception (CWE-248): a client aborting
+      // its upload made reading the body reject, nothing caught it, and Node.js exited. Any failure now ends just
+      // this request.
+      proxyLivekitJwt(config.livekitJwtUrl, req, res).catch(() => {
+        if (!res.headersSent && !res.destroyed) res.writeHead(400).end();
+        else res.destroy();
+      });
       return;
     }
     matrix(req, res);
