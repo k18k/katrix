@@ -129,12 +129,43 @@ async function storeImage(hs: Homeserver, body: Buffer, type: string): Promise<R
   };
 }
 
+/** How long a preview is reused (`preview:<url>` in the cluster key-value store). */
+const PREVIEW_TTL_MS = 3600_000;
+/** Previews being built on this instance, by URL: concurrent requests for one URL share the work. */
+const building = new WeakMap<Homeserver, Map<string, Promise<Record<string, any>>>>();
+
+/**
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/104 — uncontrolled resource consumption (CWE-400): every
+ * request fetched the page and its image again and stored a new copy of the image, so one account could make the
+ * server download and keep any amount of data. Previews are now reused for an hour (across instances), built once
+ * for concurrent requests, and rate limited per user (`preview`).
+ */
+async function cachedPreview(hs: Homeserver, url: string): Promise<Record<string, any>> {
+  const key = `preview:${url}`;
+  const cached = await hs.cluster.get<Record<string, any>>(key);
+  if (cached) return cached;
+  let inflight = building.get(hs);
+  if (!inflight) building.set(hs, (inflight = new Map()));
+  let pending = inflight.get(url);
+  if (!pending) {
+    pending = preview(hs, url)
+      .then(async (result) => {
+        await hs.cluster.set(key, result, PREVIEW_TTL_MS);
+        return result;
+      })
+      .finally(() => inflight.delete(url));
+    inflight.set(url, pending);
+  }
+  return pending;
+}
+
 export function registerPreviewRoutes(r: Router): void {
   const handler = async (ctx: RequestContext) => {
     await ctx.auth();
+    await ctx.rateLimit("preview");
     const url = ctx.query.get("url");
     if (!url) throw errors.missingParam("Missing url");
-    return preview(ctx.hs, url);
+    return cachedPreview(ctx.hs, url);
   };
   r.get("/_matrix/media/v3/preview_url", procedure({ handler: handler }));
   r.get("/_matrix/media/r0/preview_url", procedure({ handler: handler }));

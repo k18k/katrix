@@ -38,3 +38,32 @@ test("previews of allowed addresses include the image", async () => {
     assert.equal(res.json["og:image:width"], 2);
   }
 });
+
+test("a URL previewed again (also concurrently) is fetched and stored once (#104)", async () => {
+  let fetches = 0;
+  const site = await localServer((req, res) => {
+    fetches++;
+    if (req.url === "/img.png") {
+      res.writeHead(200, { "content-type": "image/png" });
+      return res.end(png);
+    }
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`<title>Page</title><meta property="og:image" content="/img.png">`);
+  });
+  const t = await testServer({ urlPreviews: true, allowPrivateAddresses: true });
+  try {
+    const token = await t.user("alice");
+    const get = () => t.call("GET", `/_matrix/client/v1/media/preview_url?url=${encodeURIComponent(`${site.url}/page`)}`, { token });
+    const results = [...(await Promise.all([get(), get()])), await get()];
+    assert.deepEqual(
+      results.map((r) => r.status),
+      [200, 200, 200],
+    );
+    assert.equal(new Set(results.map((r) => r.json["og:image"])).size, 1);
+    assert.equal(fetches, 2, "the page and its image, once");
+    assert.equal((await t.hs.db.findMany("media")).length, 1);
+  } finally {
+    await t.close();
+    await site.close();
+  }
+});
