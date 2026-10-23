@@ -1126,7 +1126,10 @@ export class FederationService {
     if (!this.enabled || !fromEventIds.length) return 0;
     const version = await this.hs.rooms.roomVersion(roomId);
     if (!version) return 0;
-    const servers = [...this.serversInRoom(await this.hs.rooms.currentState(roomId))];
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/94: right after a partial-state join the state lists no
+    // other server's members yet, so no one was asked and the history before the join stayed out of reach.
+    // roomDestinations adds the servers the join reported.
+    const servers = [...(await this.roomDestinations(roomId, await this.hs.rooms.currentState(roomId), false))];
     for (const server of servers) {
       try {
         const res = await this.client.request(server, "GET", `/_matrix/federation/v1/backfill/${encodeURIComponent(roomId)}`, {
