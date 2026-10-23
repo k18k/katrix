@@ -1,1 +1,1 @@
-{"schemaVersion":1,"label":"load · SQLite","message":"905 req/s · delivery p95 2.8 s","color":"green"}
+{"schemaVersion":1,"label":"load · SQLite","message":"565 req/s · delivery p95 5.0 s · thresholds crossed","color":"red"}
