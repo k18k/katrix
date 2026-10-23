@@ -1,5 +1,22 @@
 # matrix-nodejs-homeserver
 
+## 0.3.10
+
+### Patch Changes
+
+- 4024a28: Fix: a delayed event (MSC4140, used by MatrixRTC to end the call membership of a client that went away) was lost when sending it failed once, or when its instance stopped at that moment. It is now kept until it is sent, retried after 10 seconds, and never sent twice; only a send the room refuses drops it. [#100](https://github.com/k18k/matrix-nodejs-homeserver/issues/100)
+- 99c3af6: Fix (Node and Express handlers): when a request was answered without reading its whole body (such as a 401 for an upload with an expired token), the response waited until the client had sent the rest, so a client that stopped sending got no answer for minutes. The response now goes out at once; the rest of the body is dropped for up to 5 seconds, then the connection is closed. [#103](https://github.com/k18k/matrix-nodejs-homeserver/issues/103)
+- f575572: Security fix: a remote server's verify key that had expired was still accepted for signatures made after its expiry, when no newer key could be fetched. Expired keys now count only for events created while they were valid. [#98](https://github.com/k18k/matrix-nodejs-homeserver/issues/98)
+- 859757e: Security fix: over federation, `event_auth` returned the auth chain (power levels, memberships, join rules) of events in other rooms than the one asked about, also rooms whose server ACL denies the asking server. [#97](https://github.com/k18k/matrix-nodejs-homeserver/issues/97)
+- d118e39: Security fix: over federation, `get_missing_events` could return events of another room than the one asked about, including message contents a remote server was not allowed to see. [#96](https://github.com/k18k/matrix-nodejs-homeserver/issues/96)
+- 2ad4bff: Fix: two concurrent uploads to the same pending media ID (`PUT /_matrix/media/v3/upload/...`) could both succeed and store different content under one ID. The second now gets `409 M_CANNOT_OVERWRITE_MEDIA`. [#102](https://github.com/k18k/matrix-nodejs-homeserver/issues/102)
+- 76bc2bc: Fix (`memoryAdapter`): rolling back a transaction could overwrite a write made outside it in the meantime. Operations now wait while a transaction is open, as on SQLite. [#101](https://github.com/k18k/matrix-nodejs-homeserver/issues/101)
+- 631f09f: Security fix: every URL preview request fetched the page and its image again and stored a new copy of the image, so one account could make the server download and keep any amount of data. Previews are now reused for an hour, built once for concurrent requests, and rate limited per user (new rate-limit action `preview`, 0.5/s with a burst of 10 by default). [#104](https://github.com/k18k/matrix-nodejs-homeserver/issues/104)
+- a87be72: Fix (SQLite): a write that ran at the same moment as another request's transaction could end up inside that transaction, and was lost when it rolled back, although it had reported success. [#95](https://github.com/k18k/matrix-nodejs-homeserver/issues/95)
+- f1b555b: Fix: `timestamp_to_event` over federation answered by arrival order instead of timestamp, so other servers could be given a later event than the nearest one. [#105](https://github.com/k18k/matrix-nodejs-homeserver/issues/105)
+- fbc238a: Faster writes of large batches (such as push notifications in big rooms) on the SQL adapters: rows were grouped in quadratic time. [#106](https://github.com/k18k/matrix-nodejs-homeserver/issues/106)
+- 41a26f7: The user directory search no longer reads every room's state and every remote member one by one for each request: the members of public rooms are reused for up to 30 seconds (changes on the same instance show at once), and remote members are read in a batch. [#107](https://github.com/k18k/matrix-nodejs-homeserver/issues/107)
+
 ## 0.3.9
 
 ### Patch Changes
