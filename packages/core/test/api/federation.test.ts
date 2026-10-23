@@ -79,3 +79,16 @@ test("get_missing_events and event_auth answer only with events of the room aske
     await t.close();
   }
 });
+
+test("an expired verify key counts only for times before its expiry (#98)", async () => {
+  const t = await testServer({ federation: { enabled: true } });
+  try {
+    const key = t.hs.signingKey.publicKeyBase64;
+    await t.hs.db.upsert("remote_server_keys", { server_name: "remote.test", key_id: "ed25519:old", key, valid_until_ts: 1000 });
+    // Refreshing fails (remote.test does not exist), so only the stored key is known.
+    assert.ok(await t.hs.federation.keyring.getKey("remote.test", "ed25519:old", 500));
+    assert.equal(await t.hs.federation.keyring.getKey("remote.test", "ed25519:old", 2000), null);
+  } finally {
+    await t.close();
+  }
+});

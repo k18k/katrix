@@ -41,8 +41,11 @@ export class KeyRing {
     }
     await this.fetchKeys(serverName);
     const fetched = this.cache.get(serverName)?.get(keyId);
-    // Expired keys are still accepted for events created while they were valid.
-    return fetched ? fetched.key : null;
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/98 — improper verification of a cryptographic signature
+    // (CWE-347): after a refresh this returned the key whatever its validity, so a key past its expiry (one rotated
+    // away after a leak, say) still verified later signatures. Expired keys now count only for times before their
+    // expiry: events created while they were valid (`minValidUntil` is the event's timestamp).
+    return fetched && fetched.validUntil >= minValidUntil ? fetched.key : null;
   }
 
   private remember(serverName: string, keyId: string, key: string, validUntil: number): void {
