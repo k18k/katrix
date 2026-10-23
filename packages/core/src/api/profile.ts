@@ -1,3 +1,4 @@
+import type { Homeserver } from "#homeserver.ts";
 import { assertNotSuspended } from "#core/auth.ts";
 import { getState } from "#core/authrules.ts";
 import { MatrixError, errors } from "#core/errors.ts";
@@ -29,6 +30,51 @@ async function localProfile(ctx: RequestContext): Promise<Record<string, unknown
 
 function checkField(field: string): void {
   if (!field || Buffer.byteLength(field) > MAX_KEY_BYTES) throw new MatrixError(400, "M_KEY_TOO_LARGE", "Profile key too long");
+}
+
+/** How long the members of public rooms are reused by the user directory. */
+const PUBLIC_MEMBERS_MS = 30_000;
+const publicMembersCache = new WeakMap<Homeserver, { at: number; users: Promise<Set<string>> }>();
+const watched = new WeakSet<Homeserver>();
+const DIRECTORY_STATE = new Set<string>([M.ROOM.MEMBER, M.ROOM.JOIN_RULES, M.ROOM.HISTORY_VISIBILITY]);
+
+/**
+ * Members of public rooms: anyone may join them or read their history (published or not).
+ *
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/107: every directory search read every room's state and
+ * public rooms' members, and each remote candidate's membership one by one, before applying its limit, so any
+ * user could make the server walk all of it per request. This set is reused for 30 seconds (someone joining a
+ * public room on another instance shows up that much later; on this one, at once), and remote memberships are read
+ * in a batch.
+ * shortcut: still one pass over all rooms per 30 s and instance; a directory table kept up to date as memberships
+ * change would replace it if servers grow to many rooms.
+ */
+function publicRoomMembers(hs: Homeserver): Promise<Set<string>> {
+  if (!watched.has(hs)) {
+    watched.add(hs);
+    const forget = () => publicMembersCache.delete(hs);
+    hs.on("event", (ev: { type: string; state_key?: string }) => {
+      if (ev.state_key !== undefined && DIRECTORY_STATE.has(ev.type)) forget();
+    });
+    hs.cluster.subscribe("partial-state", forget);
+  }
+  const cached = publicMembersCache.get(hs);
+  if (cached && Date.now() - cached.at < PUBLIC_MEMBERS_MS) return cached.users;
+  const users = (async () => {
+    const out = new Set<string>();
+    for (const room of await hs.db.findMany("rooms", {})) {
+      const state = await hs.rooms.currentState(room.room_id);
+      const isPublic =
+        room.is_public ||
+        getState(state, M.ROOM.JOIN_RULES)?.content?.join_rule === "public" ||
+        getState(state, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility === "world_readable";
+      if (isPublic) for (const u of await hs.rooms.joinedMembers(room.room_id)) out.add(u);
+    }
+    return out;
+  })();
+  users.catch(() => publicMembersCache.delete(hs));
+  publicMembersCache.set(hs, { at: Date.now(), users });
+  return users;
 }
 
 export function registerProfileRoutes(r: Router): void {
@@ -117,34 +163,28 @@ export function registerProfileRoutes(r: Router): void {
         // (so the searcher only finds themselves through a public room, as in Synapse).
         const visible = await ctx.hs.rooms.usersSharingRooms(s.userId);
         visible.delete(s.userId);
-        // A room is public here if anyone may join it or read its history (published or not).
-        for (const room of await ctx.hs.db.findMany("rooms", {})) {
-          const state = await ctx.hs.rooms.currentState(room.room_id);
-          const isPublic =
-            room.is_public ||
-            getState(state, M.ROOM.JOIN_RULES)?.content?.join_rule === "public" ||
-            getState(state, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility === "world_readable";
-          if (isPublic) for (const u of await ctx.hs.rooms.joinedMembers(room.room_id)) visible.add(u);
-        }
+        for (const u of await publicRoomMembers(ctx.hs)) visible.add(u);
         const users = await ctx.hs.db.findMany("users", {
           where: [{ field: "user_id", operator: "in", value: [...visible].filter((u) => ctx.hs.isLocalUser(u)) }],
         });
         const candidates: { user_id: string; displayname?: string | null; avatar_url?: string | null }[] = users
           .filter((u) => !u.deactivated)
           .map((u) => ({ user_id: u.user_id, displayname: u.displayname, avatar_url: u.avatar_url }));
-        // Remote users are known through their membership events.
-        for (const userId of visible) {
-          if (ctx.hs.isLocalUser(userId)) continue;
-          const row = (
-            await ctx.hs.db.findMany("memberships", {
+        // Remote users are known through their membership events (read in one batch each, #107).
+        const remote = [...visible].filter((u) => !ctx.hs.isLocalUser(u));
+        const rows = remote.length
+          ? await ctx.hs.db.findMany("memberships", {
               where: [
-                { field: "user_id", value: userId },
+                { field: "user_id", operator: "in", value: remote },
                 { field: "membership", value: "join" },
               ],
-              limit: 1,
             })
-          )[0];
-          const member = row ? await ctx.hs.rooms.getPdu(row.event_id) : null;
+          : [];
+        const eventOf = new Map<string, string>();
+        for (const row of rows) if (!eventOf.has(row.user_id)) eventOf.set(row.user_id, row.event_id);
+        const members = await ctx.hs.rooms.getPdus([...eventOf.values()]);
+        for (const userId of remote) {
+          const member = members.get(eventOf.get(userId) ?? "");
           candidates.push({ user_id: userId, displayname: member?.content?.displayname, avatar_url: member?.content?.avatar_url });
         }
         const results = candidates

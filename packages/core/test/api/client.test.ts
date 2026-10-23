@@ -69,3 +69,23 @@ test("/versions lists every stable spec version the server implements (#89)", as
     await t.close();
   }
 });
+
+test("user directory: members of public rooms are found, also right after they join (#107)", async () => {
+  const t = await testServer();
+  try {
+    const alice = await t.user("alice");
+    const carol = await t.user("carol");
+    const dave = await t.user("dave");
+    const room = (await t.call("POST", "/_matrix/client/v3/createRoom", { token: alice, body: { preset: "public_chat" } })).json.room_id;
+    const search = async (term: string) =>
+      (await t.call("POST", "/_matrix/client/v3/user_directory/search", { token: carol, body: { search_term: term } })).json.results.map(
+        (r: any) => r.user_id,
+      );
+    assert.deepEqual(await search("alice"), ["@alice:localhost"]);
+    assert.deepEqual(await search("dave"), []);
+    await t.call("POST", `/_matrix/client/v3/join/${encodeURIComponent(room)}`, { token: dave, body: {} });
+    assert.deepEqual(await search("dave"), ["@dave:localhost"]);
+  } finally {
+    await t.close();
+  }
+});
