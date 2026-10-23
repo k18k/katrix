@@ -535,6 +535,10 @@ export function registerFederationRoutes(r: Router): void {
       const hs = ctx.hs;
       const version = await roomOr404(hs, ctx.params.roomId);
       await checkAcl(hs, ctx.params.roomId, origin);
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/97 — improper authorization (CWE-285): the auth chain
+      // of any event was returned, so a server allowed in one room could read the auth events (power levels,
+      // memberships) of another whose ACL denies it. The event has to belong to the room in the URL.
+      if (!(await eventInRoom(hs, ctx.params.roomId, ctx.params.eventId))) throw errors.notFound("Event not found");
       const chain = await authChainOf(hs, [ctx.params.eventId]);
       return { auth_chain: chain.map((p) => hs.federation.toFederationPdu(p, version)) };
     },

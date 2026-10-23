@@ -37,7 +37,7 @@ test("federation requests do not reach private addresses unless allowed", async 
   }
 });
 
-test("get_missing_events answers only with events of the room asked about (#96)", async () => {
+test("get_missing_events and event_auth answer only with events of the room asked about (#96, #97)", async () => {
   const t = await testServer({ federation: { enabled: true } });
   try {
     // Requests signed as the server itself: its key is known, and it is in every room with a local member.
@@ -73,6 +73,8 @@ test("get_missing_events answers only with events of the room asked about (#96)"
       missing.json.events.filter((e: any) => e.room_id === b),
       [],
     );
+    const auth = await fed("GET", `/_matrix/federation/v1/event_auth/${encodeURIComponent(a)}/${encodeURIComponent(secret)}`);
+    assert.equal(auth.status, 404, JSON.stringify(auth.json));
   } finally {
     await t.close();
   }
