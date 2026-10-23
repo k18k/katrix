@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
-import type { AddressInfo } from "node:net";
+import { connect, type AddressInfo } from "node:net";
 import { getNodeHandler, memoryMedia } from "#index.ts";
 import { testServer } from "../helpers.ts";
 
@@ -123,6 +123,32 @@ test("CORS preflights allow the methods the spec lists (#86)", async () => {
     assert.equal(res.status, 204);
     assert.equal(res.headers.get("access-control-allow-methods"), "GET, HEAD, POST, PUT, DELETE, OPTIONS");
   } finally {
+    await t.close();
+  }
+});
+
+test("a client that stops sending its body still gets the response at once (#103)", async () => {
+  const t = await server();
+  const http = createServer(getNodeHandler(t.hs)).listen(0, "127.0.0.1");
+  await new Promise((resolve) => http.once("listening", resolve));
+  try {
+    const { port } = http.address() as AddressInfo;
+    const started = Date.now();
+    const head = await new Promise<string>((resolve, reject) => {
+      const sock = connect(port, "127.0.0.1", () =>
+        sock.write("POST /_matrix/media/v3/upload HTTP/1.1\r\nHost: x\r\nContent-Length: 1000\r\n\r\nx"),
+      );
+      sock.once("data", (d) => {
+        resolve(d.toString().split("\r\n")[0]);
+        sock.destroy();
+      });
+      sock.once("error", reject);
+    });
+    assert.match(head, /^HTTP\/1\.1 401/);
+    assert.ok(Date.now() - started < 2000, `took ${Date.now() - started} ms`);
+  } finally {
+    http.closeAllConnections();
+    await new Promise((resolve) => http.close(resolve));
     await t.close();
   }
 });

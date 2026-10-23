@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
 import type { Homeserver } from "#homeserver.ts";
 import { handleRequest, maxRequestBody } from "#http/handler.ts";
 
@@ -30,20 +31,28 @@ function bodyStream(chunks: AsyncIterator<Buffer>): ReadableStream<Uint8Array> {
 }
 
 /** Read and drop what is left of a request body; false when more than `budget` bytes are left. */
-async function drain(req: IncomingMessage, chunks: AsyncIterator<Buffer>, budget: number): Promise<boolean> {
+async function drain(req: IncomingMessage, chunks: AsyncIterator<Buffer>, budget: number, timeoutMs: number): Promise<boolean> {
   if (Number(req.headers["content-length"]) > budget) return false;
   let dropped = 0;
-  try {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<false>((resolve) => (timer = setTimeout(resolve, timeoutMs, false)));
+  const read = (async () => {
     for (;;) {
       const { done, value } = await chunks.next();
       if (done) return true;
       dropped += value.length;
       if (dropped > budget) return false;
     }
-  } catch {
-    return false;
+  })().catch(() => false);
+  try {
+    return await Promise.race([read, late]);
+  } finally {
+    clearTimeout(timer);
   }
 }
+
+/** How long a response waits, after it was sent, for the rest of a body nobody read (#103). */
+const DRAIN_MS = 5_000;
 
 async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Promise<{ request: Request; unread?: AsyncIterator<Buffer> }> {
   const proto = (req.socket as any)?.encrypted ? "https" : "http";
@@ -111,8 +120,15 @@ export function getNodeHandler(hs: Homeserver): NodeHandler {
       // authentication fails. Closing the connection with unread data resets it, and the client may lose the
       // response (and with it, say, the 401 that tells it to refresh its token). So the rest is read and dropped,
       // but only up to the body limit; past it the connection is closed instead, as Synapse does.
-      if (unread && !(await drain(req, unread, maxRequestBody(hs)))) res.setHeader("connection", "close");
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/103: the response waited for that, so a client that
+      // stopped sending got no answer, even a ready 401, until Node's request timeout. The response now goes out at
+      // once while the rest is dropped, within DRAIN_MS; the connection is closed once it is sent if that fails.
+      const draining = unread ? drain(req, unread, maxRequestBody(hs), DRAIN_MS) : null;
       await writeWebResponse(res, response);
+      if (draining)
+        void Promise.all([draining, finished(res).catch(() => {})]).then(([drained]) => {
+          if (!drained) req.socket?.destroy();
+        });
     })().catch((err) => {
       if (next) next(err);
       else {
