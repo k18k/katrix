@@ -1,5 +1,15 @@
 # matrix-nodejs-homeserver
 
+## 0.3.9
+
+### Patch Changes
+
+- b9c4752: Fix: right after joining a remote room (with a partial-state join), paginating back returned no history before the join, and clients stopped there. Backfill now also asks the servers the join reported. [#94](https://github.com/k18k/matrix-nodejs-homeserver/issues/94)
+- 4f6bc6a: Security fix: when `postgresCluster`'s connection for cluster messages dropped (a Postgres restart), it was not opened again, so the instance missed every later logout, token revocation and cache invalidation from the other instances, and kept accepting revoked tokens. It now reconnects, and drops its caches of shared state afterwards, since messages sent meanwhile are lost. [#92](https://github.com/k18k/matrix-nodejs-homeserver/issues/92)
+- 2afaab6: Fix: a Postgres restart, or a dropped connection, crashed the process (`pg` emits an `error` event that nothing handled). `postgresAdapter` and `postgresCluster` now handle it; requests fail while the database is away and work again when it is back. [#91](https://github.com/k18k/matrix-nodejs-homeserver/issues/91)
+- bf4b36d: The package is built with TypeScript itself instead of tsdown, and declares no dependencies (the audit bot's crypto module stays an optional peer dependency). The published files keep the same layout: one `.js` and one `.d.ts` per module under `dist/`.
+- bd27e34: Request bodies are checked by a small built-in validator (vpm) instead of a bundled copy of zod: the published package is smaller and still has no runtime dependencies. Error responses for invalid bodies keep their Matrix error codes; the wording of some generic messages changed.
+
 ## 0.3.8
 
 ### Patch Changes
