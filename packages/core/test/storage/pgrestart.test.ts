@@ -8,20 +8,20 @@ import { CLUSTER_RESYNC } from "#core/cluster.ts";
 // Postgres dropping every connection (as on a restart) must cost failed queries, not the process (#91).
 // Runs when PG_TEST_URL is set (CI starts a Postgres).
 const url = process.env.PG_TEST_URL;
+// Only this file's connections are dropped: other test files use the same database at the same time.
+const application_name = `pgrestart-${process.pid}`;
 
-/** Terminate every other connection to the database, as a Postgres restart does. */
+/** Terminate this file's connections, as a Postgres restart does. */
 async function dropConnections(): Promise<void> {
   const admin = new pg.Client({ connectionString: url });
   await admin.connect();
-  await admin.query(
-    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()",
-  );
+  await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = $1", [application_name]);
   await admin.end();
 }
 
 test("the Postgres adapters survive their connections being dropped (#91)", { skip: url ? false : "PG_TEST_URL not set" }, async () => {
-  const pool = new pg.Pool({ connectionString: url, max: 4 });
-  const clusterPool = new pg.Pool({ connectionString: url, max: 2 });
+  const pool = new pg.Pool({ connectionString: url, max: 4, application_name });
+  const clusterPool = new pg.Pool({ connectionString: url, max: 2, application_name });
   const prefix = `t${randomBytes(4).toString("hex")}_`;
   const db = postgresAdapter(pool, { tablePrefix: prefix });
   const cluster = postgresCluster(clusterPool, { tablePrefix: prefix });
@@ -48,7 +48,10 @@ test(
   "postgresCluster listens again after its connection drops, and asks for a resync (#92)",
   { skip: url ? false : "PG_TEST_URL not set" },
   async () => {
-    const pools = [new pg.Pool({ connectionString: url, max: 2 }), new pg.Pool({ connectionString: url, max: 2 })];
+    const pools = [
+      new pg.Pool({ connectionString: url, max: 2, application_name }),
+      new pg.Pool({ connectionString: url, max: 2, application_name }),
+    ];
     const prefix = `t${randomBytes(4).toString("hex")}_`;
     const [a, b] = pools.map((p) => postgresCluster(p, { tablePrefix: prefix }));
     try {
