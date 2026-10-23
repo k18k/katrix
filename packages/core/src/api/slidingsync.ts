@@ -7,15 +7,15 @@ import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body as bodySchema, lenient } from "#http/input.ts";
 
 // Malformed parts of a sliding sync request are ignored rather than refused, as before.
 const slidingSyncBody = bodySchema({
-  conn_id: lenient(z.string()),
-  lists: lenient(z.record(z.string(), z.unknown())),
-  room_subscriptions: lenient(z.record(z.string(), z.unknown())),
-  extensions: lenient(z.record(z.string(), z.unknown())),
+  conn_id: lenient(v.string()),
+  lists: lenient(v.record(v.string(), v.unknown())),
+  room_subscriptions: lenient(v.record(v.string(), v.unknown())),
+  extensions: lenient(v.record(v.string(), v.unknown())),
 });
 import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "#api/sync.ts";
 import { M, UNSTABLE } from "#core/m.ts";
@@ -94,7 +94,7 @@ export function registerSlidingSyncRoutes(r: Router): void {
   r.post("/_matrix/client/v5/sync", procedure({ auth: "user", input: slidingSyncBody, handler: slidingSync }));
 }
 
-async function slidingSync(ctx: ProcedureContext<"user", z.output<typeof slidingSyncBody>>) {
+async function slidingSync(ctx: ProcedureContext<"user", v.output<typeof slidingSyncBody>>) {
   const hs = ctx.hs;
   const s = ctx.session;
   const body = ctx.input;

@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { errors } from "#core/errors.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail } from "#http/input.ts";
 
 export interface TurnOptions {
@@ -74,7 +74,7 @@ export function registerRtcRoutes(r: Router): void {
     `${base}/:delayId`,
     procedure({
       auth: "user",
-      input: body({ action: z.string(fail("M_MISSING_PARAM", "Missing action")) }),
+      input: body({ action: v.string(fail("M_MISSING_PARAM", "Missing action")) }),
       handler: async (ctx) => {
         const s = ctx.session;
         await ctx.hs.delayedEvents.update(s.userId, ctx.params.delayId, ctx.input.action);

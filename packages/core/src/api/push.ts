@@ -2,21 +2,21 @@ import { errors } from "#core/errors.ts";
 import { KINDS, loadRules, saveRules, withRulesLock, type Rule, type Ruleset } from "#core/pushrules.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
 import { M } from "#core/m.ts";
 
-const pusherKey = z.string(fail("M_MISSING_PARAM", "Missing app_id or pushkey"));
+const pusherKey = v.string(fail("M_MISSING_PARAM", "Missing app_id or pushkey"));
 // `kind: null` deletes a pusher; otherwise kind, the display names, lang and data are required (checked below).
 const pusherBody = body({
   app_id: pusherKey,
   pushkey: pusherKey,
-  kind: lenient(z.string().nullable()),
-  app_display_name: lenient(z.string()),
-  device_display_name: lenient(z.string()),
-  lang: lenient(z.string()),
-  data: lenient(z.looseObject({ url: lenient(z.string()) })),
-  append: z.unknown().optional(),
+  kind: lenient(v.string().nullable()),
+  app_display_name: lenient(v.string()),
+  device_display_name: lenient(v.string()),
+  lang: lenient(v.string()),
+  data: lenient(v.looseObject({ url: lenient(v.string()) })),
+  append: v.unknown().optional(),
 });
 
 function findRule(rules: Ruleset, kind: string, ruleId: string): Rule {

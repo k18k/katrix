@@ -2,15 +2,15 @@ import { errors } from "#core/errors.ts";
 import { allowCrossSigningReset } from "#core/oauthserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
 
 const required = fail("M_BAD_JSON", "user_id and content are required");
-const noticeBody = body({ user_id: z.string(required), content: z.looseObject({}, required), type: lenient(z.string()) });
+const noticeBody = body({ user_id: v.string(required), content: v.looseObject({}, required), type: lenient(v.string()) });
 const optionalInt = (name: string) =>
-  z.number(fail("M_INVALID_PARAM", `${name} must be an integer`)).int(`M_INVALID_PARAM: ${name} must be an integer`);
+  v.number(fail("M_INVALID_PARAM", `${name} must be an integer`)).int(`M_INVALID_PARAM: ${name} must be an integer`);
 const registrationTokenBody = body({
-  token: z.string(fail("M_INVALID_PARAM", "Invalid token")).optional(),
+  token: v.string(fail("M_INVALID_PARAM", "Invalid token")).optional(),
   uses_allowed: optionalInt("uses_allowed").nullable().optional(),
   expiry_time: optionalInt("expiry_time").nullable().optional(),
   length: optionalInt("length").optional(),
@@ -42,7 +42,7 @@ const adminGuard = async (ctx: RequestContext) => {
 
 /** Admin HTTP API using Synapse-compatible paths, so existing tooling keeps working. */
 export function registerAdminRoutes(r: Router): void {
-  const notice = async (ctx: ProcedureContext<"none", z.output<typeof noticeBody>>) => {
+  const notice = async (ctx: ProcedureContext<"none", v.output<typeof noticeBody>>) => {
     const body = ctx.input;
     const eventId = await ctx.hs.admin.sendServerNotice(body.user_id, body.content, {
       type: body.type,
@@ -145,7 +145,7 @@ export function registerAdminRoutes(r: Router): void {
     "/_synapse/admin/v1/join/:roomIdOrAlias",
     procedure({
       guard: adminGuard,
-      input: body({ user_id: z.string(fail("M_MISSING_PARAM", "user_id is required", "user_id")) }),
+      input: body({ user_id: v.string(fail("M_MISSING_PARAM", "user_id is required", "user_id")) }),
       handler: async (ctx) => ({ room_id: await ctx.hs.admin.joinUser(ctx.input.user_id, ctx.params.roomIdOrAlias) }),
     }),
   );
@@ -166,7 +166,7 @@ export function registerAdminRoutes(r: Router): void {
     "/_synapse/admin/v1/deactivate/:userId",
     procedure({
       guard: adminGuard,
-      input: body({ erase: lenient(z.boolean()) }),
+      input: body({ erase: lenient(v.boolean()) }),
       handler: async (ctx) => {
         const body = ctx.input;
         await ctx.hs.admin.deactivateUser(ctx.params.userId, { erase: body.erase === true });
@@ -175,8 +175,8 @@ export function registerAdminRoutes(r: Router): void {
     }),
   );
   const resetPasswordBody = body({
-    new_password: z.string(fail("M_MISSING_PARAM", "Missing new_password")),
-    logout_devices: lenient(z.boolean()),
+    new_password: v.string(fail("M_MISSING_PARAM", "Missing new_password")),
+    logout_devices: lenient(v.boolean()),
   });
   r.post(
     "/_synapse/admin/v1/reset_password/:userId",

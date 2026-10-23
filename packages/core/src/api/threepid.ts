@@ -3,13 +3,13 @@ import { canonicalAddress, isMedium, type ThreepidPurpose } from "#core/threepid
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { requireUia } from "#api/uia.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
 import { M } from "#core/m.ts";
 
-const submitField = z.string(fail("M_MISSING_PARAM", "sid, client_secret and token are required"));
+const submitField = v.string(fail("M_MISSING_PARAM", "sid, client_secret and token are required"));
 const submitBody = body({ sid: submitField, client_secret: submitField, token: submitField });
-const bindField = (name: string) => z.string(fail("M_MISSING_PARAM", `Missing ${name}`));
+const bindField = (name: string) => v.string(fail("M_MISSING_PARAM", `Missing ${name}`));
 const bindBody = body({
   client_secret: bindField("client_secret"),
   id_access_token: bindField("id_access_token"),
@@ -17,9 +17,9 @@ const bindBody = body({
   sid: bindField("sid"),
 });
 const threepidBody = body({
-  medium: z.enum(["email", "msisdn"], fail("M_INVALID_PARAM", "Unsupported medium")),
-  address: z.string(fail("M_INVALID_PARAM", "Invalid address")),
-  id_server: z.string(fail("M_INVALID_PARAM", "id_server must be a string")).optional(),
+  medium: v.enum(["email", "msisdn"], fail("M_INVALID_PARAM", "Unsupported medium")),
+  address: v.string(fail("M_INVALID_PARAM", "Invalid address")),
+  id_server: v.string(fail("M_INVALID_PARAM", "id_server must be a string")).optional(),
 });
 
 // Third-party identifier management (spec "Adding Account Administrative Contact Information").
@@ -99,7 +99,7 @@ export function registerThreepidRoutes(r: Router): void {
     "POST",
     "/account/3pid/add",
     procedure({
-      input: body({ sid: lenient(z.string()), client_secret: lenient(z.string()) }),
+      input: body({ sid: lenient(v.string()), client_secret: lenient(v.string()) }),
       handler: async (ctx) => {
         notDelegated(ctx);
         const s = await ctx.auth();
@@ -137,7 +137,7 @@ export function registerThreepidRoutes(r: Router): void {
     }),
   );
 
-  const parseThreepid = (body: z.output<typeof threepidBody>) => {
+  const parseThreepid = (body: v.output<typeof threepidBody>) => {
     const address = canonicalAddress(body.medium, body.address);
     if (!address) throw errors.invalidParam("Invalid address");
     return { medium: body.medium, address, idServer: body.id_server };

@@ -9,7 +9,7 @@ import { procedure } from "#http/procedure.ts";
 import { requireUia } from "#api/uia.ts";
 import { canonicalAddress, isMedium } from "#core/threepid.ts";
 import { toMsisdn } from "#core/phone.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
 import { M, UNSTABLE } from "#core/m.ts";
 import { checkRedirectUrl, legacyClientRedirect, type SsoResult } from "#core/sso.ts";
@@ -19,27 +19,27 @@ import { escapeHtml } from "#core/html.ts";
 
 // Fields shared by login and registration requests.
 const deviceFields = {
-  device_id: lenient(z.string()),
-  initial_device_display_name: lenient(z.string()),
-  refresh_token: lenient(z.boolean()),
-  inhibit_login: lenient(z.boolean()),
+  device_id: lenient(v.string()),
+  initial_device_display_name: lenient(v.string()),
+  refresh_token: lenient(v.boolean()),
+  inhibit_login: lenient(v.boolean()),
 };
-const loginBody = body({ type: lenient(z.string()), token: lenient(z.string()), password: lenient(z.string()), ...deviceFields });
+const loginBody = body({ type: lenient(v.string()), token: lenient(v.string()), password: lenient(v.string()), ...deviceFields });
 const registerBody = body({
-  type: lenient(z.string()),
-  auth: lenient(z.looseObject({ type: lenient(z.string()) })),
-  username: z.string(fail("M_INVALID_PARAM", "username must be a string")).optional(),
-  password: z.string(fail("M_INVALID_PARAM", "password must be a string")).optional(),
+  type: lenient(v.string()),
+  auth: lenient(v.looseObject({ type: lenient(v.string()) })),
+  username: v.string(fail("M_INVALID_PARAM", "username must be a string")).optional(),
+  password: v.string(fail("M_INVALID_PARAM", "password must be a string")).optional(),
   ...deviceFields,
 });
-const passwordBody = body({ new_password: lenient(z.string()), logout_devices: lenient(z.boolean()) });
+const passwordBody = body({ new_password: lenient(v.string()), logout_devices: lenient(v.boolean()) });
 const sharedSecretRegisterBody = body({
-  nonce: lenient(z.string()),
-  username: z.string(fail("M_INVALID_PARAM", "Invalid username/password")),
-  password: z.string(fail("M_INVALID_PARAM", "Invalid username/password")),
-  admin: lenient(z.boolean()),
-  mac: lenient(z.string()),
-  displayname: lenient(z.string()),
+  nonce: lenient(v.string()),
+  username: v.string(fail("M_INVALID_PARAM", "Invalid username/password")),
+  password: v.string(fail("M_INVALID_PARAM", "Invalid username/password")),
+  admin: lenient(v.boolean()),
+  mac: lenient(v.string()),
+  displayname: lenient(v.string()),
 });
 
 function loginFlows(hs: Homeserver): Record<string, unknown>[] {
@@ -379,7 +379,7 @@ export function registerAccountRoutes(r: Router): void {
     "POST",
     "/refresh",
     procedure({
-      input: body({ refresh_token: lenient(z.string()) }),
+      input: body({ refresh_token: lenient(v.string()) }),
       handler: async (ctx) => {
         const body = ctx.input;
         if (body.refresh_token === undefined) throw errors.missingParam("Missing refresh_token");

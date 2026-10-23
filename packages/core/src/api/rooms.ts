@@ -8,7 +8,7 @@ import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail } from "#http/input.ts";
 import { M, UNSTABLE } from "#core/m.ts";
 
@@ -477,7 +477,7 @@ export function registerRoomRoutes(r: Router): void {
   };
 
   const receiptBody = body({
-    thread_id: z.string(fail("M_INVALID_PARAM", "Invalid thread_id")).min(1, "M_INVALID_PARAM: Invalid thread_id").optional(),
+    thread_id: v.string(fail("M_INVALID_PARAM", "Invalid thread_id")).min(1, "M_INVALID_PARAM: Invalid thread_id").optional(),
   });
   r.client(
     "POST",
@@ -517,8 +517,8 @@ export function registerRoomRoutes(r: Router): void {
   );
 
   const upgradeBody = body({
-    new_version: z.string(fail("M_BAD_JSON", "Missing new_version")),
-    additional_creators: z.unknown().optional(),
+    new_version: v.string(fail("M_BAD_JSON", "Missing new_version")),
+    additional_creators: v.unknown().optional(),
   });
   r.client(
     "POST",
@@ -536,15 +536,15 @@ export function registerRoomRoutes(r: Router): void {
 
   // --- Content reports ------------------------------------------------------------
   const reportBody = body({
-    score: z
+    score: v
       .number(fail("M_INVALID_PARAM", "score must be between -100 and 0"))
       .int("M_INVALID_PARAM: score must be between -100 and 0")
       .min(-100, "M_INVALID_PARAM: score must be between -100 and 0")
       .max(0, "M_INVALID_PARAM: score must be between -100 and 0")
       .optional(),
-    reason: z.string(fail("M_BAD_JSON", "reason must be a string")).optional(),
+    reason: v.string(fail("M_BAD_JSON", "reason must be a string")).optional(),
   });
-  const report = async (ctx: ProcedureContext<"user", z.output<typeof reportBody>>) => {
+  const report = async (ctx: ProcedureContext<"user", v.output<typeof reportBody>>) => {
     const s = ctx.session;
     const hs = ctx.hs;
     const roomId = ctx.params.roomId;
@@ -587,7 +587,7 @@ export function registerRoomRoutes(r: Router): void {
     "/users/:userId/report",
     procedure({
       auth: "user",
-      input: body({ reason: z.string(fail("M_BAD_JSON", "reason must be a string")) }),
+      input: body({ reason: v.string(fail("M_BAD_JSON", "reason must be a string")) }),
       handler: async (ctx) => {
         const s = ctx.session;
         const hs = ctx.hs;

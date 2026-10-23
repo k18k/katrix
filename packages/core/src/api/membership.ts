@@ -5,7 +5,7 @@ import { isObject } from "#core/json.ts";
 import { assertNotSuspended, type Session } from "#core/auth.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, lenient } from "#http/input.ts";
 import { M } from "#core/m.ts";
 import { requireRoom } from "#api/rooms.ts";
@@ -62,10 +62,10 @@ async function inviteByThreepid(ctx: RequestContext, s: Session, body: Record<st
   return {};
 }
 
-const membershipBody = body({ user_id: lenient(z.string()), reason: lenient(z.string()) });
+const membershipBody = body({ user_id: lenient(v.string()), reason: lenient(v.string()) });
 
 async function sendMembership(
-  ctx: ProcedureContext<"user", z.output<typeof membershipBody>>,
+  ctx: ProcedureContext<"user", v.output<typeof membershipBody>>,
   membership: "leave" | "ban" | "unban" | "kick",
 ): Promise<Record<string, never>> {
   const s = ctx.session;
@@ -116,8 +116,8 @@ async function sendMembership(
 
 export function registerMembershipRoutes(r: Router): void {
   // Unknown keys of a join request become part of the membership event's content.
-  const joinBody = body({ reason: lenient(z.string()), third_party_signed: z.unknown().optional() });
-  const join = async (ctx: ProcedureContext<"user", z.output<typeof joinBody>>, idOrAlias: string) => {
+  const joinBody = body({ reason: lenient(v.string()), third_party_signed: v.unknown().optional() });
+  const join = async (ctx: ProcedureContext<"user", v.output<typeof joinBody>>, idOrAlias: string) => {
     const s = ctx.session;
     const body = ctx.input;
     const { roomId, servers: resolvedServers } = await ctx.hs.rooms.resolveRoom(idOrAlias);
@@ -175,7 +175,7 @@ export function registerMembershipRoutes(r: Router): void {
     "/knock/:roomIdOrAlias",
     procedure({
       auth: "user",
-      input: body({ reason: lenient(z.string()) }),
+      input: body({ reason: lenient(v.string()) }),
       handler: async (ctx) => {
         const s = ctx.session;
         const body = ctx.input;
@@ -189,7 +189,7 @@ export function registerMembershipRoutes(r: Router): void {
   );
 
   // Third-party invites (id_server, medium, address...) are checked in inviteByThreepid.
-  const inviteBody = body({ user_id: lenient(z.string()), reason: lenient(z.string()) });
+  const inviteBody = body({ user_id: lenient(v.string()), reason: lenient(v.string()) });
   r.client(
     "POST",
     "/rooms/:roomId/invite",

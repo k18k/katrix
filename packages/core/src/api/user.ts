@@ -5,20 +5,20 @@ import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { jsonResponse } from "#http/handler.ts";
 import { requireUia } from "#api/uia.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail } from "#http/input.ts";
 import { M } from "#core/m.ts";
 
-const deleteDevicesBody = body({ devices: z.array(z.unknown(), fail("M_BAD_JSON", "devices must be a list")) });
+const deleteDevicesBody = body({ devices: v.array(v.unknown(), fail("M_BAD_JSON", "devices must be a list")) });
 const keysQueryBody = body({
-  device_keys: z.record(
-    z.string(),
-    z.array(z.string(), fail("M_BAD_JSON", "device_keys values must be lists of device IDs")),
+  device_keys: v.record(
+    v.string(),
+    v.array(v.string(), fail("M_BAD_JSON", "device_keys values must be lists of device IDs")),
     fail("M_BAD_JSON", "device_keys must be an object"),
   ),
-  timeout: z.unknown().optional(),
+  timeout: v.unknown().optional(),
 });
-const keysClaimBody = body({ one_time_keys: z.record(z.string(), z.unknown(), fail("M_BAD_JSON", "one_time_keys must be an object")) });
+const keysClaimBody = body({ one_time_keys: v.record(v.string(), v.unknown(), fail("M_BAD_JSON", "one_time_keys must be an object")) });
 
 const SERVER_MANAGED_TYPES: readonly string[] = [M.FULLY_READ, M.PUSH_RULES];
 

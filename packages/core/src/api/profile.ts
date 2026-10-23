@@ -6,7 +6,7 @@ import { isObject } from "#core/json.ts";
 import { BUILTIN_FIELDS, MAX_KEY_BYTES, MAX_PROFILE_BYTES, fullProfile, profileSize, setProfileField } from "#core/profile.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
 import { M } from "#core/m.ts";
 
@@ -101,7 +101,7 @@ export function registerProfileRoutes(r: Router): void {
     }),
   );
 
-  const directoryBody = body({ search_term: z.string(fail("M_MISSING_PARAM", "Missing search_term")), limit: lenient(z.number().int()) });
+  const directoryBody = body({ search_term: v.string(fail("M_MISSING_PARAM", "Missing search_term")), limit: lenient(v.number().int()) });
   r.client(
     "POST",
     "/user_directory/search",

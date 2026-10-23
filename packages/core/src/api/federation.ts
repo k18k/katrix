@@ -13,23 +13,23 @@ import { parseXMatrix } from "#federation/client.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, lenient } from "#http/input.ts";
 
 // Federation request bodies come from other servers: malformed optional parts are ignored, as before.
-const objectMap = lenient(z.record(z.string(), z.unknown()));
+const objectMap = lenient(v.record(v.string(), v.unknown()));
 const keyQueryBody = body({ server_keys: objectMap });
 const missingEventsBody = body({
-  earliest_events: lenient(z.array(z.string())),
-  latest_events: lenient(z.array(z.string())),
-  limit: z.unknown().optional(),
-  min_depth: z.unknown().optional(),
+  earliest_events: lenient(v.array(v.string())),
+  latest_events: lenient(v.array(v.string())),
+  limit: v.unknown().optional(),
+  min_depth: v.unknown().optional(),
 });
 const userKeysQueryBody = body({ device_keys: objectMap });
 const userKeysClaimBody = body({ one_time_keys: objectMap });
 const publicRoomsBody = body({
-  limit: z.unknown().optional(),
-  filter: lenient(z.looseObject({ generic_search_term: lenient(z.string()) })),
+  limit: v.unknown().optional(),
+  filter: lenient(v.looseObject({ generic_search_term: lenient(v.string()) })),
 });
 import { canonicalJsonResponse } from "#http/handler.ts";
 import { roomDetails } from "#api/spaces.ts";
@@ -261,15 +261,12 @@ async function sendMembership(ctx: RequestContext, origin: string, membership: s
 export function registerFederationRoutes(r: Router): void {
   // Server-server endpoints: the request's X-Matrix signature is verified before anything else,
   // and the verified origin server is handed to the handler.
-  const fed = <S extends z.ZodType | undefined = undefined>(
+  const fed = <S extends v.Schema | undefined = undefined>(
     method: "GET" | "PUT" | "POST",
     path: string,
     def: {
       input?: S;
-      handler: (
-        ctx: ProcedureContext<"none", S extends z.ZodType ? z.output<S> : undefined, { origin: string }>,
-        origin: string,
-      ) => unknown;
+      handler: (ctx: ProcedureContext<"none", S extends v.Schema ? v.output<S> : undefined, { origin: string }>, origin: string) => unknown;
     },
   ) => {
     r.add(
@@ -700,9 +697,9 @@ export function registerFederationRoutes(r: Router): void {
     },
   });
 
-  const publicRooms = async (ctx: ProcedureContext<"none", z.output<typeof publicRoomsBody> | undefined>) => {
+  const publicRooms = async (ctx: ProcedureContext<"none", v.output<typeof publicRoomsBody> | undefined>) => {
     const hs = ctx.hs;
-    const body: z.output<typeof publicRoomsBody> = (ctx.method === "POST" ? ctx.input : undefined) ?? {};
+    const body: v.output<typeof publicRoomsBody> = (ctx.method === "POST" ? ctx.input : undefined) ?? {};
     const limit = Number(body.limit ?? ctx.query.get("limit") ?? 0) || undefined;
     const rooms = await hs.db.findMany("rooms", { where: [{ field: "is_public", value: true }] });
     let chunk = await Promise.all(rooms.map((r) => roomDetails(hs, r.room_id)));

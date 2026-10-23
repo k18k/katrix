@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { v } from "#core/vpm.ts";
 import type { Session } from "#core/auth.ts";
 import type { RateLimitAction } from "#core/ratelimit.ts";
 import { inputError } from "#http/input.ts";
@@ -11,9 +11,9 @@ import type { Handler, HandlerResult, RequestContext } from "#http/router.ts";
 //
 //   1. authentication (`auth`), or the caller's own check (`guard`, e.g. federation signatures)
 //   2. rate limit (`rateLimit`)
-//   3. body (`input`, a zod schema)
+//   3. body (`input`, a vpm schema (core/vpm.ts))
 //   4. the handler
-//   5. response (`output`, a zod schema; responses that are already a `Response` pass as they are)
+//   5. response (`output`, a vpm schema (core/vpm.ts); responses that are already a `Response` pass as they are)
 //
 // The order matters: a request without credentials is refused with 401 before its body is looked
 // at, and a rate-limited caller gets 429 without the server parsing anything.
@@ -25,7 +25,7 @@ import type { Handler, HandlerResult, RequestContext } from "#http/router.ts";
 export type AuthMode = "none" | "optional" | "user";
 
 type SessionOf<A extends AuthMode> = A extends "user" ? Session : A extends "optional" ? Session | null : undefined;
-type Parsed<S> = S extends z.ZodType ? z.output<S> : undefined;
+type Parsed<S> = S extends v.Schema ? v.output<S> : undefined;
 
 /** What a handler receives: the request context, plus the session, the guard's result and the parsed body. */
 export type ProcedureContext<A extends AuthMode = "none", I = undefined, G = unknown> = RequestContext &
@@ -34,7 +34,7 @@ export type ProcedureContext<A extends AuthMode = "none", I = undefined, G = unk
     input: I;
   };
 
-export interface ProcedureDef<A extends AuthMode, S extends z.ZodType | undefined, O extends z.ZodType | undefined, G extends object> {
+export interface ProcedureDef<A extends AuthMode, S extends v.Schema | undefined, O extends v.Schema | undefined, G extends object> {
   auth?: A;
   /** Runs instead of (or after) `auth`, and adds what it returns to the context. */
   guard?: (ctx: RequestContext) => Promise<G> | G;
@@ -43,13 +43,13 @@ export interface ProcedureDef<A extends AuthMode, S extends z.ZodType | undefine
   output?: O;
   handler: (
     ctx: ProcedureContext<A, Parsed<S>, G>,
-  ) => Promise<O extends z.ZodType ? z.input<O> | Response : HandlerResult> | (O extends z.ZodType ? z.input<O> | Response : HandlerResult);
+  ) => Promise<O extends v.Schema ? v.input<O> | Response : HandlerResult> | (O extends v.Schema ? v.input<O> | Response : HandlerResult);
 }
 
 export function procedure<
   A extends AuthMode = "none",
-  S extends z.ZodType | undefined = undefined,
-  O extends z.ZodType | undefined = undefined,
+  S extends v.Schema | undefined = undefined,
+  O extends v.Schema | undefined = undefined,
   G extends object = {},
 >(def: ProcedureDef<A, S, O, G>): Handler {
   return async (ctx: RequestContext) => {

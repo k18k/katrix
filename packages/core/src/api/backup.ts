@@ -3,11 +3,11 @@ import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
-import { z } from "zod";
+import { v } from "#core/vpm.ts";
 import { body, fail } from "#http/input.ts";
 
 const required = fail("M_BAD_JSON", "algorithm and auth_data are required");
-const createVersionBody = body({ algorithm: z.string(required), auth_data: z.looseObject({}, required) });
+const createVersionBody = body({ algorithm: v.string(required), auth_data: v.looseObject({}, required) });
 
 /** Server-side room key backups (`/room_keys`). */
 
