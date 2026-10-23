@@ -67,6 +67,29 @@ jobs:
       - run: node node_modules/@matrix-org/matrix-sdk-crypto-nodejs/download-lib.js
       - run: npm test
 
+  # Federation and end-to-end encryption with Synapse (#61): packages/core/interop/.
+  interop:
+    name: Interop (Synapse)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/core
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+        working-directory: .
+      - run: node node_modules/@matrix-org/matrix-sdk-crypto-nodejs/download-lib.js
+        working-directory: .
+      - run: docker compose -p matrix-interop -f interop/docker-compose.yml up -d --build --wait
+      - run: node interop/run.ts >> "$GITHUB_STEP_SUMMARY"
+      - if: failure()
+        run: docker compose -p matrix-interop -f interop/docker-compose.yml logs --tail 200
+
   complement:
     name: Complement
     runs-on: ubuntu-latest

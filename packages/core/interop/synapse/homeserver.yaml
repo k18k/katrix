@@ -1,0 +1,32 @@
+# Synapse for the interoperability tests: open registration, no rate limits, private addresses
+# allowed (everything runs on one Docker network), and the throwaway CA trusted for federation.
+server_name: synapse.test
+pid_file: /data/homeserver.pid
+signing_key_path: /data/signing.key
+media_store_path: /data/media
+database:
+  name: sqlite3
+  args: { database: /data/homeserver.db }
+listeners:
+  - { port: 8008, type: http, x_forwarded: false, resources: [{ names: [client, federation], compress: false }] }
+  - { port: 8448, type: http, tls: true, resources: [{ names: [federation], compress: false }] }
+tls_certificate_path: /ca/synapse.crt
+tls_private_key_path: /ca/synapse.key
+federation_custom_ca_list: [/ca/ca.crt]
+ip_range_blacklist: []
+federation_ip_range_blacklist: []
+report_stats: false
+enable_registration: true
+enable_registration_without_verification: true
+trusted_key_servers: []
+suppress_key_server_warning: true
+rc_message: { per_second: 1000, burst_count: 1000 }
+rc_registration: { per_second: 1000, burst_count: 1000 }
+rc_login: { address: { per_second: 1000, burst_count: 1000 }, account: { per_second: 1000, burst_count: 1000 } }
+rc_joins: { local: { per_second: 1000, burst_count: 1000 }, remote: { per_second: 1000, burst_count: 1000 } }
+rc_invites: { per_room: { per_second: 1000, burst_count: 1000 }, per_user: { per_second: 1000, burst_count: 1000 } }
+rc_media_create: { per_second: 1000, burst_count: 1000 }
+rc_joins_per_room: { per_second: 1000, burst_count: 1000 }
+rc_profile: { per_second: 1000, burst_count: 1000 }
+rc_room_creation: { per_second: 1000, burst_count: 1000 }
+rc_federation: { window_size: 1000, sleep_limit: 1000, sleep_delay: 0, reject_limit: 10000, concurrent: 100 }

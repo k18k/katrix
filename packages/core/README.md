@@ -676,6 +676,24 @@ machine (3 nodes, 1000 users in 25 rooms, 20 messages/s for 5 minutes, Postgres 
 (all during the faults), 99.99% of checks passed, message delivery p50 45 ms / p95 323 ms (the
 slowest, 28 s, during the node kill), and memory stayed between 250 and 350 MB per node.
 
+### Interoperability
+
+[interop/](interop/) runs this server next to Synapse, federating both ways with certificates from
+a throwaway CA, and `interop/run.ts` drives scenarios through both servers' client APIs: joins and
+invites in both directions, messages, edits, reactions, redactions, state, typing and receipts,
+backfill of history after a remote join, media over federation, profiles, leave and rejoin, and
+end-to-end encryption in both directions with matrix-rust-sdk's crypto (the audit bot's client).
+CI runs it on every change.
+
+```sh
+docker compose -p matrix-interop -f packages/core/interop/docker-compose.yml up -d --build --wait
+node packages/core/interop/run.ts
+docker compose -p matrix-interop -f packages/core/interop/docker-compose.yml down -v
+```
+
+With Synapse 1.163.1 all 11 scenarios pass. They found one bug: history right after a
+partial-state join was out of reach (#94). Element and other UI clients are not automated.
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE). Free to use, modify and share for any noncommercial
