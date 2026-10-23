@@ -1,3 +1,4 @@
+import type { Row } from "#storage/types.ts";
 import { errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
 import { toClientEvent, type PDU } from "#core/events.ts";
@@ -234,6 +235,20 @@ async function threads(ctx: RequestContext) {
   return out;
 }
 
+/**
+ * A room's events ordered by timestamp in the search direction of `timestamp_to_event` (equal timestamps: the
+ * topologically nearest first). Arrival order (stream) is not timestamp order for federated events (#105).
+ * shortcut: reads all of the room's events; an indexed origin_server_ts column would bound it, once old rows get one.
+ */
+export async function eventsByTimestamp(hs: Homeserver, roomId: string, dir: "f" | "b"): Promise<Row[]> {
+  const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }] });
+  return rows.sort((a, b) =>
+    dir === "f"
+      ? a.json.origin_server_ts - b.json.origin_server_ts || a.depth - b.depth || a.stream - b.stream
+      : b.json.origin_server_ts - a.json.origin_server_ts || b.depth - a.depth || b.stream - a.stream,
+  );
+}
+
 export function registerTimelineRoutes(r: Router): void {
   r.client(
     "GET",
@@ -360,14 +375,7 @@ export function registerTimelineRoutes(r: Router): void {
         const dir = ctx.query.get("dir");
         if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
         let local: { event_id: string; origin_server_ts: number } | null = null;
-        const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }] });
-        // Equal timestamps: the topologically nearest event in the search direction wins.
-        rows.sort((a, b) =>
-          dir === "f"
-            ? a.json.origin_server_ts - b.json.origin_server_ts || a.depth - b.depth || a.stream - b.stream
-            : b.json.origin_server_ts - a.json.origin_server_ts || b.depth - a.depth || b.stream - a.stream,
-        );
-        for (const row of rows) {
+        for (const row of await eventsByTimestamp(hs, roomId, dir)) {
           const t = row.json.origin_server_ts;
           if (!(dir === "f" ? t >= ts : t <= ts)) continue;
           const visible = await hs.rooms.filterVisible(s.userId, roomId, [hs.rooms.rowToStored(row)]);

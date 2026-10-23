@@ -92,3 +92,35 @@ test("an expired verify key counts only for times before its expiry (#98)", asyn
     await t.close();
   }
 });
+
+test("timestamp_to_event over federation goes by timestamp, not arrival order (#105)", async () => {
+  const t = await testServer({ federation: { enabled: true } });
+  try {
+    const alice = await t.user("alice");
+    const room = (await t.call("POST", "/_matrix/client/v3/createRoom", { token: alice, body: {} })).json.room_id;
+    const send = async (txn: string) =>
+      (
+        await t.call("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(room)}/send/m.room.message/${txn}`, {
+          token: alice,
+          body: { msgtype: "m.text", body: txn },
+        })
+      ).json.event_id;
+    // Stored in this order, with timestamps out of order (as federated events can be).
+    const late = await send("late");
+    const early = await send("early");
+    for (const [id, ts] of [
+      [late, 3_000_000_000_300],
+      [early, 3_000_000_000_200],
+    ] as const) {
+      const row = await t.hs.db.findOne("events", [{ field: "event_id", value: id }]);
+      await t.hs.db.update("events", [{ field: "event_id", value: id }], { json: { ...row!.json, origin_server_ts: ts } });
+    }
+    const path = `/_matrix/federation/v1/timestamp_to_event/${encodeURIComponent(room)}?ts=3000000000150&dir=f`;
+    const res = await t.handler(
+      new Request(`http://localhost${path}`, { headers: { authorization: t.hs.federation.client.authHeader("localhost", "GET", path) } }),
+    );
+    assert.equal(((await res.json()) as any).event_id, early);
+  } finally {
+    await t.close();
+  }
+});

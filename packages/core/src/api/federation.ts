@@ -1,3 +1,4 @@
+import { eventsByTimestamp } from "#api/timeline.ts";
 import { MatrixError, errors } from "#core/errors.ts";
 import { fullProfile } from "#core/profile.ts";
 import { relationshipsForServer } from "#api/relationships.ts";
@@ -620,11 +621,9 @@ export function registerFederationRoutes(r: Router): void {
       const ts = Number(ctx.query.get("ts"));
       const dir = ctx.query.get("dir");
       if (!Number.isFinite(ts) || (dir !== "f" && dir !== "b")) throw errors.invalidParam("Invalid ts or dir");
-      const rows = await hs.db.findMany("events", {
-        where: [{ field: "room_id", value: roomId }],
-        sortBy: { field: "stream", direction: dir === "f" ? "asc" : "desc" },
-      });
-      for (const row of rows) {
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/105: events were taken in arrival order, which is not
+      // timestamp order for federated events, so a later event could be answered instead of the nearest one.
+      for (const row of await eventsByTimestamp(hs, roomId, dir)) {
         const t = row.json.origin_server_ts;
         if (dir === "f" ? t >= ts : t <= ts) return { event_id: row.event_id, origin_server_ts: t };
       }
