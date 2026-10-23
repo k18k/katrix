@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { memoryMedia } from "#index.ts";
 import { testServer } from "../helpers.ts";
 
 test("thumbnails and downloads are sandboxed and not sniffed (#79)", async () => {
@@ -24,6 +25,33 @@ test("thumbnails and downloads are sandboxed and not sniffed (#79)", async () =>
       assert.match(res.headers.get("content-security-policy") ?? "", /^sandbox;/, path);
       assert.equal(res.headers.get("x-content-type-options"), "nosniff", path);
     }
+  } finally {
+    await t.close();
+  }
+});
+
+test("two uploads to one pending media ID: one is stored, the other gets 409 (#102)", async () => {
+  // Hold each put until both uploads arrived, as on a slow storage backend.
+  let release!: () => void;
+  const both = new Promise<void>((resolve) => (release = resolve));
+  const media = memoryMedia();
+  const t = await testServer({ mediaAdapter: { ...media, put: async (...args) => (await both, media.put(...args)) } });
+  try {
+    const token = await t.user("alice");
+    const { content_uri } = (await t.call("POST", "/_matrix/media/v1/create", { token })).json;
+    const id = content_uri.split("/").pop();
+    const put = (body: string) =>
+      t.handler(
+        new Request(`http://localhost/_matrix/media/v3/upload/localhost/${id}`, {
+          method: "PUT",
+          headers: { authorization: `Bearer ${token}`, "content-type": "text/plain" },
+          body,
+        }),
+      );
+    const pending = [put("one"), put("two")];
+    setTimeout(release, 50);
+    const statuses = (await Promise.all(pending)).map((r) => r.status).sort();
+    assert.deepEqual(statuses, [200, 409]);
   } finally {
     await t.close();
   }

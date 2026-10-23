@@ -235,8 +235,14 @@ export function registerMediaRoutes(r: Router): void {
         const meta = await ctx.hs.db.findOne("media", [{ field: "media_id", value: ctx.params.mediaId }]);
         if (!meta) throw errors.notFound("Unknown media");
         if (meta.uploader !== s.userId) throw errors.forbidden("You did not create this media ID");
-        if (!meta.pending) throw new MatrixError(409, "M_CANNOT_OVERWRITE_MEDIA", "Media already uploaded");
-        await storeUpload(ctx, ctx.params.mediaId);
+        // https://github.com/k18k/matrix-nodejs-homeserver/issues/102: two uploads could both see the ID pending and
+        // store different content under it. The check and the store now run under a lock per media ID, so the
+        // second one finds it uploaded (409); an upload that fails leaves it pending for a retry.
+        await ctx.hs.cluster.lock(`media-upload:${ctx.params.mediaId}`, async () => {
+          const current = await ctx.hs.db.findOne("media", [{ field: "media_id", value: ctx.params.mediaId }]);
+          if (!current?.pending) throw new MatrixError(409, "M_CANNOT_OVERWRITE_MEDIA", "Media already uploaded");
+          await storeUpload(ctx, ctx.params.mediaId);
+        });
         return {};
       },
     }),
