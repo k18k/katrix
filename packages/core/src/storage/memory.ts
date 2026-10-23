@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { DatabaseAdapter, FindManyOptions, Row, Schema, WhereClause } from "#storage/types.ts";
 
 export function matches(row: Row, where: WhereClause[] = []): boolean {
@@ -42,6 +43,9 @@ export function memoryAdapter(): DatabaseAdapter {
     return t;
   };
   const keyOf = (model: string, row: Row) => JSON.stringify((pks.get(model) ?? Object.keys(row)).map((k) => row[k]));
+
+  const inTransaction = new AsyncLocalStorage<DatabaseAdapter>();
+  let gate: Promise<void> = Promise.resolve();
 
   /** Undo log entries: restore `row` (or delete when undefined) at `key`. */
   type Journal = { model: string; key: string; row: Row | undefined }[];
@@ -112,19 +116,46 @@ export function memoryAdapter(): DatabaseAdapter {
         return max;
       },
       async transaction(fn) {
+        // Already inside a transaction (on this async path): join it.
+        const current = inTransaction.getStore();
+        if (current) return fn(current);
+        const previous = gate;
+        let release!: () => void;
+        gate = new Promise((r) => (release = r));
+        await previous;
         const log: Journal = [];
+        const tx = build(log);
         try {
-          return await fn(build(log));
+          return await inTransaction.run(tx, () => fn(tx));
         } catch (err) {
           for (const entry of log.reverse()) {
             if (entry.row === undefined) table(entry.model).delete(entry.key);
             else table(entry.model).set(entry.key, entry.row);
           }
           throw err;
+        } finally {
+          release();
         }
       },
     };
-    return adapter;
+    if (journal) return adapter;
+    // https://github.com/k18k/matrix-nodejs-homeserver/issues/101: a rollback restores the values the transaction
+    // replaced, so a write made meanwhile outside it was overwritten. Outside transactions, operations wait while
+    // one is open; the check and the operation (synchronous in this adapter) run in the same step.
+    const run =
+      <A extends unknown[], R>(op: (...args: A) => Promise<R>) =>
+      async (...args: A): Promise<R> => {
+        if (inTransaction.getStore()) return op(...args);
+        for (;;) {
+          const current = gate;
+          await current;
+          if (current === gate) return op(...args);
+        }
+      };
+    const outer = { ...adapter };
+    for (const k of Object.keys(outer) as (keyof DatabaseAdapter)[])
+      if (k !== "transaction" && k !== "migrate") (outer as any)[k] = run((adapter as any)[k]);
+    return outer;
   };
   return build(null);
 }

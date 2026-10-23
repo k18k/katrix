@@ -198,6 +198,27 @@ export const adapterConformance: ConformanceCheck[] = [
     },
   },
   {
+    // #101: the memory adapter's rollback restored the value the transaction had replaced, over the outside write.
+    name: "a transaction's rollback does not undo a write made outside it meanwhile",
+    async run(db) {
+      if (!db.transaction) return;
+      await db.create(T, item("a", 1, { label: "0" }));
+      let resume!: () => void;
+      const paused = new Promise<void>((r) => (resume = r));
+      const tx = db
+        .transaction(async (t) => {
+          await t.update(T, [{ field: "id", value: 1 }], { label: "1" });
+          await paused;
+          throw new Error("rollback");
+        })
+        .catch(() => {});
+      const outside = db.update(T, [{ field: "id", value: 1 }], { label: "2" });
+      resume();
+      await Promise.all([tx, outside]);
+      assert.equal((await db.findOne(T, [{ field: "id", value: 1 }]))?.label, "2");
+    },
+  },
+  {
     name: "of concurrent deletes of one row, exactly one reports it (single-use tokens rely on this)",
     async run(db) {
       await db.create(T, item("a", 1));
