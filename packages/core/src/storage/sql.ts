@@ -222,7 +222,10 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
           const shape = Object.keys(row)
             .filter((k) => row[k] !== undefined)
             .join("\0");
-          groups.set(shape, [...(groups.get(shape) ?? []), row]);
+          // https://github.com/k18k/matrix-nodejs-homeserver/issues/106: the group was copied for every row (quadratic).
+          let group = groups.get(shape);
+          if (!group) groups.set(shape, (group = []));
+          group.push(row);
         }
         for (const group of groups.values()) {
           const perStatement = Math.max(1, Math.floor(MAX_PARAMS / Object.keys(group[0]).length));
