@@ -1,9 +1,9 @@
 import { randomInt } from "node:crypto";
-import { MatrixError, errors } from "./errors.ts";
-import { randomString } from "./crypto.ts";
-import { toMsisdn } from "./phone.ts";
-import type { Homeserver } from "../homeserver.ts";
-import { escapeHtml } from "./html.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { randomString } from "#core/crypto.ts";
+import { toMsisdn } from "#core/phone.ts";
+import type { Homeserver } from "#homeserver.ts";
+import { escapeHtml } from "#core/html.ts";
 
 // Third-party identifiers (email addresses and phone numbers) validated by this homeserver: it
 // sends a token through the host application's `threepid.sendEmail`/`sendSms`, and the user proves

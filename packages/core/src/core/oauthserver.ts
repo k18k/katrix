@@ -1,7 +1,7 @@
 import { createHash, randomInt, sign, timingSafeEqual } from "node:crypto";
-import { randomToken, urlSafeBase64 } from "./crypto.ts";
-import { canonicalJson } from "./json.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { randomToken, urlSafeBase64 } from "#core/crypto.ts";
+import { canonicalJson } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 // The OAuth 2.0 API of the Matrix spec (v1.15, device grant and account management v1.18), served
 // by the homeserver itself: dynamic client registration (RFC 7591), the authorization code grant

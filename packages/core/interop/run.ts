@@ -1,6 +1,6 @@
 // Interoperability scenarios between this server (ours.test) and Synapse (synapse.test), driven
 // through both servers' client APIs (https://github.com/k18k/matrix-nodejs-homeserver/issues/61).
-// Start the servers with interop/docker-compose.yml, then: node interop/run.ts
+// Start the servers with interop/docker-compose.yml, then: node --conditions=matrix-src interop/run.ts
 // Prints a Markdown table of the scenarios (also usable as a CI job summary); exits 1 if any failed.
 import { randomBytes } from "node:crypto";
 import { CryptoClient } from "../src/auditbot/client.ts";

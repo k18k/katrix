@@ -3,7 +3,7 @@
 # from a throwaway CA. `node interop/run.ts` drives the scenarios through both servers' client APIs.
 #
 #   docker compose -p matrix-interop -f interop/docker-compose.yml up -d --build --wait
-#   node interop/run.ts
+#   node --conditions=matrix-src interop/run.ts
 #   docker compose -p matrix-interop -f interop/docker-compose.yml down -v
 services:
   ca:

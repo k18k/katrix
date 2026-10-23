@@ -1,13 +1,13 @@
-import { getState } from "../core/authrules.ts";
-import { isObject } from "../core/json.ts";
-import type { StoredEvent } from "../core/rooms.ts";
-import type { Router } from "../http/router.ts";
-import { procedure } from "../http/procedure.ts";
-import { v } from "../core/vpm.ts";
-import { body, fail } from "../http/input.ts";
-import { matchesFilter, type EventFilter } from "./filters.ts";
-import { paginate, topoToken } from "./timeline.ts";
-import { M } from "../core/m.ts";
+import { getState } from "#core/authrules.ts";
+import { isObject } from "#core/json.ts";
+import type { StoredEvent } from "#core/rooms.ts";
+import type { Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
+import { v } from "#core/vpm.ts";
+import { body, fail } from "#http/input.ts";
+import { matchesFilter, type EventFilter } from "#api/filters.ts";
+import { paginate, topoToken } from "#api/timeline.ts";
+import { M } from "#core/m.ts";
 
 const DEFAULT_KEYS = ["content.body", "content.name", "content.topic"];
 

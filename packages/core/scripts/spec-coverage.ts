@@ -1,7 +1,7 @@
 // Spec coverage: which endpoints of the Matrix spec this server implements, and which are tested.
 // Usage:
 //   curl -sL https://github.com/matrix-org/matrix-spec/archive/refs/tags/v1.19.tar.gz | tar xz -C /tmp
-//   node scripts/spec-coverage.ts /tmp/matrix-spec-1.19 complement-results.json > SPEC-COVERAGE.md
+//   node --conditions=matrix-src scripts/spec-coverage.ts /tmp/matrix-spec-1.19 complement-results.json > SPEC-COVERAGE.md
 //
 // Implemented: the router answers the endpoint (method and path). Tested: Complement sent the
 // request (its `[CSAPI]` request log, or the path in its output, from a full run's `go test -json`),

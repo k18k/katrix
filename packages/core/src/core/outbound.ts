@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { BlockList, isIP } from "node:net";
 import { Readable } from "node:stream";
-import { errors } from "./errors.ts";
+import { errors } from "#core/errors.ts";
 
 // Outbound requests to addresses that users or remote servers choose: federation destinations,
 // media locations named by remote servers, push gateways, identity servers, URL previews. Such an

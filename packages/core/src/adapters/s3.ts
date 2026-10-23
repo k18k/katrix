@@ -1,5 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
-import type { MediaAdapter } from "./media.ts";
+import type { MediaAdapter } from "#adapters/media.ts";
 
 export interface S3MediaOptions {
   bucket: string;

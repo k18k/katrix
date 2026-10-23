@@ -1,14 +1,14 @@
-import { MatrixError } from "../core/errors.ts";
-import { longPoll } from "./longpoll.ts";
-import { getState } from "../core/authrules.ts";
-import { splitStateKey, toClientEvent, type PDU } from "../core/events.ts";
-import { isObject } from "../core/json.ts";
-import type { Session } from "../core/auth.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { Router } from "../http/router.ts";
-import { procedure, type ProcedureContext } from "../http/procedure.ts";
-import { v } from "../core/vpm.ts";
-import { body as bodySchema, lenient } from "../http/input.ts";
+import { MatrixError } from "#core/errors.ts";
+import { longPoll } from "#api/longpoll.ts";
+import { getState } from "#core/authrules.ts";
+import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
+import { isObject } from "#core/json.ts";
+import type { Session } from "#core/auth.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { Router } from "#http/router.ts";
+import { procedure, type ProcedureContext } from "#http/procedure.ts";
+import { v } from "#core/vpm.ts";
+import { body as bodySchema, lenient } from "#http/input.ts";
 
 // Malformed parts of a sliding sync request are ignored rather than refused, as before.
 const slidingSyncBody = bodySchema({
@@ -17,8 +17,8 @@ const slidingSyncBody = bodySchema({
   room_subscriptions: lenient(v.record(v.string(), v.unknown())),
   extensions: lenient(v.record(v.string(), v.unknown())),
 });
-import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "./sync.ts";
-import { M, UNSTABLE } from "../core/m.ts";
+import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "#api/sync.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 /**
  * Simplified sliding sync (MSC4186), as used by Element X.
@@ -394,14 +394,14 @@ async function buildExtensions(
       else if (roomIds.includes(r.room_id) || since !== null) (rooms[r.room_id] ??= []).push(ev);
     }
     if (since === null && !global.some((e) => e.type === M.PUSH_RULES)) {
-      const { readOnlyRules } = await import("../core/pushrules.ts");
+      const { readOnlyRules } = await import("#core/pushrules.ts");
       global.push({ type: M.PUSH_RULES, content: { global: await readOnlyRules(hs, userId) } });
     }
     out.account_data = { global, rooms };
   }
 
   if (ext[UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS]?.enabled) {
-    const { threadSubscriptionsExtension } = await import("./threadsubs.ts");
+    const { threadSubscriptionsExtension } = await import("#api/threadsubs.ts");
     out[UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS] = await threadSubscriptionsExtension(
       hs,
       userId,

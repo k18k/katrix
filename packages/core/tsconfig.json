@@ -12,7 +12,8 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": false,
-    "noEmit": true
+    "noEmit": true,
+    "customConditions": ["matrix-src"]
   },
   "include": ["src", "test", "examples", "complement", "scripts", "loadtest"]
 }

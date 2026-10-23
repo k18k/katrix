@@ -1,15 +1,15 @@
-import { getState, powerLevels, userLevel, type StateMap } from "./authrules.ts";
-import { splitStateKey, toClientEvent, type PDU } from "./events.ts";
-import { isObject } from "./json.ts";
-import { globMatch, globSearchWords } from "./glob.ts";
-import { KINDS, readOnlyRules, type Rule } from "./pushrules.ts";
-import { isSubscribed } from "../api/threadsubs.ts";
-import type { StoredEvent } from "./rooms.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { Row } from "../storage/types.ts";
-import { upsertMany } from "../storage/batch.ts";
-import { freeze } from "./changes.ts";
-import { M, UNSTABLE } from "./m.ts";
+import { getState, powerLevels, userLevel, type StateMap } from "#core/authrules.ts";
+import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
+import { isObject } from "#core/json.ts";
+import { globMatch, globSearchWords } from "#core/glob.ts";
+import { KINDS, readOnlyRules, type Rule } from "#core/pushrules.ts";
+import { isSubscribed } from "#api/threadsubs.ts";
+import type { StoredEvent } from "#core/rooms.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
+import { upsertMany } from "#storage/batch.ts";
+import { freeze } from "#core/changes.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 /** Look up a dotted path; `\.` escapes a literal dot in a key (e.g. `content.m\.relates_to`). */
 export function valueAtPath(obj: unknown, path: string): unknown {

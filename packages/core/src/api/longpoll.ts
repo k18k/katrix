@@ -1,4 +1,4 @@
-import type { Homeserver } from "../homeserver.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 /**
  * The long-poll loop of `/sync` and sliding sync: build a response up to the current stream

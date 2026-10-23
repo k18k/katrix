@@ -1,4 +1,4 @@
-import { randomString } from "./crypto.ts";
+import { randomString } from "#core/crypto.ts";
 
 export const LOCALPART_RE = /^[a-z0-9._=\-/+]+$/;
 

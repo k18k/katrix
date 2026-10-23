@@ -472,7 +472,7 @@ the commands below run in `packages/core`.
 npm install                      # at the repository root
 npm run typecheck                # tsc only type-checks (noEmit)
 npm run build                    # tsc → dist/ (what the published package contains)
-node examples/node-http.ts       # development runs the TypeScript sources directly (type stripping)
+node --conditions=matrix-src examples/node-http.ts      # development runs the TypeScript sources directly (type stripping)
 ```
 
 Endpoints are procedures (`src/http/procedure.ts`): a route declares what it needs and a
@@ -494,7 +494,10 @@ Inside `src`, modules import each other through the package's
 
 Node does not strip types from files inside `node_modules`, so the package ships `dist/`,
 built by TypeScript (`tsconfig.build.json`): one `.js` and one `.d.ts` per source module.
-Sources import each other by relative paths, so the output needs no rewriting. `npm pack`, `npm publish` and
+Sources import each other as `#core/x.ts`; `package.json` maps those imports to `dist/*.js` by
+default, and to `src/*.ts` under the `matrix-src` condition. Anything that runs the sources
+directly (tests, examples, Complement and load-test images) passes `--conditions=matrix-src`; the
+TypeScript config sets it as a custom condition. `npm pack`, `npm publish` and
 installs from GitHub build it through the `prepare` script. Recent npm versions ask you to
 approve install scripts of git dependencies (`npm install-scripts approve`).
 
@@ -596,7 +599,7 @@ ONLINE_USERS=1000 MESSAGES_PER_SECOND=50 ROOMS=25 RAMP=30s DURATION=30s \
 # CLUSTER=0: one process on Postgres without a cluster adapter
 
 # SQLite, one process, no Docker (needs k6 installed)
-DATA_DIR=/tmp/lt node loadtest/server.ts &
+DATA_DIR=/tmp/lt node --conditions=matrix-src loadtest/server.ts &
 BASE_URL=http://localhost:8008 ONLINE_USERS=1000 MESSAGES_PER_SECOND=50 ROOMS=25 k6 run loadtest/k6/matrix.js
 ```
 
@@ -696,7 +699,7 @@ CI runs it on every change.
 
 ```sh
 docker compose -p matrix-interop -f packages/core/interop/docker-compose.yml up -d --build --wait
-node packages/core/interop/run.ts
+node --conditions=matrix-src packages/core/interop/run.ts
 docker compose -p matrix-interop -f packages/core/interop/docker-compose.yml down -v
 ```
 

@@ -1,9 +1,9 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { randomString } from "../core/crypto.ts";
-import type { RequestContext, Router } from "../http/router.ts";
-import { procedure } from "../http/procedure.ts";
-import { maxRequestBody } from "../http/handler.ts";
-import { M } from "../core/m.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { randomString } from "#core/crypto.ts";
+import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
+import { maxRequestBody } from "#http/handler.ts";
+import { M } from "#core/m.ts";
 
 const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif|apng)|video\/(mp4|webm|ogg)|audio\/(mpeg|ogg|wav|webm|mp4|aac|flac)|text\/plain)$/;
 

@@ -1,5 +1,5 @@
-import { v } from "../core/vpm.ts";
-import { MatrixError } from "../core/errors.ts";
+import { v } from "#core/vpm.ts";
+import { MatrixError } from "#core/errors.ts";
 
 // Request body schemas (vpm, core/vpm.ts), used as a procedure's `input` (see http/procedure.ts). Matrix
 // requires servers to ignore unknown keys, so body schemas are loose objects: unknown fields pass

@@ -1,6 +1,6 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { globMatch } from "../core/glob.ts";
-import { getState, membershipOf, type StateMap } from "../core/authrules.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { globMatch } from "#core/glob.ts";
+import { getState, membershipOf, type StateMap } from "#core/authrules.ts";
 import {
   SUPPORTED_ROOM_VERSIONS,
   computeContentHash,
@@ -13,19 +13,19 @@ import {
   stateKey,
   stripState,
   type PDU,
-} from "../core/events.ts";
-import { unpaddedBase64, urlSafeBase64 } from "../core/crypto.ts";
-import { isObject } from "../core/json.ts";
-import { parseId } from "../core/ids.ts";
-import { MissingStateError } from "../core/rooms.ts";
-import { authStateFromAuthEvents, checkAuth } from "../core/authrules.ts";
-import { resolveState } from "../core/stateres.ts";
-import type { Homeserver } from "../homeserver.ts";
-import { FederationClient } from "./client.ts";
-import { KeyRing } from "./keyring.ts";
-import { TransactionSender } from "./sender.ts";
-import { M } from "../core/m.ts";
-import { publicGet } from "../core/outbound.ts";
+} from "#core/events.ts";
+import { unpaddedBase64, urlSafeBase64 } from "#core/crypto.ts";
+import { isObject } from "#core/json.ts";
+import { parseId } from "#core/ids.ts";
+import { MissingStateError } from "#core/rooms.ts";
+import { authStateFromAuthEvents, checkAuth } from "#core/authrules.ts";
+import { resolveState } from "#core/stateres.ts";
+import type { Homeserver } from "#homeserver.ts";
+import { FederationClient } from "#federation/client.ts";
+import { KeyRing } from "#federation/keyring.ts";
+import { TransactionSender } from "#federation/sender.ts";
+import { M } from "#core/m.ts";
+import { publicGet } from "#core/outbound.ts";
 
 export interface FederationOptions {
   /** Enable federation (talking to other homeservers). Default: false, so that a server only joins the network on purpose. */

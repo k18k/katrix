@@ -1,9 +1,9 @@
-import { CLUSTER_RESYNC } from "./cluster.ts";
-import { errors } from "./errors.ts";
-import { randomToken } from "./crypto.ts";
-import { generateDeviceId } from "./ids.ts";
-import type { AppServiceRegistration } from "./appservices.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { CLUSTER_RESYNC } from "#core/cluster.ts";
+import { errors } from "#core/errors.ts";
+import { randomToken } from "#core/crypto.ts";
+import { generateDeviceId } from "#core/ids.ts";
+import type { AppServiceRegistration } from "#core/appservices.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 export interface Session {
   userId: string;

@@ -1,9 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getFetchHandler } from "../http/adapters.ts";
-import type { Homeserver } from "../homeserver.ts";
-import { CryptoClient } from "./client.ts";
-import type { AuditRecord, AuditSink } from "./sinks.ts";
+import { getFetchHandler } from "#http/adapters.ts";
+import type { Homeserver } from "#homeserver.ts";
+import { CryptoClient } from "#auditbot/client.ts";
+import type { AuditRecord, AuditSink } from "#auditbot/sinks.ts";
 
 // The audit bot: an account of the server that is a member of every room and writes every event
 // to an archive, end-to-end encrypted ones decrypted. It is a room member like any other (in the

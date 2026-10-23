@@ -1,10 +1,10 @@
-import { MatrixError, errors } from "../core/errors.ts";
-import { isObject } from "../core/json.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { RequestContext, Router } from "../http/router.ts";
-import { procedure } from "../http/procedure.ts";
-import { v } from "../core/vpm.ts";
-import { body, fail } from "../http/input.ts";
+import { MatrixError, errors } from "#core/errors.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
+import { v } from "#core/vpm.ts";
+import { body, fail } from "#http/input.ts";
 
 const required = fail("M_BAD_JSON", "algorithm and auth_data are required");
 const createVersionBody = body({ algorithm: v.string(required), auth_data: v.looseObject({}, required) });

@@ -1,8 +1,8 @@
-import type { v } from "../core/vpm.ts";
-import type { Session } from "../core/auth.ts";
-import type { RateLimitAction } from "../core/ratelimit.ts";
-import { inputError } from "./input.ts";
-import type { Handler, HandlerResult, RequestContext } from "./router.ts";
+import type { v } from "#core/vpm.ts";
+import type { Session } from "#core/auth.ts";
+import type { RateLimitAction } from "#core/ratelimit.ts";
+import { inputError } from "#http/input.ts";
+import type { Handler, HandlerResult, RequestContext } from "#http/router.ts";
 
 // Procedures: an endpoint is declared as what it needs (authentication, a rate limit, a body
 // schema, optionally a response schema) plus a handler. The procedure runs those steps in a fixed

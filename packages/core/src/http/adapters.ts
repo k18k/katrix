@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
-import type { Homeserver } from "../homeserver.ts";
-import { handleRequest, maxRequestBody } from "./handler.ts";
+import type { Homeserver } from "#homeserver.ts";
+import { handleRequest, maxRequestBody } from "#http/handler.ts";
 
 /** Paths this library serves. Framework adapters forward only these. */
 export function isMatrixPath(pathname: string): boolean {

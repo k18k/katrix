@@ -1,13 +1,13 @@
-import { errors } from "../core/errors.ts";
-import { toClientEvent } from "../core/events.ts";
-import { isValidRoomId } from "../core/ids.ts";
-import type { Session } from "../core/auth.ts";
-import type { StoredEvent } from "../core/rooms.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { Router } from "../http/router.ts";
-import { procedure } from "../http/procedure.ts";
-import { visibleState } from "./rooms.ts";
-import { paginate } from "./timeline.ts";
+import { errors } from "#core/errors.ts";
+import { toClientEvent } from "#core/events.ts";
+import { isValidRoomId } from "#core/ids.ts";
+import type { Session } from "#core/auth.ts";
+import type { StoredEvent } from "#core/rooms.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
+import { visibleState } from "#api/rooms.ts";
+import { paginate } from "#api/timeline.ts";
 
 // Endpoints from before /sync (deprecated since r0 but still in the spec), and room previews
 // ("peeking") through /rooms/{roomId}/initialSync and /events?room_id=.

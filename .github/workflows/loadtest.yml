@@ -58,7 +58,7 @@ jobs:
         run: |
           # k6 runs as its own user in its container: it has to be able to write the summaries.
           mkdir -p loadtest/results "$RUNNER_TEMP/lt" && chmod 777 loadtest/results
-          DATA_DIR="$RUNNER_TEMP/lt" node loadtest/server.ts > loadtest/results/sqlite-server.log 2>&1 &
+          DATA_DIR="$RUNNER_TEMP/lt" node --conditions=matrix-src loadtest/server.ts > loadtest/results/sqlite-server.log 2>&1 &
           server=$!
           for i in $(seq 60); do curl -sf http://localhost:8008/_matrix/client/versions >/dev/null && break; sleep 1; done
           docker run --rm --network host -v "$PWD/loadtest/k6:/scripts:ro" -v "$PWD/loadtest/results:/results" \

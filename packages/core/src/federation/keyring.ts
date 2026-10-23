@@ -1,7 +1,7 @@
 import { createPublicKey, type KeyObject } from "node:crypto";
-import { publicKeyFromBase64, verifyJsonSignature } from "../core/crypto.ts";
-import { isObject } from "../core/json.ts";
-import type { Homeserver } from "../homeserver.ts";
+import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
 
 interface CachedKey {
   key: KeyObject;

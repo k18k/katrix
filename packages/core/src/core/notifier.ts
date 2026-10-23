@@ -1,4 +1,4 @@
-import type { ClusterAdapter } from "./cluster.ts";
+import type { ClusterAdapter } from "#core/cluster.ts";
 
 /** Users whose latest wake-up position is remembered (#50); the oldest are forgotten first. */
 const RECENT_USERS = 100_000;

@@ -1,9 +1,9 @@
-import { globMatch as matchGlob } from "../core/glob.ts";
-import { errors } from "../core/errors.ts";
-import { isObject } from "../core/json.ts";
-import type { PDU } from "../core/events.ts";
-import type { RequestContext } from "../http/router.ts";
-import { M, UNSTABLE } from "../core/m.ts";
+import { globMatch as matchGlob } from "#core/glob.ts";
+import { errors } from "#core/errors.ts";
+import { isObject } from "#core/json.ts";
+import type { PDU } from "#core/events.ts";
+import type { RequestContext } from "#http/router.ts";
+import { M, UNSTABLE } from "#core/m.ts";
 
 export interface EventFilter {
   limit?: number;

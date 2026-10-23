@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import type { BatchOptions, BatchQuery, DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "./types.ts";
+import type { BatchOptions, BatchQuery, DatabaseAdapter, FieldType, Row, Schema, WhereClause } from "#storage/types.ts";
 
 export type SqlDialect = "sqlite" | "postgres" | "mysql";
 

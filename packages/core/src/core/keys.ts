@@ -1,8 +1,8 @@
-import { errors } from "./errors.ts";
-import { isObject } from "./json.ts";
-import type { Homeserver } from "../homeserver.ts";
-import type { FindManyOptions, Row } from "../storage/types.ts";
-import { UNSTABLE } from "./m.ts";
+import { errors } from "#core/errors.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
+import type { FindManyOptions, Row } from "#storage/types.ts";
+import { UNSTABLE } from "#core/m.ts";
 
 /** End-to-end encryption key storage (device keys, one-time keys, cross-signing). */
 export class KeyService {

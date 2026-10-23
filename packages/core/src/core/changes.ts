@@ -1,5 +1,5 @@
-import type { BatchQuery, DatabaseAdapter, FindManyOptions, Row, WhereClause } from "../storage/types.ts";
-import { readBatch } from "../storage/batch.ts";
+import type { BatchQuery, DatabaseAdapter, FindManyOptions, Row, WhereClause } from "#storage/types.ts";
+import { readBatch } from "#storage/batch.ts";
 
 /**
  * A read of `trackedReads`: from a value cache (`cached`), skipped as empty when a stream log says

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { CLUSTER_RESYNC, underLease, type ClusterAdapter } from "../core/cluster.ts";
-import { ignorePgError } from "../storage/sql.ts";
+import { CLUSTER_RESYNC, underLease, type ClusterAdapter } from "#core/cluster.ts";
+import { ignorePgError } from "#storage/sql.ts";
 
-export { localCluster, type ClusterAdapter } from "../core/cluster.ts";
+export { localCluster, type ClusterAdapter } from "#core/cluster.ts";
 
 /** Per-process queue so each instance holds at most one remote lock per key. */
 function localQueue() {
