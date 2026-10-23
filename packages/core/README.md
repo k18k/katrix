@@ -651,6 +651,31 @@ The load test itself was fixed too: its senders registered during the measuremen
 server was sent fewer messages, and nginx could start after k6 (a red badge with "100% failed").
 <!-- loadtest-results:end -->
 
+### Soak and failure injection
+
+`test/core/reliability.test.ts` checks in every CI run what has to hold under concurrency,
+restarts and failing writes: two nodes sending at once deliver every message to `/sync` exactly
+once and in order, a sync token survives a restart, and a write that fails halfway leaves no trace
+and does not stall `/sync`. Lost cluster leases (#57), concurrent token redemption (#56),
+cross-node revocation (#55) and dropped Postgres connections (#91, #92) have tests of their own.
+
+Longer runs are local. `loadtest/chaos.sh` runs the load scenario on Postgres with several nodes
+and meanwhile restarts Postgres, kills one node (SIGKILL) and starts it again; `FAULTS=0` makes it
+a plain soak run (`DURATION=1h`, `6h`, …). It prints each node's first and last 10-second report
+(memory, event-loop delay, 5xx) and k6's summary.
+
+```sh
+ONLINE_USERS=1000 MESSAGES_PER_SECOND=20 ROOMS=25 RAMP=30s DURATION=5m NODES=3 packages/core/loadtest/chaos.sh
+```
+
+What has to hold: requests fail only while a fault lasts, every node serves again within seconds
+after it ends, and no node exits. The first run found that a Postgres restart crashed every node
+(#91) and cut them off from each other's messages for good (#92). Since then, on one developer
+machine (3 nodes, 1000 users in 25 rooms, 20 messages/s for 5 minutes, Postgres restarted at
+1:30 and a node killed from 2:30 to 3:30): k6's thresholds passed, 10 of 264,732 requests failed
+(all during the faults), 99.99% of checks passed, message delivery p50 45 ms / p95 323 ms (the
+slowest, 28 s, during the node kill), and memory stayed between 250 and 350 MB per node.
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE). Free to use, modify and share for any noncommercial
