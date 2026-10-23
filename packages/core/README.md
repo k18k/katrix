@@ -600,6 +600,15 @@ DATA_DIR=/tmp/lt node loadtest/server.ts &
 BASE_URL=http://localhost:8008 ONLINE_USERS=1000 MESSAGES_PER_SECOND=50 ROOMS=25 k6 run loadtest/k6/matrix.js
 ```
 
+How many users does this machine support? `loadtest/capacity.sh` doubles the load until k6's
+thresholds fail, narrows it down, and ends with a line such as "This machine safely supports
+~N users online with 5 instances on one Postgres database" (one message per second per 10
+users, 40 users per room; `NODES`, `START`, `RAMP` and `DURATION` change the setup).
+
+```sh
+packages/core/loadtest/capacity.sh
+```
+
 <!-- loadtest-results:start -->
 The badges at the top come from the [Load test workflow](https://github.com/k18k/matrix-nodejs-homeserver/actions/workflows/loadtest.yml) on main: the same
 scenario on one GitHub runner (4 CPUs), with k6 on the same machine, and clusters of two nodes
