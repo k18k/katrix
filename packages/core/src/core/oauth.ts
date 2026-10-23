@@ -1,7 +1,7 @@
-import { errors } from "#core/errors.ts";
-import { LOCALPART_RE } from "#core/ids.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { Session } from "#core/auth.ts";
+import { errors } from "./errors.ts";
+import { LOCALPART_RE } from "./ids.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { Session } from "./auth.ts";
 
 /**
  * Delegate authentication to an external OAuth 2.0 / OpenID Connect provider

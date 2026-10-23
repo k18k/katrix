@@ -1,10 +1,10 @@
-import { MatrixError, errors } from "#core/errors.ts";
-import { randomString } from "#core/crypto.ts";
-import { isObject } from "#core/json.ts";
-import type { Homeserver } from "#homeserver.ts";
-import { M, UNSTABLE } from "#core/m.ts";
-import type { Session } from "#core/auth.ts";
-import { crossSigningResetAllowed } from "#core/oauthserver.ts";
+import { MatrixError, errors } from "../core/errors.ts";
+import { randomString } from "../core/crypto.ts";
+import { isObject } from "../core/json.ts";
+import type { Homeserver } from "../homeserver.ts";
+import { M, UNSTABLE } from "../core/m.ts";
+import type { Session } from "../core/auth.ts";
+import { crossSigningResetAllowed } from "../core/oauthserver.ts";
 
 interface UiaSession {
   completed: string[];
@@ -111,7 +111,7 @@ export async function requireUia(
         if (!viaOAuth) throw challenge({ errcode: "M_UNRECOGNIZED", error: "OAuth is not enabled" });
         throw challenge({ errcode: "M_FORBIDDEN", error: "The reset has not been approved on the account page" });
       case M.LOGIN.REGISTRATION_TOKEN: {
-        const { registrationTokenValid } = await import("#api/account.ts");
+        const { registrationTokenValid } = await import("./account.ts");
         if (typeof auth.token !== "string" || !(await registrationTokenValid(hs, auth.token))) {
           throw challenge({ errcode: "M_FORBIDDEN", error: "Invalid registration token" });
         }

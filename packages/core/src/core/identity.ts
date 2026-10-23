@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { MatrixError } from "#core/errors.ts";
-import type { Homeserver } from "#homeserver.ts";
+import { MatrixError } from "./errors.ts";
+import type { Homeserver } from "../homeserver.ts";
 
 // Client for the Identity Service API (v2), used for 3PID invites and bindings. Identity servers
 // are named by host (and optional port), as clients pass them in `id_server`.

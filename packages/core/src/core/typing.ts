@@ -1,4 +1,4 @@
-import type { Homeserver } from "#homeserver.ts";
+import type { Homeserver } from "../homeserver.ts";
 
 interface TypingMessage {
   roomId: string;

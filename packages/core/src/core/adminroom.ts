@@ -1,10 +1,10 @@
-import { randomString } from "#core/crypto.ts";
-import { MatrixError } from "#core/errors.ts";
-import { isValidRoomId, isValidUserId } from "#core/ids.ts";
-import type { PDU } from "#core/events.ts";
-import type { Homeserver } from "#homeserver.ts";
-import { createUser } from "#api/account.ts";
-import { M, UNSTABLE } from "#core/m.ts";
+import { randomString } from "./crypto.ts";
+import { MatrixError } from "./errors.ts";
+import { isValidRoomId, isValidUserId } from "./ids.ts";
+import type { PDU } from "./events.ts";
+import type { Homeserver } from "../homeserver.ts";
+import { createUser } from "../api/account.ts";
+import { M, UNSTABLE } from "./m.ts";
 
 export interface AdminRoomOptions {
   /** Enable the admin room and admin bot. Default: true when the option object is given. */

@@ -1,4 +1,4 @@
-import type { BatchQuery, DatabaseAdapter, Row, Schema } from "#storage/types.ts";
+import type { BatchQuery, DatabaseAdapter, Row, Schema } from "./types.ts";
 
 /**
  * Run independent reads together: in one round trip when the adapter can (`findManyBatch`),

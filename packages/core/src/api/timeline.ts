@@ -1,14 +1,14 @@
-import { errors } from "#core/errors.ts";
-import { getState } from "#core/authrules.ts";
-import { toClientEvent, type PDU } from "#core/events.ts";
-import { isObject } from "#core/json.ts";
-import type { StoredEvent } from "#core/rooms.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
-import { procedure } from "#http/procedure.ts";
-import { matchesFilter, parseRoomEventFilter, type EventFilter } from "#api/filters.ts";
-import { M } from "#core/m.ts";
-import { parseToken, requireRoom, viewerOf, visibleState } from "#api/rooms.ts";
+import { errors } from "../core/errors.ts";
+import { getState } from "../core/authrules.ts";
+import { toClientEvent, type PDU } from "../core/events.ts";
+import { isObject } from "../core/json.ts";
+import type { StoredEvent } from "../core/rooms.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { procedure } from "../http/procedure.ts";
+import { matchesFilter, parseRoomEventFilter, type EventFilter } from "./filters.ts";
+import { M } from "../core/m.ts";
+import { parseToken, requireRoom, viewerOf, visibleState } from "./rooms.ts";
 
 // Room timelines: /messages (with backfill over federation), single events, /context, relations,
 // threads and timestamp_to_event.

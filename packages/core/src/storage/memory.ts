@@ -1,4 +1,4 @@
-import type { DatabaseAdapter, FindManyOptions, Row, Schema, WhereClause } from "#storage/types.ts";
+import type { DatabaseAdapter, FindManyOptions, Row, Schema, WhereClause } from "./types.ts";
 
 export function matches(row: Row, where: WhereClause[] = []): boolean {
   for (const w of where) {

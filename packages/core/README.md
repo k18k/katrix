@@ -11,7 +11,7 @@ tied to any HTTP framework, database, auth system or deployment shape. You can u
 it for a demo on SQLite, embed it in a monolith next to your existing users, or run
 it as a horizontally scaled chat backend that replaces Slack or Teams.
 
-- Node.js **22+** (tested on 22, 24 and 26; development uses 26). TypeScript with only erasable syntax (`erasableSyntaxOnly`), and no runtime dependencies ([zod](https://zod.dev), used for request validation, is bundled).
+- Node.js **22+** (tested on 22, 24 and 26; development uses 26). TypeScript with only erasable syntax (`erasableSyntaxOnly`), and no runtime dependencies (request bodies are checked by a small built-in validator, `src/core/vpm.ts`).
 - Client-Server API, Server-Server API (federation), end-to-end encryption, sliding sync, VoIP/MatrixRTC and push
 - Runs on `node:http`, Express, Fastify, Hono or any fetch runtime
 - Stores data in SQLite, PostgreSQL, MySQL, memory or your own adapter
@@ -471,7 +471,7 @@ the commands below run in `packages/core`.
 ```sh
 npm install                      # at the repository root
 npm run typecheck                # tsc only type-checks (noEmit)
-npm run build                    # tsdown → dist/ (what the published package contains)
+npm run build                    # tsc → dist/ (what the published package contains)
 node examples/node-http.ts       # development runs the TypeScript sources directly (type stripping)
 ```
 
@@ -493,8 +493,8 @@ Inside `src`, modules import each other through the package's
 `src/core/errors.ts`. The build turns them back into relative imports.
 
 Node does not strip types from files inside `node_modules`, so the package ships `dist/`,
-built by tsdown: one `.js` and one `.d.ts` per source module, with zod bundled under
-`dist/vendor/`. `npm pack`, `npm publish` and
+built by TypeScript (`tsconfig.build.json`): one `.js` and one `.d.ts` per source module.
+Sources import each other by relative paths, so the output needs no rewriting. `npm pack`, `npm publish` and
 installs from GitHub build it through the `prepare` script. Recent npm versions ask you to
 approve install scripts of git dependencies (`npm install-scripts approve`).
 

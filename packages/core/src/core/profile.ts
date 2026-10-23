@@ -1,5 +1,5 @@
-import { canonicalJson } from "#core/json.ts";
-import type { Homeserver } from "#homeserver.ts";
+import { canonicalJson } from "./json.ts";
+import type { Homeserver } from "../homeserver.ts";
 
 // Extended profiles (spec v1.16): arbitrary JSON fields next to displayname/avatar_url.
 // Every change is also recorded in `profile_fields` with a stream position (null = cleared),

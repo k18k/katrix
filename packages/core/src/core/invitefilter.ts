@@ -1,7 +1,7 @@
-import { isObject } from "#core/json.ts";
-import { globMatch } from "#core/glob.ts";
-import type { Homeserver } from "#homeserver.ts";
-import { M, UNSTABLE } from "#core/m.ts";
+import { isObject } from "./json.ts";
+import { globMatch } from "./glob.ts";
+import type { Homeserver } from "../homeserver.ts";
+import { M, UNSTABLE } from "./m.ts";
 
 export const INVITE_CONFIG_TYPE = UNSTABLE.ORG.MATRIX.MSC4155.INVITE_PERMISSION_CONFIG;
 

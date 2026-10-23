@@ -1,10 +1,10 @@
-import { errors } from "#core/errors.ts";
-import { getState, membershipOf } from "#core/authrules.ts";
-import { splitStateKey, stripState } from "#core/events.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
-import { procedure } from "#http/procedure.ts";
-import { M } from "#core/m.ts";
+import { errors } from "../core/errors.ts";
+import { getState, membershipOf } from "../core/authrules.ts";
+import { splitStateKey, stripState } from "../core/events.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { procedure } from "../http/procedure.ts";
+import { M } from "../core/m.ts";
 
 /** Room-level details shared by /hierarchy, /room_summary and /publicRooms. */
 export async function roomDetails(hs: Homeserver, roomId: string): Promise<Record<string, any>> {

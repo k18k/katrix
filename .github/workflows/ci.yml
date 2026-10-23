@@ -31,7 +31,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
-      # The published package must build (tsdown → dist/, .js and .d.ts per module), and its exports
+      # The published package must build (tsc → dist/, .js and .d.ts per module), and its exports
       # and types must resolve for consumers (publint, arethetypeswrong; the package is ESM only).
       - run: npm pack --dry-run -w matrix-nodejs-homeserver
       - run: npm run check:package -w matrix-nodejs-homeserver

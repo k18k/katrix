@@ -1,15 +1,15 @@
 import { timingSafeEqual } from "node:crypto";
-import { MatrixError, errors } from "#core/errors.ts";
-import { randomToken } from "#core/crypto.ts";
-import { escapeHtml } from "#core/html.ts";
-import { LOCALPART_RE } from "#core/ids.ts";
-import { M } from "#core/m.ts";
-import { setProfileField } from "#core/profile.ts";
-import { legacyClientRedirect } from "#core/sso.ts";
-import { OAUTH_PREFIX, OAuthError, allowCrossSigningReset, type ClientMetadata, type OAuthServer } from "#core/oauthserver.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
-import { procedure } from "#http/procedure.ts";
+import { MatrixError, errors } from "../core/errors.ts";
+import { randomToken } from "../core/crypto.ts";
+import { escapeHtml } from "../core/html.ts";
+import { LOCALPART_RE } from "../core/ids.ts";
+import { M } from "../core/m.ts";
+import { setProfileField } from "../core/profile.ts";
+import { legacyClientRedirect } from "../core/sso.ts";
+import { OAUTH_PREFIX, OAuthError, allowCrossSigningReset, type ClientMetadata, type OAuthServer } from "../core/oauthserver.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { procedure } from "../http/procedure.ts";
 import {
   checkPasswordLogin,
   createUser,
@@ -17,7 +17,7 @@ import {
   registrationFlows,
   ssoConfirmPage,
   validateNewUsername,
-} from "#api/account.ts";
+} from "./account.ts";
 
 // The OAuth 2.0 API's endpoints and the web pages users see (see src/core/oauthserver.ts).
 //

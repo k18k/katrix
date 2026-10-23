@@ -1,4 +1,4 @@
-import { hashPassword, verifyPassword } from "#core/crypto.ts";
+import { hashPassword, verifyPassword } from "../core/crypto.ts";
 
 export interface PasswordCheckContext {
   userId: string;

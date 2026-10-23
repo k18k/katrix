@@ -1,16 +1,16 @@
-import { MatrixError, errors } from "#core/errors.ts";
-import { getState, ownerOfStateKey, powerLevels, roomCreators, userLevel, type StateMap } from "#core/authrules.ts";
-import { validatePowerLevelContent } from "#core/rooms.ts";
-import { SUPPORTED_ROOM_VERSIONS, roomVersionFeatures, splitStateKey, toClientEvent } from "#core/events.ts";
-import { isValidAlias, isValidRoomId, isValidUserId } from "#core/ids.ts";
-import { assertNotSuspended, type Session } from "#core/auth.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
-import { procedure, type ProcedureContext } from "#http/procedure.ts";
-import { inviteDecision } from "#core/invitefilter.ts";
-import { v } from "#core/vpm.ts";
-import { body, fail } from "#http/input.ts";
-import { M, UNSTABLE } from "#core/m.ts";
+import { MatrixError, errors } from "../core/errors.ts";
+import { getState, ownerOfStateKey, powerLevels, roomCreators, userLevel, type StateMap } from "../core/authrules.ts";
+import { validatePowerLevelContent } from "../core/rooms.ts";
+import { SUPPORTED_ROOM_VERSIONS, roomVersionFeatures, splitStateKey, toClientEvent } from "../core/events.ts";
+import { isValidAlias, isValidRoomId, isValidUserId } from "../core/ids.ts";
+import { assertNotSuspended, type Session } from "../core/auth.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { procedure, type ProcedureContext } from "../http/procedure.ts";
+import { inviteDecision } from "../core/invitefilter.ts";
+import { v } from "../core/vpm.ts";
+import { body, fail } from "../http/input.ts";
+import { M, UNSTABLE } from "../core/m.ts";
 
 export const parseToken = (token: string | null): number | null => {
   if (token === null || token === "") return null;

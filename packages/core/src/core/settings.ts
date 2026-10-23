@@ -1,5 +1,5 @@
-import type { Homeserver } from "#homeserver.ts";
-import { CLUSTER_RESYNC } from "#core/cluster.ts";
+import type { Homeserver } from "../homeserver.ts";
+import { CLUSTER_RESYNC } from "./cluster.ts";
 
 /** Runtime server settings changed by admins (stored in the database, shared across instances). */
 export class SettingsService {

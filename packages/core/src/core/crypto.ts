@@ -12,7 +12,7 @@ import {
   type KeyObject,
 } from "node:crypto";
 import { promisify } from "node:util";
-import { canonicalJson } from "#core/json.ts";
+import { canonicalJson } from "./json.ts";
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 

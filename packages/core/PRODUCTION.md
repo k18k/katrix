@@ -37,7 +37,7 @@ described in [SECURITY.md](https://github.com/k18k/matrix-nodejs-homeserver/blob
 | Users cannot read rooms they may not see | Pass | `test/api/rooms.test.ts` (#78), Complement |
 | Secure defaults: registration, guests, federation, URL previews off | Pass | `src/adapters/auth.ts`, `src/homeserver.ts` |
 | Passwords stored with scrypt; no tokens, passwords or keys in logs | Pass | `src/core/crypto.ts`; reviewed with `grep` over logger calls |
-| No runtime dependencies (zod is bundled); published with npm provenance | Pass | `package.json`, `.github/workflows/release.yml` |
+| No runtime dependencies; published with npm provenance | Pass | `package.json`, `.github/workflows/release.yml` |
 | Dependency and code scanning on every change | Pass | CodeQL, Dependabot security updates, `npm audit` in reviews |
 | An independent review of the critical paths | Pass | Strix scan of 2026-10-20 (#76–#79, #81, #83), earlier reviews (#54–#57) |
 

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { randomString } from "#core/crypto.ts";
+import { randomString } from "./crypto.ts";
 
 /**
  * Coordination between homeserver instances sharing one database. The default

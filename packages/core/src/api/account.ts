@@ -1,21 +1,21 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { MatrixError, errors } from "#core/errors.ts";
-import { randomString } from "#core/crypto.ts";
-import { LOCALPART_RE } from "#core/ids.ts";
-import { isObject } from "#core/json.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
-import { procedure } from "#http/procedure.ts";
-import { requireUia } from "#api/uia.ts";
-import { canonicalAddress, isMedium } from "#core/threepid.ts";
-import { toMsisdn } from "#core/phone.ts";
-import { v } from "#core/vpm.ts";
-import { body, fail, lenient } from "#http/input.ts";
-import { M, UNSTABLE } from "#core/m.ts";
-import { checkRedirectUrl, legacyClientRedirect, type SsoResult } from "#core/sso.ts";
-import { OAUTH_PREFIX } from "#core/oauthserver.ts";
-import { readWebSession, setWebUser } from "#api/oauthserver.ts";
-import { escapeHtml } from "#core/html.ts";
+import { MatrixError, errors } from "../core/errors.ts";
+import { randomString } from "../core/crypto.ts";
+import { LOCALPART_RE } from "../core/ids.ts";
+import { isObject } from "../core/json.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { procedure } from "../http/procedure.ts";
+import { requireUia } from "./uia.ts";
+import { canonicalAddress, isMedium } from "../core/threepid.ts";
+import { toMsisdn } from "../core/phone.ts";
+import { v } from "../core/vpm.ts";
+import { body, fail, lenient } from "../http/input.ts";
+import { M, UNSTABLE } from "../core/m.ts";
+import { checkRedirectUrl, legacyClientRedirect, type SsoResult } from "../core/sso.ts";
+import { OAUTH_PREFIX } from "../core/oauthserver.ts";
+import { readWebSession, setWebUser } from "./oauthserver.ts";
+import { escapeHtml } from "../core/html.ts";
 
 // Fields shared by login and registration requests.
 const deviceFields = {

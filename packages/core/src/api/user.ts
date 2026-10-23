@@ -1,13 +1,13 @@
-import { errors } from "#core/errors.ts";
-import { canonicalJson, isObject } from "#core/json.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
-import { procedure } from "#http/procedure.ts";
-import { jsonResponse } from "#http/handler.ts";
-import { requireUia } from "#api/uia.ts";
-import { v } from "#core/vpm.ts";
-import { body, fail } from "#http/input.ts";
-import { M } from "#core/m.ts";
+import { errors } from "../core/errors.ts";
+import { canonicalJson, isObject } from "../core/json.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { procedure } from "../http/procedure.ts";
+import { jsonResponse } from "../http/handler.ts";
+import { requireUia } from "./uia.ts";
+import { v } from "../core/vpm.ts";
+import { body, fail } from "../http/input.ts";
+import { M } from "../core/m.ts";
 
 const deleteDevicesBody = body({ devices: v.array(v.unknown(), fail("M_BAD_JSON", "devices must be a list")) });
 const keysQueryBody = body({

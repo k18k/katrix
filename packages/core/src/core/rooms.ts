@@ -1,5 +1,5 @@
-import { CLUSTER_RESYNC } from "#core/cluster.ts";
-import { errors, MatrixError } from "#core/errors.ts";
+import { CLUSTER_RESYNC } from "./cluster.ts";
+import { errors, MatrixError } from "./errors.ts";
 import {
   DEFAULT_ROOM_VERSION,
   SUPPORTED_ROOM_VERSIONS,
@@ -12,7 +12,7 @@ import {
   toClientEvent,
   type ClientEvent,
   type PDU,
-} from "#core/events.ts";
+} from "./events.ts";
 import {
   authEventKeys,
   authStateFromAuthEvents,
@@ -22,15 +22,15 @@ import {
   powerLevels,
   userLevel,
   type StateMap,
-} from "#core/authrules.ts";
-import { resolveState, type StateIds } from "#core/stateres.ts";
-import { generateRoomId, isValidUserId, parseId } from "#core/ids.ts";
-import { isObject } from "#core/json.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { Row } from "#storage/types.ts";
-import { copyRoomPushRules } from "#core/pushrules.ts";
-import { inviteDecision } from "#core/invitefilter.ts";
-import { M } from "#core/m.ts";
+} from "./authrules.ts";
+import { resolveState, type StateIds } from "./stateres.ts";
+import { generateRoomId, isValidUserId, parseId } from "./ids.ts";
+import { isObject } from "./json.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { Row } from "../storage/types.ts";
+import { copyRoomPushRules } from "./pushrules.ts";
+import { inviteDecision } from "./invitefilter.ts";
+import { M } from "./m.ts";
 
 const PARTIAL_REJECTION = "Partial state: ";
 

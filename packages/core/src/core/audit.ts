@@ -1,4 +1,4 @@
-import type { Homeserver } from "#homeserver.ts";
+import type { Homeserver } from "../homeserver.ts";
 
 /** Security-relevant actions recorded in the audit log. */
 export type AuditAction =

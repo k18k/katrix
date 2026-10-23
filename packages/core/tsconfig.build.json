@@ -1,0 +1,13 @@
+{
+  // The published package: one .js and one .d.ts per source module in dist/ (Node does not strip
+  // types inside node_modules). Development, tests and examples run the sources directly.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src"]
+}

@@ -1,10 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { errors, MatrixError } from "#core/errors.ts";
-import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
-import type { StateMap } from "#core/authrules.ts";
-import type { Homeserver } from "#homeserver.ts";
-import { M, UNSTABLE } from "#core/m.ts";
+import { errors, MatrixError } from "./errors.ts";
+import { splitStateKey, toClientEvent, type PDU } from "./events.ts";
+import type { StateMap } from "./authrules.ts";
+import type { Homeserver } from "../homeserver.ts";
+import { M, UNSTABLE } from "./m.ts";
 
 export interface AppServiceNamespace {
   exclusive: boolean;

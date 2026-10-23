@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { errors } from "#core/errors.ts";
-import { randomToken, urlSafeBase64 } from "#core/crypto.ts";
-import { LOCALPART_RE } from "#core/ids.ts";
-import type { Homeserver } from "#homeserver.ts";
+import { errors } from "./errors.ts";
+import { randomToken, urlSafeBase64 } from "./crypto.ts";
+import { LOCALPART_RE } from "./ids.ts";
+import type { Homeserver } from "../homeserver.ts";
 
 /**
  * An upstream identity provider: OpenID Connect (found through `issuer`), or plain OAuth 2.0 with

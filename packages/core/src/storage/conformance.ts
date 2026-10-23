@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { DatabaseAdapter, Row, Schema, WhereClause } from "#storage/types.ts";
+import type { DatabaseAdapter, Row, Schema, WhereClause } from "./types.ts";
 
 /**
  * Checks that a `DatabaseAdapter` keeps the guarantees the homeserver relies on (see the

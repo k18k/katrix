@@ -1,9 +1,9 @@
-import { MatrixError, errors } from "#core/errors.ts";
-import { randomString } from "#core/crypto.ts";
-import type { Homeserver } from "#homeserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
-import { procedure } from "#http/procedure.ts";
-import { publicGet } from "#core/outbound.ts";
+import { MatrixError, errors } from "../core/errors.ts";
+import { randomString } from "../core/crypto.ts";
+import type { Homeserver } from "../homeserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { procedure } from "../http/procedure.ts";
+import { publicGet } from "../core/outbound.ts";
 
 const MAX_BYTES = 1024 * 1024;
 

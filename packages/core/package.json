@@ -51,7 +51,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test \"test/**/*.test.ts\"",
     "smoke": "node --test test/smoke.test.ts",
-    "build": "tsdown",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "check:package": "publint && attw --pack . --profile esm-only",
     "prepare": "npm run build",
     "start:example": "node examples/node-http.ts",
@@ -67,9 +67,7 @@
     "better-auth": "1.7.6",
     "better-call": "1.4.0",
     "pg": "8.23.1",
-    "publint": "^0.3.25",
-    "tsdown": "^0.23.1",
-    "zod": "^4.6.7"
+    "publint": "^0.3.25"
   },
   "peerDependencies": {
     "@matrix-org/matrix-sdk-crypto-nodejs": "^0.6.6"

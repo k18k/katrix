@@ -1,9 +1,9 @@
-import { errors } from "#core/errors.ts";
-import { allowCrossSigningReset } from "#core/oauthserver.ts";
-import type { RequestContext, Router } from "#http/router.ts";
-import { procedure, type ProcedureContext } from "#http/procedure.ts";
-import { v } from "#core/vpm.ts";
-import { body, fail, lenient } from "#http/input.ts";
+import { errors } from "../core/errors.ts";
+import { allowCrossSigningReset } from "../core/oauthserver.ts";
+import type { RequestContext, Router } from "../http/router.ts";
+import { procedure, type ProcedureContext } from "../http/procedure.ts";
+import { v } from "../core/vpm.ts";
+import { body, fail, lenient } from "../http/input.ts";
 
 const required = fail("M_BAD_JSON", "user_id and content are required");
 const noticeBody = body({ user_id: v.string(required), content: v.looseObject({}, required), type: lenient(v.string()) });
