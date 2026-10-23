@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { underLease, type ClusterAdapter } from "#core/cluster.ts";
+import { ignorePgError } from "#storage/sql.ts";
 
 export { localCluster, type ClusterAdapter } from "#core/cluster.ts";
 
@@ -27,11 +28,13 @@ interface PgClientLike {
   query(text: string, values?: unknown[]): Promise<{ rows: any[]; rowCount: number | null }>;
   release(): void;
   on(event: "notification", listener: (msg: { channel: string; payload?: string }) => void): unknown;
+  on(event: "error", listener: (err: Error) => void): unknown;
 }
 
 export interface PgClusterPoolLike {
   query(text: string, values?: unknown[]): Promise<{ rows: any[]; rowCount: number | null }>;
   connect(): Promise<PgClientLike>;
+  on?(event: "error", listener: (err: Error) => void): unknown;
 }
 
 const PG_CHANNEL = "matrix_cluster";
@@ -68,6 +71,8 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
     });
   handlers.set(RELEASED, new Set([(lockKey: string) => [...(waiting.get(lockKey) ?? [])].forEach((wake) => wake())]));
   let listener: PgClientLike | null = null;
+  // A Postgres restart must not end the process (#91, see ignorePgError).
+  pool.on?.("error", ignorePgError);
   let cleanup: ReturnType<typeof setInterval> | null = null;
 
   const ready = (async () => {
@@ -86,6 +91,7 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
       setup.release();
     }
     listener = await pool.connect();
+    listener.on("error", ignorePgError);
     listener.on("notification", (msg) => {
       if (msg.channel !== PG_CHANNEL || !msg.payload) return;
       void (async () => {

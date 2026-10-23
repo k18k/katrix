@@ -418,6 +418,8 @@ export function sqliteAdapter(
 
 interface PgQueryable {
   query(config: { text: string; values?: unknown[]; name?: string }): Promise<{ rows: Row[]; rowCount: number | null }>;
+  on?(event: "error", listener: (err: Error) => void): unknown;
+  off?(event: "error", listener: (err: Error) => void): unknown;
 }
 
 /** Minimal structural type matching `pg.Pool` (or a single `pg.Client`). */
@@ -425,6 +427,14 @@ export interface PgPoolLike extends PgQueryable {
   /** Present on pools; enables transactions on a dedicated connection. */
   connect?(): Promise<PgQueryable & { release(): void }>;
 }
+
+/**
+ * https://github.com/k18k/matrix-nodejs-homeserver/issues/91: when Postgres restarts or drops a connection, `pg`
+ * emits "error" on the pool (for idle clients) and on a checked-out client between two queries. Unheard, that
+ * event ended the process. The pool replaces broken idle clients, and a query on a broken client fails on its
+ * own, so the event needs no more than a listener.
+ */
+export const ignorePgError = (): void => {};
 
 /**
  * https://github.com/k18k/matrix-nodejs-homeserver/issues/40: unnamed statements are parsed and
@@ -501,6 +511,7 @@ export function postgresAdapter(
   } = {},
 ): DatabaseAdapter {
   const namer = statementNamer(options.preparedStatements ?? true);
+  pool.on?.("error", ignorePgError);
   return sqlAdapter({
     dialect: "postgres",
     tablePrefix: options.tablePrefix,
@@ -508,6 +519,7 @@ export function postgresAdapter(
     transaction: pool.connect
       ? async (fn) => {
           const client = await pool.connect!();
+          client.on?.("error", ignorePgError);
           try {
             await client.query({ text: "BEGIN" });
             const result = await fn(pgExecutor(client, namer));
@@ -517,6 +529,7 @@ export function postgresAdapter(
             await client.query({ text: "ROLLBACK" }).catch(() => {});
             throw err;
           } finally {
+            client.off?.("error", ignorePgError);
             client.release();
           }
         }
