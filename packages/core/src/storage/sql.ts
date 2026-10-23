@@ -367,24 +367,26 @@ export function sqliteAdapter(
   // backstop, as yielding every 10 ms under load made each statement wait a full turn of a busy
   // event loop, and a send with twenty statements took seconds.
   let lastYield = performance.now();
-  const waitGate = async () => {
-    if (inTransaction.getStore()) return;
-    await gate;
-    if (performance.now() - lastYield > YIELD_AFTER_MS) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      lastYield = performance.now();
-      await gate;
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/95: a statement used to wait for the gate and run in a
+  // later microtask, and a transaction could claim the gate and BEGIN in between: the statement then ran inside
+  // that transaction and was undone by its rollback, though it had reported success. The check that the gate is
+  // still free and the statement now run in the same synchronous step; a gate claimed meanwhile is waited for.
+  const run = async <T>(statement: () => T): Promise<T> => {
+    if (inTransaction.getStore()) return statement();
+    for (;;) {
+      const current = gate;
+      await current;
+      if (performance.now() - lastYield > YIELD_AFTER_MS) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        lastYield = performance.now();
+        continue;
+      }
+      if (current === gate) return statement();
     }
   };
   const executor: SqlExecutor = {
-    async query(sql, params) {
-      await waitGate();
-      return stmt(sql).all(...params) as Row[];
-    },
-    async execute(sql, params) {
-      await waitGate();
-      return Number(stmt(sql).run(...params).changes);
-    },
+    query: (sql, params) => run(() => stmt(sql).all(...params) as Row[]),
+    execute: (sql, params) => run(() => Number(stmt(sql).run(...params).changes)),
   };
   return sqlAdapter({
     dialect: "sqlite",

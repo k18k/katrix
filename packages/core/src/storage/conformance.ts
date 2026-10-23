@@ -181,6 +181,23 @@ export const adapterConformance: ConformanceCheck[] = [
     },
   },
   {
+    // #95: on SQLite such a write ran inside the transaction and was undone by its rollback.
+    name: "a write outside a transaction is not undone by that transaction's rollback, even when both start at once",
+    async run(db) {
+      if (!db.transaction) return;
+      const [outside, tx] = await Promise.allSettled([
+        db.create(T, item("a", 1)),
+        db.transaction(async () => {
+          await Promise.resolve();
+          throw new Error("rollback");
+        }),
+      ]);
+      assert.equal(outside.status, "fulfilled");
+      assert.equal(tx.status, "rejected");
+      assert.deepEqual(ids(await db.findMany(T)), [1]);
+    },
+  },
+  {
     name: "of concurrent deletes of one row, exactly one reports it (single-use tokens rely on this)",
     async run(db) {
       await db.create(T, item("a", 1));
