@@ -74,6 +74,12 @@ async function checkAcl(hs: Homeserver, roomId: string, origin: string): Promise
   return state;
 }
 
+/** A timeline event, when it belongs to `roomId` (events are looked up by ID across all rooms). */
+async function eventInRoom(hs: Homeserver, roomId: string, eventId: string): Promise<StoredEvent | null> {
+  const ev = await hs.rooms.getEvent(eventId);
+  return ev && ev.pdu.room_id === roomId ? ev : null;
+}
+
 /** Whether `server` may see an event, per history visibility. */
 async function serverCanSee(hs: Homeserver, server: string, ev: StoredEvent): Promise<boolean> {
   const ids = await hs.rooms.snapshotIds(ev.snapshot);
@@ -577,8 +583,11 @@ export function registerFederationRoutes(r: Router): void {
       const out: PDU[] = [];
       const seen = new Set<string>(body.latest_events ?? []);
       let frontier: string[] = [];
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/96 — improper authorization (CWE-285): events were
+      // looked up by ID alone, so naming events of another room returned that room's history to a server that may
+      // not see it. Only events of the room in the URL are followed or returned.
       for (const id of seen) {
-        const ev = await hs.rooms.getEvent(id);
+        const ev = await eventInRoom(hs, roomId, id);
         if (ev) frontier.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
       }
       while (frontier.length && out.length < limit) {
@@ -586,7 +595,7 @@ export function registerFederationRoutes(r: Router): void {
         for (const id of frontier) {
           if (seen.has(id) || earliest.has(id) || out.length >= limit) continue;
           seen.add(id);
-          const ev = await hs.rooms.getEvent(id);
+          const ev = await eventInRoom(hs, roomId, id);
           if (!ev || ev.pdu.depth < minDepth) continue;
           out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : (redact(ev.pdu as Record<string, any>, version) as PDU));
           next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
