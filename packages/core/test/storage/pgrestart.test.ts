@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { postgresAdapter, postgresCluster, CONFORMANCE_SCHEMA } from "#index.ts";
+import { CLUSTER_RESYNC } from "#core/cluster.ts";
 
 // Postgres dropping every connection (as on a restart) must cost failed queries, not the process (#91).
 // Runs when PG_TEST_URL is set (CI starts a Postgres).
@@ -42,3 +43,33 @@ test("the Postgres adapters survive their connections being dropped (#91)", { sk
     await clusterPool.end();
   }
 });
+
+test(
+  "postgresCluster listens again after its connection drops, and asks for a resync (#92)",
+  { skip: url ? false : "PG_TEST_URL not set" },
+  async () => {
+    const pools = [new pg.Pool({ connectionString: url, max: 2 }), new pg.Pool({ connectionString: url, max: 2 })];
+    const prefix = `t${randomBytes(4).toString("hex")}_`;
+    const [a, b] = pools.map((p) => postgresCluster(p, { tablePrefix: prefix }));
+    try {
+      const received: unknown[] = [];
+      let resyncs = 0;
+      b.subscribe("test", (m) => received.push(m));
+      b.subscribe(CLUSTER_RESYNC, () => resyncs++);
+      await Promise.all([a.currentId("x"), b.currentId("x")]);
+      await dropConnections();
+      const until = async (cond: () => boolean) => {
+        for (let i = 0; i < 100 && !cond(); i++) await new Promise((resolve) => setTimeout(resolve, 50));
+      };
+      await until(() => resyncs > 0);
+      assert.equal(resyncs, 1);
+      await a.publish("test", "after the drop");
+      await until(() => received.length > 0);
+      assert.deepEqual(received, ["after the drop"]);
+    } finally {
+      await a.close?.();
+      await b.close?.();
+      await Promise.all(pools.map((p) => p.end()));
+    }
+  },
+);

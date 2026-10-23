@@ -1,3 +1,4 @@
+import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import { M, UNSTABLE } from "#core/m.ts";
@@ -110,6 +111,7 @@ function cacheFor(hs: Homeserver): Map<string, Ruleset> {
     hs.cluster.subscribe("pushrules", (msg: { from: string; userId: string }) => {
       if (msg?.from !== hs.instanceId) cache.delete(msg.userId);
     });
+    hs.cluster.subscribe(CLUSTER_RESYNC, () => cache.clear());
   }
   return c;
 }

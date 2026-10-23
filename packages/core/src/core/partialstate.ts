@@ -1,3 +1,4 @@
+import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { EventEmitter } from "node:events";
 import { eventIdOf, roomVersionFeatures, stateKey } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
@@ -27,6 +28,10 @@ export class PartialStateService {
       this.partial.delete(msg.roomId);
       this.completedStreams.delete(msg.roomId);
       this.completed.emit(msg.roomId);
+    });
+    hs.cluster.subscribe(CLUSTER_RESYNC, () => {
+      this.partial.clear();
+      this.completedStreams.clear();
     });
   }
 

@@ -1,3 +1,4 @@
+import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { errors, MatrixError } from "#core/errors.ts";
 import {
   DEFAULT_ROOM_VERSION,
@@ -120,6 +121,9 @@ class LruCache<K, V> {
     this.map.set(k, v);
     if (this.map.size > this.max) this.map.delete(this.map.keys().next().value as K);
   }
+  clear(): void {
+    this.map.clear();
+  }
   delete(k: K): void {
     this.map.delete(k);
   }
@@ -164,6 +168,10 @@ export class RoomService {
     this.localClusterMarker = singleInstance ? hs.cluster : null;
     hs.cluster.subscribe("invalidate", (msg: { from: string; rooms?: string[]; events?: string[]; sharing?: boolean }) => {
       if (msg?.from !== hs.instanceId) this.invalidateLocal(msg);
+    });
+    // Invalidations may have been missed (#92): forget everything that can change.
+    hs.cluster.subscribe(CLUSTER_RESYNC, () => {
+      for (const c of [this.stateCache, this.extremityCache, this.sharingCache, this.eventCache, this.outlierCache]) c.clear();
     });
   }
 

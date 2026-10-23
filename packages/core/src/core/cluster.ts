@@ -28,6 +28,12 @@ export interface ClusterAdapter {
   close?(): Promise<void>;
 }
 
+/**
+ * A local signal (never published) that a cluster adapter may have missed messages, as after its
+ * connection to the other instances was lost: subscribers drop what they cached of shared state (#92).
+ */
+export const CLUSTER_RESYNC = "__cluster_resync";
+
 /** Checks of the leased cluster locks the current code runs under, innermost last. */
 const leases = new AsyncLocalStorage<(() => void)[]>();
 

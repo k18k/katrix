@@ -1,4 +1,5 @@
 import type { Homeserver } from "#homeserver.ts";
+import { CLUSTER_RESYNC } from "#core/cluster.ts";
 
 /** Runtime server settings changed by admins (stored in the database, shared across instances). */
 export class SettingsService {
@@ -8,6 +9,7 @@ export class SettingsService {
   constructor(hs: Homeserver) {
     this.hs = hs;
     hs.cluster.subscribe("settings", (msg: { key: string }) => this.cache.delete(msg?.key));
+    hs.cluster.subscribe(CLUSTER_RESYNC, () => this.cache.clear());
   }
 
   async get<T>(key: string): Promise<T | null> {

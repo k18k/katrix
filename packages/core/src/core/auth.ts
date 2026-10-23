@@ -1,3 +1,4 @@
+import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { errors } from "#core/errors.ts";
 import { randomToken } from "#core/crypto.ts";
 import { generateDeviceId } from "#core/ids.ts";
@@ -47,6 +48,8 @@ export class AuthService {
       if (msg.token) this.cache.delete(msg.token);
       if (msg.userId) for (const [t, e] of this.cache) if (e.session.userId === msg.userId) this.cache.delete(t);
     });
+    // Revocations may have been missed (#92): every session is read from the database again.
+    hs.cluster.subscribe(CLUSTER_RESYNC, () => this.cache.clear());
   }
 
   async authenticate(token: string, ip: string | null): Promise<Session> {

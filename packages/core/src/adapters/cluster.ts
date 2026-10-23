@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { underLease, type ClusterAdapter } from "#core/cluster.ts";
+import { CLUSTER_RESYNC, underLease, type ClusterAdapter } from "#core/cluster.ts";
 import { ignorePgError } from "#storage/sql.ts";
 
 export { localCluster, type ClusterAdapter } from "#core/cluster.ts";
@@ -26,9 +26,10 @@ function localQueue() {
 
 interface PgClientLike {
   query(text: string, values?: unknown[]): Promise<{ rows: any[]; rowCount: number | null }>;
-  release(): void;
+  /** `release(err)` closes the connection instead of returning it to the pool. */
+  release(err?: Error | boolean): void;
   on(event: "notification", listener: (msg: { channel: string; payload?: string }) => void): unknown;
-  on(event: "error", listener: (err: Error) => void): unknown;
+  on(event: "error" | "end", listener: (err?: Error) => void): unknown;
 }
 
 export interface PgClusterPoolLike {
@@ -74,6 +75,55 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
   // A Postgres restart must not end the process (#91, see ignorePgError).
   pool.on?.("error", ignorePgError);
   let cleanup: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+
+  const onNotification = (msg: { channel: string; payload?: string }) => {
+    if (msg.channel !== PG_CHANNEL || !msg.payload) return;
+    void (async () => {
+      let parsed = JSON.parse(msg.payload!);
+      if (parsed.ref) {
+        const res = await pool.query(`SELECT value FROM ${kv} WHERE key = $1`, [parsed.ref]);
+        if (!res.rows[0]) return;
+        parsed = JSON.parse(res.rows[0].value);
+      }
+      for (const h of handlers.get(parsed.channel) ?? []) h(parsed.message);
+    })().catch(() => {});
+  };
+  // https://github.com/k18k/matrix-nodejs-homeserver/issues/92 — insufficient session expiration (CWE-613): when the
+  // LISTEN connection dropped (a Postgres restart), it was never opened again, so this instance missed every later
+  // revocation and cache invalidation and kept serving revoked tokens and stale state. It reconnects now, and since
+  // messages sent meanwhile are lost, it tells its own subscribers to drop their caches (CLUSTER_RESYNC).
+  // shortcut: a connection that dies silently (no error, no end, e.g. a network partition) is not noticed; add a
+  // periodic query on the listener if that matters.
+  const listen = async (): Promise<void> => {
+    const client = await pool.connect();
+    const lost = () => {
+      if (listener !== client) return;
+      listener = null;
+      client.release(true);
+      if (!closed) reconnect(500);
+    };
+    client.on("error", lost);
+    client.on("end", lost);
+    client.on("notification", onNotification);
+    try {
+      await client.query(`LISTEN ${PG_CHANNEL}`);
+    } catch (err) {
+      client.release(true);
+      throw err;
+    }
+    listener = client;
+  };
+  const reconnect = (delay: number) => {
+    const timer = setTimeout(() => {
+      if (closed) return;
+      listen().then(
+        () => [...(handlers.get(CLUSTER_RESYNC) ?? [])].forEach((h) => h(undefined)),
+        () => reconnect(Math.min(delay * 2, 30_000)),
+      );
+    }, delay);
+    timer.unref?.();
+  };
 
   const ready = (async () => {
     // CREATE TABLE IF NOT EXISTS is not safe against concurrent creators; serialise with an advisory lock.
@@ -90,21 +140,7 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
     } finally {
       setup.release();
     }
-    listener = await pool.connect();
-    listener.on("error", ignorePgError);
-    listener.on("notification", (msg) => {
-      if (msg.channel !== PG_CHANNEL || !msg.payload) return;
-      void (async () => {
-        let parsed = JSON.parse(msg.payload!);
-        if (parsed.ref) {
-          const res = await pool.query(`SELECT value FROM ${kv} WHERE key = $1`, [parsed.ref]);
-          if (!res.rows[0]) return;
-          parsed = JSON.parse(res.rows[0].value);
-        }
-        for (const h of handlers.get(parsed.channel) ?? []) h(parsed.message);
-      })().catch(() => {});
-    });
-    await listener.query(`LISTEN ${PG_CHANNEL}`);
+    await listen();
     cleanup = setInterval(
       () => void pool.query(`DELETE FROM ${kv} WHERE expires_at IS NOT NULL AND expires_at < $1`, [Date.now()]).catch(() => {}),
       60_000,
@@ -246,10 +282,13 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
       return res.rows.map((r: any) => [r.key, JSON.parse(r.value)] as [string, any]);
     },
     async close() {
+      closed = true;
       if (cleanup) clearInterval(cleanup);
-      if (listener) {
-        await listener.query(`UNLISTEN ${PG_CHANNEL}`).catch(() => {});
-        listener.release();
+      const l = listener;
+      listener = null;
+      if (l) {
+        await l.query(`UNLISTEN ${PG_CHANNEL}`).catch(() => {});
+        l.release();
       }
     },
   };
