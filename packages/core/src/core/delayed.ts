@@ -3,6 +3,11 @@ import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
 import { UNSTABLE } from "#core/m.ts";
 
+/** When a delayed event whose send failed is tried again. */
+const RETRY_MS = 10_000;
+/** Device under which delayed events are sent, for their transaction IDs (no real device has this ID). */
+const DELAYED_DEVICE = "\u0000delayed";
+
 export interface DelayedEventsOptions {
   /** Maximum delay a client may request, in ms. Default: 24 hours. */
   maxDelayMs?: number;
@@ -108,7 +113,9 @@ export class DelayedEventService {
       const now = Date.now();
       await this.hs.db.update("delayed_events", where, { send_at: now + row.delay_ms, running_since: now });
     } else {
-      if (await this.hs.db.delete("delayed_events", where)) await this.send(row);
+      // Sent before the row goes (#100): a failure leaves it for a retry, and a repeat is deduplicated.
+      await this.send(row);
+      await this.hs.db.delete("delayed_events", where);
     }
   }
 
@@ -131,23 +138,37 @@ export class DelayedEventService {
       limit: 100,
     });
     for (const row of due) {
-      // Whoever deletes the row sends the event (safe across instances).
-      if (
-        !(await this.hs.db.delete("delayed_events", [
+      // https://github.com/k18k/matrix-nodejs-homeserver/issues/100: the row was deleted before sending, so an event
+      // whose send failed (or whose instance died) was lost. Whoever moves send_at on claims the row (safe across
+      // instances) and sends; the row goes once the event is sent. Until then the new send_at is the retry time.
+      // A repeat after a crash is deduplicated by the event's transaction ID.
+      const claimed = await this.hs.db.update(
+        "delayed_events",
+        [
           { field: "delay_id", value: row.delay_id },
           { field: "send_at", value: row.send_at },
-        ]))
-      )
-        continue;
-      await this.send(row).catch((err) => this.hs.logger.warn("Sending delayed event failed", row.delay_id, err));
+        ],
+        { send_at: Date.now() + RETRY_MS },
+      );
+      if (!claimed) continue;
+      try {
+        await this.send(row);
+        await this.hs.db.delete("delayed_events", [{ field: "delay_id", value: row.delay_id }]);
+      } catch (err) {
+        this.hs.logger.warn("Sending delayed event failed", row.delay_id, err);
+        // Refused by the room (the user left, lost the power to send it...): retrying would not help.
+        if (err instanceof MatrixError) await this.hs.db.delete("delayed_events", [{ field: "delay_id", value: row.delay_id }]);
+      }
     }
   }
 
   private async send(row: Record<string, any>): Promise<void> {
-    await this.hs.rooms.sendEvent(row.room_id, row.user_id, {
-      type: row.event_type,
-      content: row.content,
-      ...(row.state_key !== null ? { state_key: row.state_key } : {}),
-    });
+    await this.hs.rooms.sendEvent(
+      row.room_id,
+      row.user_id,
+      { type: row.event_type, content: row.content, ...(row.state_key !== null ? { state_key: row.state_key } : {}) },
+      // A fixed transaction ID: sending the same delayed event again returns the first one.
+      { txnId: `delayed:${row.delay_id}`, deviceId: DELAYED_DEVICE },
+    );
   }
 }
