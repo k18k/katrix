@@ -1,0 +1,21 @@
+{
+  // The SDK's sources. No DOM and no Node.js typings: the same code runs in Node.js, browsers and
+  // React Native (Hermes), so the compiler only knows ECMAScript. Everything a platform provides
+  // (fetch, timers, randomness) is reached through src/platform.ts and the adapters.
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2022"],
+    "types": [],
+    "strict": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "customConditions": ["matrix-src"]
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,13 @@
+{
+  // The published package: one .js and one .d.ts per source module in dist/. ES2022 output, so
+  // bundlers for older engines (Metro for Hermes) have little left to transform.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,54 @@
+{
+  "name": "matrix-nodejs-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Matrix client SDK in TypeScript with end-to-end encryption (Olm, Megolm) for Node.js, browsers and React Native",
+  "keywords": [
+    "client",
+    "e2ee",
+    "matrix",
+    "megolm",
+    "olm",
+    "react-native"
+  ],
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/k18k/matrix-nodejs-homeserver.git",
+    "directory": "packages/client"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "matrix-src": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "test": "node --conditions=matrix-src --test \"test/unit/**/*.test.ts\" \"test/crypto/**/*.test.ts\" \"test/integration/**/*.test.ts\" && npm run test:hermes",
+    "test:hermes": "node --conditions=matrix-src --import ./test/env/hermes.ts --test \"test/hermes/**/*.test.ts\" \"test/crypto/olm.test.ts\" \"test/crypto/megolm.test.ts\" \"test/unit/storage.test.ts\" \"test/unit/models.test.ts\"",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0"
+  },
+  "devDependencies": {
+    "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6",
+    "matrix-nodejs-homeserver": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  // Tests and the Hermes environment shim run in Node.js.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "types": ["node"]
+  },
+  "include": ["src", "test"]
+}
