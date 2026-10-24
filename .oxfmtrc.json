@@ -7,8 +7,8 @@
   "ignorePatterns": [
     "**/dist/**",
     "package-lock.json",
-    "packages/core/complement/results.json",
-    "packages/core/complement/passing.txt",
+    "packages/server/complement/results.json",
+    "packages/server/complement/passing.txt",
     "CLAUDE-SECURITY-*/**",
     "*.md",
     "**/msecrets.json"

@@ -1,11 +1,11 @@
 // Local development in one process, without Docker: the development identity provider (sign in by
 // picking a user) and the public server on SQLite.
 //
-//   npm run dev -w @matrix-nodejs-homeserver/public     # or `npm run dev` in apps/public
+//   npm run dev -w @katrix/public     # or `npm run dev` in apps/public
 //
 // The homeserver is at http://localhost:8008, the provider at http://localhost:3001; data is kept
 // in apps/public/.dev-data (delete it to start over). Ports: PORT and DEV_IDP_PORT.
-import { startDevIdp } from "@matrix-nodejs-homeserver/dev-idp";
+import { startDevIdp } from "@katrix/dev-idp";
 import { loadConfig } from "./config.ts";
 import { startPublicServer } from "./server.ts";
 

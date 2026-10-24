@@ -1,0 +1,272 @@
+import { MatrixError, errors } from "#core/errors.ts";
+import { randomString } from "#core/crypto.ts";
+import type { RequestContext, Router } from "#http/router.ts";
+import { procedure } from "#http/procedure.ts";
+import { maxRequestBody } from "#http/handler.ts";
+import { M } from "#core/m.ts";
+
+const INLINE_TYPES = /^(image\/(png|jpeg|gif|webp|avif|apng)|video\/(mp4|webm|ogg)|audio\/(mpeg|ogg|wav|webm|mp4|aac|flac)|text\/plain)$/;
+
+const maxUpload = maxRequestBody;
+
+/**
+ * Headers on every media response. Media is user content served from the homeserver's origin, so it is sandboxed.
+ *
+ * https://github.com/k18k/katrix/issues/79 — protection mechanism failure (CWE-693), defence
+ * against stored XSS (CWE-79): thumbnails were served inline without the sandbox, so a thumbnailer that passes
+ * an SVG through would have let an uploaded script run on the homeserver's origin. nosniff stops browsers from
+ * guessing a different type than the one served.
+ */
+const MEDIA_HEADERS = {
+  "content-security-policy":
+    "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; media-src 'self'; object-src 'self';",
+  "x-content-type-options": "nosniff",
+  "cross-origin-resource-policy": "cross-origin",
+  "cache-control": "public, max-age=86400, immutable",
+};
+
+async function storeUpload(ctx: RequestContext, mediaId: string): Promise<void> {
+  const hs = ctx.hs;
+  // ctx.bytes() enforces the upload limit while the body arrives (#77).
+  const data = await ctx.bytes();
+  const contentType = ctx.request.headers.get("content-type");
+  const filename = ctx.query.get("filename");
+  await hs.media.put(mediaId, data, { contentType, filename, size: data.length });
+  return void (await hs.db.upsert("media", {
+    media_id: mediaId,
+    content_type: contentType,
+    filename,
+    size: data.length,
+    uploader: (await ctx.auth()).userId,
+    created_ts: Date.now(),
+    pending: false,
+  }));
+}
+
+function contentDisposition(contentType: string | null, filename: string | null): string {
+  const type = INLINE_TYPES.test(contentType ?? "") ? "inline" : "attachment";
+  return filename ? `${type}; filename*=utf-8''${encodeURIComponent(filename)}` : type;
+}
+
+/** Fetch (and cache) media from another server. */
+async function remoteMedia(ctx: RequestContext): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
+  const hs = ctx.hs;
+  const { serverName, mediaId } = ctx.params;
+  if (ctx.query.get("allow_remote") === "false") throw errors.notFound("Remote media not allowed");
+  const cached = await hs.db.findOne("remote_media", [
+    { field: "server_name", value: serverName },
+    { field: "media_id", value: mediaId },
+  ]);
+  if (cached) {
+    const data = await hs.media.get(cached.local_id);
+    if (data) return { data, contentType: cached.content_type, filename: cached.filename };
+  }
+  let fetched;
+  try {
+    fetched = await hs.federation.fetchMedia(serverName, mediaId, maxUpload(hs));
+  } catch (err) {
+    if (err instanceof MatrixError) throw err;
+    throw new MatrixError(502, "M_UNKNOWN", "Could not fetch remote media");
+  }
+  if (fetched.data.length > maxUpload(hs)) throw errors.tooLarge("Remote media too large");
+  const localId = `remote_${randomString(24)}`;
+  await hs.media.put(localId, fetched.data, { contentType: fetched.contentType, filename: fetched.filename, size: fetched.data.length });
+  await hs.db.upsert("remote_media", {
+    server_name: serverName,
+    media_id: mediaId,
+    local_id: localId,
+    content_type: fetched.contentType,
+    filename: fetched.filename,
+    size: fetched.data.length,
+    fetched_ts: Date.now(),
+  });
+  return fetched;
+}
+
+async function download(ctx: RequestContext): Promise<Response> {
+  const hs = ctx.hs;
+  const { serverName, mediaId } = ctx.params;
+  if (serverName !== hs.serverName) {
+    const remote = await remoteMedia(ctx);
+    const filename = ctx.params.fileName ?? remote.filename;
+    return new Response(remote.data as Uint8Array<ArrayBuffer>, {
+      status: 200,
+      headers: {
+        "content-type": remote.contentType ?? "application/octet-stream",
+        "content-disposition": contentDisposition(remote.contentType, filename),
+        ...MEDIA_HEADERS,
+      },
+    });
+  }
+  const meta = await hs.db.findOne("media", [{ field: "media_id", value: mediaId }]);
+  if (!meta) throw errors.notFound("Media not found");
+  if (meta.pending) throw new MatrixError(504, "M_NOT_YET_UPLOADED", "Media has not been uploaded yet");
+  const data = await hs.media.get(mediaId);
+  if (!data) throw errors.notFound("Media not found");
+  const filename = ctx.params.fileName ?? meta.filename;
+  return new Response(data as Uint8Array<ArrayBuffer>, {
+    status: 200,
+    headers: {
+      "content-type": meta.content_type ?? "application/octet-stream",
+      "content-disposition": contentDisposition(meta.content_type, filename),
+      ...MEDIA_HEADERS,
+    },
+  });
+}
+
+/** Serve a thumbnail, generating and caching it with the configured thumbnailer. */
+async function thumbnail(ctx: RequestContext): Promise<Response> {
+  const hs = ctx.hs;
+  const width = Number.parseInt(ctx.query.get("width") ?? "", 10);
+  const height = Number.parseInt(ctx.query.get("height") ?? "", 10);
+  if (!(width > 0) || !(height > 0)) throw errors.invalidParam("width and height must be positive integers");
+  const method = ctx.query.get("method") === "crop" ? "crop" : "scale";
+  const animated = ctx.query.get("animated") === "true";
+  const { serverName, mediaId } = ctx.params;
+  if (serverName !== hs.serverName || !hs.config.thumbnailer) return download(ctx);
+  const meta = await hs.db.findOne("media", [{ field: "media_id", value: mediaId }]);
+  if (!meta || meta.pending || !meta.content_type?.startsWith("image/")) return download(ctx);
+  // Snap to a small set of sizes so the cache stays bounded.
+  const sizes = [32, 96, 320, 640, 800, 1280];
+  const w = sizes.find((s) => s >= width) ?? 1280;
+  const h = sizes.find((s) => s >= height) ?? 1280;
+  const thumbId = `${mediaId}_thumb_${w}x${h}_${method}${animated ? "_a" : ""}`;
+  let thumb = await hs.media.get(thumbId);
+  let contentType = (await hs.db.findOne("media", [{ field: "media_id", value: thumbId }]))?.content_type ?? null;
+  if (!thumb || !contentType) {
+    const original = await hs.media.get(mediaId);
+    if (!original) throw errors.notFound("Media not found");
+    const made = await hs.config.thumbnailer(original, meta.content_type, { width: w, height: h, method, animated }).catch((err) => {
+      hs.logger.warn("Thumbnailing failed", mediaId, err);
+      return null;
+    });
+    if (!made) return download(ctx);
+    thumb = made.data;
+    contentType = made.contentType;
+    await hs.media.put(thumbId, thumb, { contentType, filename: null, size: thumb.length });
+    await hs.db.upsert("media", {
+      media_id: thumbId,
+      content_type: contentType,
+      filename: null,
+      size: thumb.length,
+      uploader: "",
+      created_ts: Date.now(),
+      pending: false,
+    });
+  }
+  return new Response(thumb as Uint8Array<ArrayBuffer>, {
+    status: 200,
+    headers: {
+      "content-type": contentType,
+      "content-disposition": "inline",
+      ...MEDIA_HEADERS,
+    },
+  });
+}
+
+export function registerMediaRoutes(r: Router): void {
+  const config = (ctx: RequestContext) => ({ [M.UPLOAD.SIZE]: maxUpload(ctx.hs) });
+  r.get(
+    "/_matrix/media/v3/config",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        return config(ctx);
+      },
+    }),
+  );
+  r.get(
+    "/_matrix/media/r0/config",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        return config(ctx);
+      },
+    }),
+  );
+  r.get(
+    "/_matrix/client/v1/media/config",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        return config(ctx);
+      },
+    }),
+  );
+
+  const upload = async (ctx: RequestContext) => {
+    await ctx.auth();
+    await ctx.rateLimit("upload");
+    const mediaId = randomString(24);
+    await storeUpload(ctx, mediaId);
+    return { content_uri: `mxc://${ctx.hs.serverName}/${mediaId}` };
+  };
+  r.post("/_matrix/media/v3/upload", procedure({ handler: upload }));
+  r.post("/_matrix/media/r0/upload", procedure({ handler: upload }));
+
+  r.post(
+    "/_matrix/media/v1/create",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        const mediaId = randomString(24);
+        await ctx.hs.db.create("media", {
+          media_id: mediaId,
+          content_type: null,
+          filename: null,
+          size: 0,
+          uploader: s.userId,
+          created_ts: Date.now(),
+          pending: true,
+        });
+        return { content_uri: `mxc://${ctx.hs.serverName}/${mediaId}`, unused_expires_at: Date.now() + 24 * 3600_000 };
+      },
+    }),
+  );
+
+  r.put(
+    "/_matrix/media/v3/upload/:serverName/:mediaId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        const s = ctx.session;
+        if (ctx.params.serverName !== ctx.hs.serverName) throw errors.notFound("Unknown media");
+        const meta = await ctx.hs.db.findOne("media", [{ field: "media_id", value: ctx.params.mediaId }]);
+        if (!meta) throw errors.notFound("Unknown media");
+        if (meta.uploader !== s.userId) throw errors.forbidden("You did not create this media ID");
+        // https://github.com/k18k/katrix/issues/102: two uploads could both see the ID pending and
+        // store different content under it. The check and the store now run under a lock per media ID, so the
+        // second one finds it uploaded (409); an upload that fails leaves it pending for a retry.
+        await ctx.hs.cluster.lock(`media-upload:${ctx.params.mediaId}`, async () => {
+          const current = await ctx.hs.db.findOne("media", [{ field: "media_id", value: ctx.params.mediaId }]);
+          if (!current?.pending) throw new MatrixError(409, "M_CANNOT_OVERWRITE_MEDIA", "Media already uploaded");
+          await storeUpload(ctx, ctx.params.mediaId);
+        });
+        return {};
+      },
+    }),
+  );
+
+  // Legacy unauthenticated endpoints and authenticated (v1.11) endpoints.
+  for (const prefix of ["/_matrix/media/v3", "/_matrix/media/r0"]) {
+    r.get(`${prefix}/download/:serverName/:mediaId`, procedure({ handler: download }));
+    r.get(`${prefix}/download/:serverName/:mediaId/:fileName`, procedure({ handler: download }));
+    r.get(`${prefix}/thumbnail/:serverName/:mediaId`, procedure({ handler: thumbnail }));
+  }
+  const authed = async (ctx: RequestContext) => {
+    await ctx.auth();
+    return download(ctx);
+  };
+  r.get("/_matrix/client/v1/media/download/:serverName/:mediaId", procedure({ handler: authed }));
+  r.get("/_matrix/client/v1/media/download/:serverName/:mediaId/:fileName", procedure({ handler: authed }));
+  r.get(
+    "/_matrix/client/v1/media/thumbnail/:serverName/:mediaId",
+    procedure({
+      auth: "user",
+      handler: async (ctx) => {
+        return thumbnail(ctx);
+      },
+    }),
+  );
+}

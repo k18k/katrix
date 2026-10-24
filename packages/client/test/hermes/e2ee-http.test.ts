@@ -11,7 +11,7 @@ import { concatBytes } from "../../src/util/bytes.ts";
 import { decodeUtf8, encodeUtf8 } from "../../src/util/utf8.ts";
 
 // The whole client — login, sync, an encrypted room, Olm and Megolm — in the simulated Hermes
-// environment, over real HTTP, against packages/core in another (ordinary Node.js) process.
+// environment, over real HTTP, against packages/server in another (ordinary Node.js) process.
 //
 // The platform's fetch here is a small one on node:net: Node's fetch and node:http (undici) need
 // the globals the simulation removes, while React Native brings a native fetch of its own.

@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Report it privately through GitHub: **Security → Report a vulnerability** on
-[k18k/matrix-nodejs-homeserver](https://github.com/k18k/matrix-nodejs-homeserver/security/advisories/new).
+[k18k/katrix](https://github.com/k18k/katrix/security/advisories/new).
 Please do not open a public issue for it.
 
 The aim is to answer within 7 days. A confirmed vulnerability is fixed in a patch release, as fast as
@@ -21,4 +21,4 @@ that fixes it, closes the issue and comments the fix where it is made. Security 
 change: CodeQL, secret scanning with push protection, Dependabot security updates, and a regression test for each fixed vulnerability.
 
 For running a server in production, see the threat model and checklist in
-[packages/core/PRODUCTION.md](packages/core/PRODUCTION.md).
+[packages/server/PRODUCTION.md](packages/server/PRODUCTION.md).

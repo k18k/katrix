@@ -1,13 +1,13 @@
-# matrix-nodejs-client
+# @katrix/client
 
-A [Matrix](https://matrix.org) client SDK in TypeScript, with end-to-end encryption (Olm and Megolm). The same code runs in Node.js, in browsers and in React Native (Hermes): no WebAssembly, no WebCrypto, no Node.js APIs. Its only runtime dependencies are [`@noble/curves`](https://github.com/paulmillr/noble-curves), [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) and [`@noble/ciphers`](https://github.com/paulmillr/noble-ciphers).
+The client of [Katrix](https://github.com/k18k/katrix): a [Matrix](https://matrix.org) client SDK in TypeScript, with end-to-end encryption (Olm and Megolm). The same code runs in Node.js, in browsers and in React Native (Hermes): no WebAssembly, no WebCrypto, no Node.js APIs. Its only runtime dependencies are [`@noble/curves`](https://github.com/paulmillr/noble-curves), [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) and [`@noble/ciphers`](https://github.com/paulmillr/noble-ciphers).
 
-It speaks the Client-Server API as the spec defines it, so it is meant for any homeserver; the tests run it against [`matrix-nodejs-homeserver`](../core) (not yet against Synapse). Its Olm and Megolm interoperate with vodozemac, the crypto of the Element apps: the tests exchange messages with matrix-sdk-crypto in both directions.
+It speaks the Client-Server API as the spec defines it, so it is meant for any homeserver; the tests run it against [`@katrix/server`](../server) (not yet against Synapse). Its Olm and Megolm interoperate with vodozemac, the crypto of the Element apps: the tests exchange messages with matrix-sdk-crypto in both directions.
 
-> Status: not published yet (`"private": true`). The crypto is new and has not had an outside review.
+> The Olm and Megolm implementation is new and has not had an outside security review yet.
 
 ```ts
-import { Auth, MatrixClient, fetchHttpAdapter } from "matrix-nodejs-client";
+import { Auth, MatrixClient, fetchHttpAdapter } from "@katrix/client";
 
 const http = fetchHttpAdapter(); // the platform's fetch
 const baseUrl = await Auth.discover("example.org", http); // or the URL itself
@@ -73,14 +73,14 @@ Until verification lands, devices are trusted on first use: a device's keys must
 ## Tests
 
 ```sh
-npm test -w matrix-nodejs-client           # unit, crypto, integration with packages/core, then the Hermes run
-npm run test:hermes -w matrix-nodejs-client
+npm test -w @katrix/client           # unit, crypto, integration with packages/server, then the Hermes run
+npm run test:hermes -w @katrix/client
 ```
 
 - Primitives against their standards' test vectors (FIPS 180-2, RFC 4231, RFC 5869, RFC 7748, RFC 8032, NIST SP 800-38A) and against OpenSSL on random inputs.
 - The spec's own vectors for canonical JSON, JSON signing and unpadded Base64.
 - Olm and Megolm: conversations, out-of-order and skipped messages, replays, tampered and truncated messages, forged signatures, a validly signed message with a wrong MAC, low-order keys, one-time and fallback key use, corrupted and wrongly keyed pickles, the Megolm ratchet across every part boundary.
 - Interop with vodozemac (matrix-sdk-crypto) in both directions, including a Megolm message past index 2^16.
-- Integration with `packages/core`: login, sync, rooms, pagination, restarts from storage, encrypted rooms with rotation and new devices, a Rust client in the same room, and attacks by a room member and by the server (redirected to-device payloads, plaintext room keys, plaintexts for another room, replays, relayed room keys, replayed pre-key messages, corrupted stored sessions), and a check that no secret reaches logs or errors.
+- Integration with `packages/server`: login, sync, rooms, pagination, restarts from storage, encrypted rooms with rotation and new devices, a Rust client in the same room, and attacks by a room member and by the server (redirected to-device payloads, plaintext room keys, plaintexts for another room, replays, relayed room keys, replayed pre-key messages, corrupted stored sessions), and a check that no secret reaches logs or errors.
 
 [PolyForm Noncommercial 1.0.0](LICENSE).

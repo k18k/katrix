@@ -10,7 +10,7 @@ import {
   sqliteAdapter,
   type DatabaseAdapter,
   type Homeserver,
-} from "matrix-nodejs-homeserver";
+} from "@katrix/server";
 import type { PublicConfig } from "./config.ts";
 
 // The public server: a homeserver anyone can sign in to with GitHub, without federation.
@@ -29,7 +29,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,san
 code{background:color-mix(in srgb,var(--line) 60%,transparent);padding:.1rem .35rem;border-radius:4px}.tag{display:inline-block;border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:0 .6rem;font-size:.85rem}
 a{color:var(--accent)}p.muted{color:var(--muted)}</style>
 <main><p><span class="tag">v0 · test server</span></p><h1>${name}</h1>
-<p>A public Matrix homeserver running <a href="https://github.com/k18k/matrix-nodejs-homeserver">matrix-nodejs-homeserver</a>.
+<p>A public Matrix homeserver running <a href="https://github.com/k18k/katrix">Katrix</a>.
 Sign in with GitHub from any Matrix client, for example <a href="https://app.element.io">Element</a>: choose <b>Edit</b> next to the homeserver and enter <code>${name}</code>.</p>
 <p class="muted">This is version 0. It is for testing: features change, the server may be down, and although data is meant to survive updates, it may have to be reset. Do not rely on it for anything important. It does not federate with other servers.</p>
 ${config.termsUrl ? `<p class="muted"><a href="${escape(config.termsUrl)}">Terms</a>${config.policyUrl ? ` · <a href="${escape(config.policyUrl)}">Privacy</a>` : ""}</p>` : ""}
@@ -56,7 +56,7 @@ const MAX_PROXY_BODY = 64 * 1024;
 
 /** Pass a request on to the MatrixRTC authorization service, without the /livekit/jwt prefix. */
 async function proxyLivekitJwt(target: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  // https://github.com/k18k/matrix-nodejs-homeserver/issues/83 — uncontrolled resource consumption (CWE-400): the
+  // https://github.com/k18k/katrix/issues/83 — uncontrolled resource consumption (CWE-400): the
   // body was read in full with no limit, on a route without authentication, so anyone could exhaust the server's
   // memory. The authorization service takes small JSON requests; larger bodies are refused as they arrive.
   const tooLarge = () => {
@@ -141,7 +141,7 @@ export async function startPublicServer(config: PublicConfig): Promise<{ hs: Hom
       return res.end(page);
     }
     if (config.livekitJwtUrl && req.url?.startsWith("/livekit/jwt/")) {
-      // https://github.com/k18k/matrix-nodejs-homeserver/issues/99 — uncaught exception (CWE-248): a client aborting
+      // https://github.com/k18k/katrix/issues/99 — uncaught exception (CWE-248): a client aborting
       // its upload made reading the body reject, nothing caught it, and Node.js exited. Any failure now ends just
       // this request.
       proxyLivekitJwt(config.livekitJwtUrl, req, res).catch(() => {

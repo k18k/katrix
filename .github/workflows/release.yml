@@ -1,8 +1,9 @@
 name: Release
 
 # With changesets on main, opens (or updates) the "Version Packages" pull request that bumps the
-# version and writes CHANGELOG.md. Merging that pull request publishes the package to npm, tags the
-# release (vX.Y.Z) and creates the GitHub release. Publishing uses npm trusted publishing (OIDC):
+# versions and writes the CHANGELOG.md files. Merging that pull request publishes @katrix/server and
+# @katrix/client to npm (one version for both: a "fixed" group in .changeset/config.json), tags the
+# release per package (@katrix/server@X.Y.Z, @katrix/client@X.Y.Z) and creates the GitHub releases. Publishing uses npm trusted publishing (OIDC):
 # no npm token is stored; npmjs.com trusts this workflow, which also adds provenance.
 on:
   push:
@@ -26,8 +27,8 @@ jobs:
           registry-url: https://registry.npmjs.org
           # No dependency cache in this privileged job: a poisoned cache could reach the published package.
       - run: npm ci
-      # Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/15): third-party action pinned to a commit, not a movable tag,
-      # because this job can publish the package. Dependabot updates the pin.
+      # Security (https://github.com/k18k/katrix/issues/15): third-party action pinned to a commit, not a movable tag,
+      # because this job can publish the packages. Dependabot updates the pin.
       - id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:

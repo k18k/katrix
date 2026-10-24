@@ -1,6 +1,6 @@
 # Public server (v0)
 
-A public Matrix homeserver built on [`matrix-nodejs-homeserver`](../../packages/core), served at
+A public Matrix homeserver built on [`@katrix/server`](../../packages/server), served at
 **https://matrix.mwdapis.stream**:
 
 - **GitHub is the only login** (the OAuth 2.0 API of the spec, with GitHub as the identity

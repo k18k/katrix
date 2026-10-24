@@ -1,6 +1,6 @@
 name: Load test
 
-# Runs the load test (packages/core/loadtest/) on a GitHub runner and publishes its results as README badges.
+# Runs the load test (packages/server/loadtest/) on a GitHub runner and publishes its results as README badges.
 # Investigation and tuning runs happen locally; this one exists to show where main stands. The
 # numbers describe one GitHub runner (4 CPUs, 16 GB), with the load generator on the same machine.
 # Clusters run with two nodes here: five nodes, Postgres and k6 on four CPUs measured how they
@@ -9,7 +9,7 @@ name: Load test
 on:
   push:
     branches: [main]
-    paths: ["packages/core/src/**", "packages/core/loadtest/**", "package-lock.json", ".github/workflows/loadtest.yml"]
+    paths: ["packages/server/src/**", "packages/server/loadtest/**", "package-lock.json", ".github/workflows/loadtest.yml"]
   workflow_dispatch:
     inputs:
       force_threshold_failure:
@@ -32,7 +32,7 @@ env:
   ROOMS: 25
   RAMP: 30s
   DURATION: 30s
-  # https://github.com/k18k/matrix-nodejs-homeserver/issues/62: k6's exit codes used to be swallowed, so a run
+  # https://github.com/k18k/katrix/issues/62: k6's exit codes used to be swallowed, so a run
   # that crossed its thresholds still passed. Each scenario's exit code is kept next to its summary (the badges
   # show it), and the last step fails the run when any scenario did not pass.
   SEND_P95_MS: ${{ inputs.force_threshold_failure && '1' || '1000' }}
@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
-        working-directory: packages/core
+        working-directory: packages/server
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: loadtest-results
-          path: packages/core/loadtest/results/
+          path: packages/server/loadtest/results/
 
       # After the upload, so the badges are published either way.
       - name: Thresholds

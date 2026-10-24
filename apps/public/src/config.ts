@@ -1,4 +1,4 @@
-import { githubProvider, type SsoProvider } from "matrix-nodejs-homeserver";
+import { githubProvider, type SsoProvider } from "@katrix/server";
 
 /** Configuration of the public server, read from the environment. */
 export interface PublicConfig {

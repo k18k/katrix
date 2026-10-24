@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { request, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import { startDevIdp } from "@matrix-nodejs-homeserver/dev-idp";
+import { startDevIdp } from "@katrix/dev-idp";
 import { loadConfig } from "../src/config.ts";
 import { pgConnectionString, startPublicServer } from "../src/server.ts";
 

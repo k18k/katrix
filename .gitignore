@@ -1,5 +1,5 @@
 node_modules
-/packages/core/src/**/*.js
+/packages/server/src/**/*.js
 *.db
 *.sqlite
 .media

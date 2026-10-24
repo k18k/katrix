@@ -1,5 +1,5 @@
 {
-  "name": "@matrix-nodejs-homeserver/dev-idp",
+  "name": "@katrix/dev-idp",
   "version": "0.0.0",
   "private": true,
   "description": "A development OpenID Connect provider (Better Auth) where you sign in by picking a user",

@@ -1,8 +1,8 @@
-// A homeserver (packages/core) on a local port, for clients that run in the simulated Hermes
+// A homeserver (packages/server) on a local port, for clients that run in the simulated Hermes
 // environment in another process. Prints "PORT <n>" once it listens.
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createHomeserver, getNodeHandler, memoryAdapter } from "matrix-nodejs-homeserver";
+import { createHomeserver, getNodeHandler, memoryAdapter } from "@katrix/server";
 
 const hs = createHomeserver({
   homeserver: "localhost",

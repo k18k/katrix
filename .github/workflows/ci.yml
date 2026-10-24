@@ -6,7 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Security (https://github.com/k18k/matrix-nodejs-homeserver/issues/7): the jobs run pull request code, so the token may only read the repository.
+# Security (https://github.com/k18k/katrix/issues/7): the jobs run pull request code, so the token may only read the repository.
 permissions:
   contents: read
 
@@ -31,10 +31,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
-      # The published package must build (tsc → dist/, .js and .d.ts per module), and its exports
-      # and types must resolve for consumers (publint, arethetypeswrong; the package is ESM only).
-      - run: npm pack --dry-run -w matrix-nodejs-homeserver
-      - run: npm run check:package -w matrix-nodejs-homeserver
+      # The published packages must build (tsc → dist/, .js and .d.ts per module), and their exports
+      # and types must resolve for consumers (publint, arethetypeswrong; both are ESM only).
+      - run: npm pack --dry-run -w @katrix/server -w @katrix/client
+      - run: npm run check:package -w @katrix/server -w @katrix/client
 
   # The package supports every maintained Node.js LTS; development uses the latest release.
   tests:
@@ -60,21 +60,21 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --ignore-scripts
-      # The apps import the built library (packages/core/dist), which --ignore-scripts skipped.
-      - run: npm run build -w matrix-nodejs-homeserver
+      # The apps import the built library (packages/server/dist), which --ignore-scripts skipped.
+      - run: npm run build -w @katrix/server
       # The audit bot's crypto (matrix-sdk-crypto) is a native module that its install script
       # downloads from the project's GitHub releases.
       - run: node node_modules/@matrix-org/matrix-sdk-crypto-nodejs/download-lib.js
       - run: npm test
 
-  # Federation and end-to-end encryption with Synapse (#61): packages/core/interop/.
+  # Federation and end-to-end encryption with Synapse (#61): packages/server/interop/.
   interop:
     name: Interop (Synapse)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: packages/core
+        working-directory: packages/server
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -96,7 +96,7 @@ jobs:
     timeout-minutes: 90
     defaults:
       run:
-        working-directory: packages/core
+        working-directory: packages/server
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -128,9 +128,9 @@ jobs:
         with:
           name: complement-results
           path: |
-            packages/core/complement-results.json
-            packages/core/complement-passing.txt
-            packages/core/complement-badge.json
+            packages/server/complement-results.json
+            packages/server/complement-passing.txt
+            packages/server/complement-badge.json
 
   # Commits the badge to the complement-results branch, which the README badge reads. Only this
   # job may write to the repository; it runs no code from the checkout, and only for main.

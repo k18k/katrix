@@ -1,11 +1,11 @@
-import { createHomeserver, getFetchHandler, memoryAdapter, type HomeserverOptions } from "matrix-nodejs-homeserver";
+import { createHomeserver, getFetchHandler, memoryAdapter, type HomeserverOptions } from "@katrix/server";
 import { Auth } from "../../src/auth/login.ts";
 import { MatrixClient, type ClientOptions } from "../../src/client.ts";
 import { fetchHttpAdapter, type HttpAdapter } from "../../src/http/adapter.ts";
 import type { MatrixEvent } from "../../src/models/event.ts";
 import type { Logger } from "../../src/util/logger.ts";
 
-/** A homeserver from packages/core, in memory, reached through its fetch handler (no port). */
+/** A homeserver from packages/server, in memory, reached through its fetch handler (no port). */
 export async function homeserver(options: Partial<HomeserverOptions> = {}) {
   const hs = createHomeserver({
     homeserver: "localhost",

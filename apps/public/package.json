@@ -1,5 +1,5 @@
 {
-  "name": "@matrix-nodejs-homeserver/public",
+  "name": "@katrix/public",
   "version": "0.0.0",
   "private": true,
   "description": "The public test server (v0): GitHub login, Postgres, no federation",
@@ -8,18 +8,18 @@
     "start": "node src/main.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json",
-    "predev": "npm run build -w matrix-nodejs-homeserver",
+    "predev": "npm run build -w @katrix/server",
     "dev": "node src/dev.ts",
     "secrets": "msecrets",
     "deploy": "msecrets run -e production -- docker compose -f compose.prod.yaml up -d --build",
     "tunnel": "sh scripts/tunnel.sh"
   },
   "dependencies": {
-    "matrix-nodejs-homeserver": "*",
+    "@katrix/server": "*",
     "pg": "8.23.1"
   },
   "devDependencies": {
-    "@matrix-nodejs-homeserver/dev-idp": "*",
+    "@katrix/dev-idp": "*",
     "@msecrets/ui": "4.0.0",
     "@types/pg": "8.23.1"
   }

@@ -1,0 +1,95 @@
+# Load test: Postgres, one or more homeserver nodes behind nginx, and k6.
+#
+#   docker compose -f packages/server/loadtest/docker-compose.yml up --build --scale homeserver=3 --abort-on-container-exit k6
+#
+# See loadtest/README.md for the knobs (ONLINE_USERS, MESSAGES_PER_SECOND, ROOMS, RAMP, DURATION).
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: matrix
+      POSTGRES_PASSWORD: matrix
+      POSTGRES_DB: matrix
+    # pg_stat_statements: after a run, see which queries took the database's time (loadtest/README.md).
+    command:
+      [
+        "postgres",
+        "-c",
+        "max_connections=500",
+        "-c",
+        "shared_buffers=512MB",
+        "-c",
+        "shared_preload_libraries=pg_stat_statements",
+        "-c",
+        "pg_stat_statements.track=all",
+      ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matrix"]
+      interval: 2s
+      retries: 30
+
+  homeserver:
+    build:
+      context: ../../..
+      dockerfile: packages/server/loadtest/Dockerfile
+    environment:
+      DATABASE_URL: postgres://matrix:matrix@postgres:5432/matrix
+      DB_POOL: ${DB_POOL:-20}
+      CLUSTER_POOL: ${CLUSTER_POOL:-5}
+      CLUSTER: ${CLUSTER:-1}
+      MAX_CONCURRENT_SYNCS: ${MAX_CONCURRENT_SYNCS:-}
+      LOCK_STATS: ${LOCK_STATS:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # k6 starts only once every node answers (migrations done), or its first requests fail.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8008/_matrix/client/versions').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 1s
+      retries: 60
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+
+  lb:
+    image: nginx:1.30.6-alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      homeserver:
+        condition: service_healthy
+    # k6 starts once nginx forwards requests: a container that has started may not listen yet, and
+    # k6's first request then failed the whole run.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8008/_matrix/client/versions"]
+      interval: 1s
+      retries: 60
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+
+  k6:
+    image: grafana/k6:2.3.0
+    # Root in its container, so it can write the summary into ./results whoever created it.
+    user: root
+    command: ["run", "--summary-export=/results/${SUMMARY:-summary}.json", "/scripts/matrix.js"]
+    environment:
+      BASE_URL: http://lb:8008
+      ONLINE_USERS: ${ONLINE_USERS:-1000}
+      MESSAGES_PER_SECOND: ${MESSAGES_PER_SECOND:-50}
+      ROOMS: ${ROOMS:-50}
+      RAMP: ${RAMP:-2m}
+      DURATION: ${DURATION:-5m}
+      SEND_P95_MS: ${SEND_P95_MS:-1000}
+    volumes:
+      - ./k6:/scripts:ro
+      - ./results:/results
+    depends_on:
+      lb:
+        condition: service_healthy
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }

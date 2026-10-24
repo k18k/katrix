@@ -4,7 +4,7 @@ import { MatrixClient } from "../../src/client.ts";
 import { MemoryStorage } from "../../src/storage/memory.ts";
 import { body, findEvent, homeserver, until } from "./helpers.ts";
 
-test("two clients exchange end-to-end encrypted messages through packages/core", async () => {
+test("two clients exchange end-to-end encrypted messages through packages/server", async () => {
   const t = await homeserver();
   try {
     const alice = await t.login("alice");
@@ -245,8 +245,8 @@ test("one-time keys are topped up after others claim them, and a used fallback k
 
 test("interop through the server: our client and matrix-sdk-crypto (Element's Rust crypto) in one room", async () => {
   const t = await homeserver();
-  const { CryptoClient } = await import("matrix-nodejs-homeserver/auditbot");
-  const fetch = (await import("matrix-nodejs-homeserver")).getFetchHandler(t.hs);
+  const { CryptoClient } = await import("@katrix/server/auditbot");
+  const fetch = (await import("@katrix/server")).getFetchHandler(t.hs);
   const userId = await t.hs.admin.createUser("rusty", { password: "password" });
   const session = await t.hs.auth.createSession(userId);
   const rusty = new CryptoClient({ fetch, userId, deviceId: session.device_id, accessToken: session.access_token });

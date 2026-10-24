@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-The repository is an npm workspace: the published library is `packages/core` (npm `matrix-nodejs-homeserver`), and `apps/` holds private apps built on it (`apps/public`, `apps/dev-idp`).
+The repository is Katrix, an npm workspace: the published packages are `packages/server` (npm `@katrix/server`, the homeserver library) and `packages/client` (npm `@katrix/client`, the client SDK), released together with one version; `apps/` holds private apps built on them (`apps/public`, `apps/dev-idp`).
 
 ## Findings are documented where they are fixed
 
@@ -14,7 +14,7 @@ Then, at each place in the code that fixes it, add a short comment with:
 
 For security issues, also give the class, for example "ReDoS, CWE-1333", and what an attacker could do.
 
-Example: `packages/core/src/core/glob.ts` and its call sites, for issue #2.
+Example: `packages/server/src/core/glob.ts` and its call sites, for issue #2.
 
 Keep the exploit details out of the comment (no ready-made payloads); the issue describes the impact.
 
@@ -22,7 +22,7 @@ Keep the exploit details out of the comment (no ready-made payloads); the issue 
 
 A change that users of the package would notice gets a changeset in `.changeset/` in the same commit: a feature, a fix, a behaviour change or a security fix. Write it with `npx changeset`, or as a file by hand.
 
-Until 1.0, every changeset is a `patch` (releases go 0.3.2, 0.3.3, …) and backward compatibility is not kept: options, exports and adapters may change or go without deprecation. Say plainly in the changeset when a change breaks existing code. From 1.0 on, pick the bump by its effect on users: `patch` for fixes, `minor` for features, `major` for breaking changes.
+Until 1.0, every changeset is a `patch` (releases go 0.4.1, 0.4.2, …) and backward compatibility is not kept: options, exports and adapters may change or go without deprecation. Say plainly in the changeset when a change breaks existing code. From 1.0 on, pick the bump by its effect on users: `patch` for fixes, `minor` for features, `major` for breaking changes.
 
 Describe the effect in a sentence or two, for users rather than for maintainers. Link the issue when there is one.
 

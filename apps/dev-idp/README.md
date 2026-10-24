@@ -11,7 +11,7 @@ It is a library: `npm run dev` in [apps/public](../public) starts it in the same
 homeserver, and tests start it on a random port.
 
 ```ts
-import { startDevIdp } from "@matrix-nodejs-homeserver/dev-idp";
+import { startDevIdp } from "@katrix/dev-idp";
 
 const idp = await startDevIdp({ port: 3001, baseUrl: "http://localhost:3001",
   redirectUris: ["http://localhost:8008/_matrix/client/v3/login/sso/callback/dev"] });

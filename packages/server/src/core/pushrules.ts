@@ -1,0 +1,209 @@
+import { CLUSTER_RESYNC } from "#core/cluster.ts";
+import { isObject } from "#core/json.ts";
+import type { Homeserver } from "#homeserver.ts";
+import { M, UNSTABLE } from "#core/m.ts";
+
+export type Rule = Record<string, any>;
+export type Ruleset = Record<string, Rule[]>;
+
+export const KINDS = ["override", "content", "postcontent", "room", "sender", "underride"];
+
+export function defaultRules(userId: string): Ruleset {
+  const localpart = userId.slice(1).split(":")[0];
+  const notify = ["notify"];
+  const sound = (s: string) => ({ set_tweak: "sound", value: s });
+  const highlight = { set_tweak: "highlight" };
+  const r = (rule_id: string, conditions: any[] | undefined, actions: any[], extra: Rule = {}) => ({
+    rule_id,
+    default: true,
+    enabled: true,
+    actions,
+    ...(conditions ? { conditions } : {}),
+    ...extra,
+  });
+  const em = (key: string, pattern: string) => ({ kind: "event_match", key, pattern });
+  const ep = (key: string, value: unknown) => ({ kind: "event_property_is", key, value });
+  return {
+    override: [
+      r(M.RULE.MASTER, [], [], { enabled: false }),
+      r(M.RULE.SUPPRESS_NOTICES, [em("content.msgtype", M.NOTICE)], []),
+      r(
+        M.RULE.INVITE_FOR_ME,
+        [em("type", M.ROOM.MEMBER), em("content.membership", "invite"), em("state_key", userId)],
+        [...notify, sound("default")],
+      ),
+      r(M.RULE.MEMBER_EVENT, [em("type", M.ROOM.MEMBER)], []),
+      r(
+        M.RULE.IS_USER_MENTION,
+        [{ kind: "event_property_contains", key: "content.m\\.mentions.user_ids", value: userId }],
+        [...notify, sound("default"), highlight],
+      ),
+      r(M.RULE.CONTAINS_DISPLAY_NAME, [{ kind: "contains_display_name" }], [...notify, sound("default"), highlight]),
+      r(
+        M.RULE.IS_ROOM_MENTION,
+        [ep("content.m\\.mentions.room", true), { kind: "sender_notification_permission", key: "room" }],
+        [...notify, highlight],
+      ),
+      r(M.RULE.ROOMNOTIF, [em("content.body", "@room"), { kind: "sender_notification_permission", key: "room" }], [...notify, highlight]),
+      r(M.RULE.TOMBSTONE, [em("type", M.ROOM.TOMBSTONE), em("state_key", "")], [...notify, highlight]),
+      r(M.RULE.REACTION, [em("type", M.REACTION)], []),
+      r(M.RULE.ROOM.SERVER_ACL, [em("type", M.ROOM.SERVER_ACL), em("state_key", "")], []),
+      r(M.RULE.SUPPRESS_EDITS, [ep("content.m\\.relates_to.rel_type", M.REPLACE)], []),
+      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_RESPONSE, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.RESPONSE)], []),
+    ],
+    content: [r(M.RULE.CONTAINS_USER_NAME, undefined, [...notify, sound("default"), highlight], { pattern: localpart })],
+    // MSC4306: thread replies notify only in subscribed threads.
+    postcontent: [
+      r(
+        UNSTABLE.IO.ELEMENT.MSC4306.RULE.UNSUBSCRIBED_THREAD,
+        [{ kind: UNSTABLE.IO.ELEMENT.MSC4306.THREAD_SUBSCRIPTION, subscribed: false }],
+        [],
+      ),
+      r(
+        UNSTABLE.IO.ELEMENT.MSC4306.RULE.SUBSCRIBED_THREAD,
+        [{ kind: UNSTABLE.IO.ELEMENT.MSC4306.THREAD_SUBSCRIPTION, subscribed: true }],
+        [...notify, sound("default")],
+      ),
+    ],
+    room: [],
+    sender: [],
+    underride: [
+      r(M.RULE.CALL, [em("type", M.CALL.INVITE)], [...notify, sound("ring")]),
+      r(
+        M.RULE.ENCRYPTED_ROOM_ONE_TO_ONE,
+        [{ kind: "room_member_count", is: "2" }, em("type", M.ROOM.ENCRYPTED)],
+        [...notify, sound("default")],
+      ),
+      r(M.RULE.ROOM_ONE_TO_ONE, [{ kind: "room_member_count", is: "2" }, em("type", M.ROOM.MESSAGE)], [...notify, sound("default")]),
+      r(M.RULE.MESSAGE, [em("type", M.ROOM.MESSAGE)], notify),
+      r(
+        UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_START_ONE_TO_ONE,
+        [{ kind: "room_member_count", is: "2" }, em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.START)],
+        [...notify, sound("default")],
+      ),
+      r(
+        UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_END_ONE_TO_ONE,
+        [{ kind: "room_member_count", is: "2" }, em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.END)],
+        [...notify, sound("default")],
+      ),
+      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_START, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.START)], notify),
+      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_END, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.END)], notify),
+      r(M.RULE.ENCRYPTED, [em("type", M.ROOM.ENCRYPTED)], notify),
+    ],
+  };
+}
+
+/** Serialise read-modify-write cycles on a user's push rules (cluster-wide). */
+export function withRulesLock<T>(hs: Homeserver, userId: string, fn: () => Promise<T>): Promise<T> {
+  return hs.cluster.lock(`pushrules:${userId}`, () => {
+    cacheFor(hs).delete(userId);
+    return fn();
+  });
+}
+
+const rulesCache = new WeakMap<Homeserver, Map<string, Ruleset>>();
+
+function cacheFor(hs: Homeserver): Map<string, Ruleset> {
+  let c = rulesCache.get(hs);
+  if (!c) {
+    const cache = new Map<string, Ruleset>();
+    rulesCache.set(hs, (c = cache));
+    hs.cluster.subscribe("pushrules", (msg: { from: string; userId: string }) => {
+      if (msg?.from !== hs.instanceId) cache.delete(msg.userId);
+    });
+    hs.cluster.subscribe(CLUSTER_RESYNC, () => cache.clear());
+  }
+  return c;
+}
+
+/** A user's push rules, as a copy the caller may change. */
+export async function loadRules(hs: Homeserver, userId: string): Promise<Ruleset> {
+  return structuredClone(await readOnlyRules(hs, userId));
+}
+
+/**
+ * A user's push rules, shared and frozen: for callers that only read them.
+ *
+ * https://github.com/k18k/katrix/issues/41: push evaluation copied every
+ * member's rules for every message, about 6% of the CPU under load, though it only reads them.
+ * The cached rulesets are deep-frozen, so a caller that tries to change one fails loudly instead
+ * of changing everyone's.
+ */
+export async function readOnlyRules(hs: Homeserver, userId: string): Promise<Readonly<Ruleset>> {
+  const cached = cacheFor(hs).get(userId);
+  if (cached) return cached;
+  const rules = deepFreeze(await readRules(hs, userId));
+  const cache = cacheFor(hs);
+  if (cache.size > 5000) cache.clear();
+  cache.set(userId, rules);
+  return rules;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const v of Object.values(value)) deepFreeze(v);
+  }
+  return value;
+}
+
+async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
+  const row = await hs.db.findOne("account_data", [
+    { field: "user_id", value: userId },
+    { field: "room_id", value: "" },
+    { field: "type", value: M.PUSH_RULES },
+  ]);
+  if (!isObject(row?.content?.global)) return defaultRules(userId);
+  const rules: Ruleset = row!.content.global;
+  // Rulesets saved before a kind existed gain that kind's default rules.
+  const defaults = defaultRules(userId);
+  for (const kind of KINDS) if (!Array.isArray(rules[kind])) rules[kind] = defaults[kind];
+  return rules;
+}
+
+export async function saveRules(hs: Homeserver, userId: string, rules: Ruleset): Promise<void> {
+  cacheFor(hs).set(userId, deepFreeze(structuredClone(rules)));
+  void hs.cluster.publish("pushrules", { from: hs.instanceId, userId }).catch(() => {});
+  await hs.streams.write((stream) =>
+    hs.db.upsert("account_data", { user_id: userId, room_id: "", type: M.PUSH_RULES, content: { global: rules }, stream }),
+  );
+  hs.notifier.notify([userId]);
+}
+
+/** Copy room-specific push rules from an upgraded room's predecessor to the new room. */
+export function copyRoomPushRules(hs: Homeserver, userId: string, oldRoomId: string, newRoomId: string): Promise<void> {
+  return withRulesLock(hs, userId, () => copyRules(hs, userId, oldRoomId, newRoomId));
+}
+
+async function copyRules(hs: Homeserver, userId: string, oldRoomId: string, newRoomId: string): Promise<void> {
+  const row = await hs.db.findOne("account_data", [
+    { field: "user_id", value: userId },
+    { field: "room_id", value: "" },
+    { field: "type", value: M.PUSH_RULES },
+  ]);
+  if (!isObject(row?.content?.global)) return;
+  const rules: Ruleset = row!.content.global;
+  let changed = false;
+  for (const kind of KINDS) {
+    const list = rules[kind] ?? [];
+    const additions: Rule[] = [];
+    for (const rule of list) {
+      if (rule.default) continue;
+      if (kind === "room" && rule.rule_id === oldRoomId) {
+        if (!list.some((r) => r.rule_id === newRoomId)) additions.push({ ...structuredClone(rule), rule_id: newRoomId });
+      } else if (Array.isArray(rule.conditions) && rule.conditions.some((c: any) => c?.key === "room_id" && c?.pattern === oldRoomId)) {
+        const copy = structuredClone(rule);
+        copy.rule_id = `${rule.rule_id}-${newRoomId}`;
+        copy.conditions = copy.conditions.map((c: any) =>
+          c?.key === "room_id" && c?.pattern === oldRoomId ? { ...c, pattern: newRoomId } : c,
+        );
+        if (!list.some((r) => r.rule_id === copy.rule_id)) additions.push(copy);
+      }
+    }
+    if (additions.length) {
+      rules[kind] = [...additions, ...list];
+      changed = true;
+    }
+  }
+  if (changed) await saveRules(hs, userId, rules);
+}
