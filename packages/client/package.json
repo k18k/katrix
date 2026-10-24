@@ -1,6 +1,6 @@
 {
   "name": "@katrix/client",
-  "version": "0.3.10",
+  "version": "0.4.0",
   "description": "Katrix client: a Matrix client SDK in TypeScript with end-to-end encryption (Olm, Megolm) for Node.js, browsers and React Native",
   "keywords": [
     "client",
