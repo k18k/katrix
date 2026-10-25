@@ -55,9 +55,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --conditions=matrix-src --test \"test/**/*.test.ts\"",
     "smoke": "node --conditions=matrix-src --test test/smoke.test.ts",
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
-    "check:package": "publint && node scripts/check-types.ts",
-    "prepare": "npm run build",
+    "build": "tsdown",
+    "prepare": "node -e \"process.exit(process.env.KATRIX_TSDOWN ? 0 : 1)\" || npm run build",
     "start:example": "node --conditions=matrix-src examples/node-http.ts",
     "start:multi-node-example": "node --conditions=matrix-src examples/multi-node.ts"
   },

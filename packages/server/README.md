@@ -472,7 +472,7 @@ the commands below run in `packages/server`.
 ```sh
 npm install                      # at the repository root
 npm run typecheck                # tsc only type-checks (noEmit)
-npm run build                    # tsc → dist/ (what the published package contains)
+npm run build                    # tsdown → dist/ (what the published package contains)
 node --conditions=matrix-src examples/node-http.ts      # development runs the TypeScript sources directly (type stripping)
 ```
 
@@ -494,7 +494,8 @@ Inside `src`, modules import each other through the package's
 `src/core/errors.ts`. The build turns them back into relative imports.
 
 Node does not strip types from files inside `node_modules`, so the package ships `dist/`,
-built by TypeScript (`tsconfig.build.json`): one `.js` and one `.d.ts` per source module.
+built by tsdown (`tsdown.config.ts`, unbundled): one `.js`, one `.d.ts` and their source maps
+per source module; the build also runs publint and arethetypeswrong.
 Sources import each other as `#core/x.ts`; `package.json` maps those imports to `dist/*.js` by
 default, and to `src/*.ts` under the `matrix-src` condition. Anything that runs the sources
 directly (tests, examples, Complement and load-test images) passes `--conditions=matrix-src`; the
