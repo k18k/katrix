@@ -22,6 +22,10 @@ export { DevicesApi } from "./account/devices.ts";
 export { PresenceApi, ProfileApi } from "./account/profile.ts";
 export { DirectoryApi } from "./directory/directory.ts";
 
+// Media
+export { MediaApi, parseMxc } from "./media/media.ts";
+export { AttachmentError, decryptAttachment, encryptAttachment } from "./media/attachments.ts";
+
 // Models
 export {
   MatrixEvent,

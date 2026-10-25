@@ -12,6 +12,7 @@ import { fetchHttpAdapter, type HttpAdapter } from "./http/adapter.ts";
 import { MatrixHttpApi } from "./http/api.ts";
 import { ConnectionError, MatrixError } from "./http/errors.ts";
 import { DirectoryApi } from "./directory/directory.ts";
+import { MediaApi } from "./media/media.ts";
 import { MatrixEvent } from "./models/event.ts";
 import { Room } from "./models/room.ts";
 import {
@@ -119,6 +120,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   /** Aliases, the public room directory, room summaries, the user directory, third-party networks. */
   readonly directory: DirectoryApi;
   readonly admin: AdminApi;
+  /** Uploads, downloads, thumbnails, URL previews, encrypted attachments. */
+  readonly media: MediaApi;
   private readonly logger: Logger;
   private readonly primitives: CryptoPrimitives;
   private readonly transport: SyncTransport;
@@ -170,6 +173,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     this.admin = new AdminApi(this.api);
     const e2ee = opts.e2ee === false ? undefined : (opts.e2ee ?? {});
     this.primitives = e2ee?.primitives ?? nobleCryptoPrimitives();
+    this.media = new MediaApi(this.api, this.primitives);
     if (e2ee) {
       this.e2ee = new E2EEEngine({
         api: this.api,
@@ -1146,6 +1150,36 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
 
   sendText(roomId: string, body: string): Promise<string> {
     return this.sendMessage(roomId, { msgtype: "m.text", body });
+  }
+
+  /**
+   * Upload a file and send it as an m.image, m.video, m.audio or m.file message. In an encrypted
+   * room the file is encrypted first (the event carries `file`, not `url`), so the server never
+   * sees it. `info` is sent as given (mimetype, size, w, h, duration, …); size and mimetype are
+   * filled in when missing.
+   */
+  async sendFile(
+    roomId: string,
+    data: Uint8Array,
+    opts: {
+      msgtype?: "m.image" | "m.video" | "m.audio" | "m.file";
+      filename: string;
+      contentType?: string;
+      body?: string;
+      info?: Record<string, unknown>;
+    },
+  ): Promise<string> {
+    const info = { mimetype: opts.contentType, size: data.length, ...opts.info };
+    const encrypted = this.rooms.get(roomId)?.isEncrypted() ?? (await this.fetchStateEvent(roomId, "m.room.encryption")) !== undefined;
+    const content: Record<string, unknown> = {
+      msgtype: opts.msgtype ?? "m.file",
+      body: opts.body ?? opts.filename,
+      filename: opts.filename,
+      info,
+    };
+    if (encrypted) content.file = await this.media.uploadEncrypted(data);
+    else content.url = await this.media.upload(data, { contentType: opts.contentType, filename: opts.filename });
+    return this.sendEvent(roomId, "m.room.message", content as ContentOf<"m.room.message">);
   }
 
   sendReaction(roomId: string, eventId: string, key: string): Promise<string> {
