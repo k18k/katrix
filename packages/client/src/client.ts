@@ -14,7 +14,9 @@ import { ConnectionError, MatrixError } from "./http/errors.ts";
 import { DirectoryApi } from "./directory/directory.ts";
 import { MediaApi } from "./media/media.ts";
 import { PushApi, type PushOutcome } from "./push/push.ts";
+import { SpacesApi } from "./spaces/spaces.ts";
 import { MatrixEvent } from "./models/event.ts";
+import { relationOf } from "./models/relations.ts";
 import { Room } from "./models/room.ts";
 import {
   type ClientEvent,
@@ -74,6 +76,11 @@ export interface ClientEvents {
   "room.state": [event: MatrixEvent, room: Room, previous: MatrixEvent | undefined];
   "room.localEcho": [event: MatrixEvent, room: Room];
   "room.redaction": [event: MatrixEvent, room: Room, redaction: ClientEvent];
+  /**
+   * An event's relations changed: an edit, a reaction or a thread reply arrived (or was
+   * decrypted, or redacted). `target` is the event related to, when it is loaded.
+   */
+  "room.relation": [target: MatrixEvent | undefined, relation: MatrixEvent, room: Room];
   "room.typing": [room: Room, userIds: string[]];
   "room.receipt": [room: Room, event: ClientEvent];
   "room.accountData": [room: Room, event: ClientEvent];
@@ -131,6 +138,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   readonly media: MediaApi;
   /** Pushers, push rules, the notification list, and evaluating rules locally. */
   readonly push: PushApi;
+  /** Creating spaces, their children and parents, the space hierarchy. */
+  readonly spaces: SpacesApi;
   private readonly logger: Logger;
   private readonly primitives: CryptoPrimitives;
   private readonly transport: SyncTransport;
@@ -185,6 +194,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     this.directory = new DirectoryApi(this.api);
     this.admin = new AdminApi(this.api);
     this.push = new PushApi(this.api, userId, (type) => this.accountData.get(type));
+    this.spaces = new SpacesApi(this);
     const e2ee = opts.e2ee === false ? undefined : (opts.e2ee ?? {});
     this.primitives = e2ee?.primitives ?? nobleCryptoPrimitives();
     this.media = new MediaApi(this.api, this.primitives);
@@ -516,6 +526,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       fresh.push(event);
     }
     for (const event of room.timeline.append(fresh)) {
+      this.indexRelations(event, room, emits, toDecrypt);
       if (event.isEncrypted()) toDecrypt.push({ event, room });
       if (this.notifyQueue && room.membership === "join" && event.sender !== this.userId) this.notifyQueue.push({ event, room });
       emits.push(() => this.emit("room.timeline", event, room, { live: true }));
@@ -543,7 +554,22 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     const event = room.timeline.find(target);
     if (!event) return;
     event.applyRedaction(redaction);
+    const related = room.removeRelations(event);
     emits.push(() => this.emit("room.redaction", event, room, redaction));
+    if (related) emits.push(() => this.emit("room.relation", related, event, room));
+  }
+
+  /** Index an event's relation; a server-bundled edit of it is decrypted along with it. */
+  private indexRelations(
+    event: MatrixEvent,
+    room: Room,
+    emits: Array<() => void>,
+    toDecrypt: Array<{ event: MatrixEvent; room: Room }>,
+  ): void {
+    const target = room.applyRelations(event);
+    const bundled = room.bundledReplacement(event);
+    if (bundled?.isEncrypted() && bundled.decryptionStatus === "pending") toDecrypt.push({ event: bundled, room });
+    if (relationOf(event)) emits.push(() => this.emit("room.relation", target, event, room));
   }
 
   private applyEphemeral(room: Room, ev: ClientEvent, emits: Array<() => void>): void {
@@ -595,7 +621,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       for (const [, raw] of await this.store.list<ClientEvent>("room_state", `${roomId}|`)) room.state.setRaw(raw);
       room.state.membersLoaded = stored.membersLoaded ?? false;
       const timeline = await this.store.get<{ events: ClientEvent[]; complete: boolean }>("room_timeline", roomId);
-      room.timeline.append((timeline?.events ?? []).map((raw) => new MatrixEvent(raw)));
+      for (const event of room.timeline.append((timeline?.events ?? []).map((raw) => new MatrixEvent(raw)))) room.applyRelations(event);
       // The stored tail starts after the back token only if the whole segment was kept.
       room.timeline.backToken = timeline?.complete ? stored.backToken : undefined;
       room.timeline.atStart = timeline?.complete ? (stored.atStart ?? false) : false;
@@ -618,6 +644,9 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     }
     if (await this.e2ee.decryptRoomEvent(event)) {
       this.emit("event.decrypted", event, room);
+      // Edits and reactions count once decrypted (their type and m.new_content are inside).
+      const target = room.applyRelations(event);
+      if (target) this.emit("room.relation", target, event, room);
       if (this.notifyOnDecrypt.has(event)) {
         this.notifyOnDecrypt.delete(event);
         this.notifyIfRulesSay(event, room);
@@ -685,7 +714,12 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     return res.room_id;
   }
 
+  /**
+   * Join a room. Accepting an invite that was sent as a direct chat (is_direct) also records the
+   * room in m.direct, as the spec asks of the invitee's client.
+   */
   async joinRoom(roomIdOrAlias: string, opts: { via?: string[]; reason?: string } = {}): Promise<string> {
+    const invite = this.rooms.get(roomIdOrAlias)?.inviteState.find((e) => e.type === "m.room.member" && e.state_key === this.userId);
     const res = await this.api.endpoint(
       "POST /v3/join/:roomIdOrAlias",
       { roomIdOrAlias },
@@ -694,7 +728,71 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
         body: { reason: opts.reason },
       },
     );
+    if (invite?.content.is_direct === true && invite.sender)
+      await this.markDirect(res.room_id, invite.sender).catch((e) => this.logger.warn("could not update m.direct", describeError(e)));
     return res.room_id;
+  }
+
+  // ─── Direct chats (https://spec.matrix.org/v1.19/client-server-api/#direct-messaging) ──
+
+  /** The m.direct map: user ID → the rooms that are direct chats with them. */
+  getDirectRooms(): Record<string, string[]> {
+    const content = this.accountData.get("m.direct") ?? {};
+    const out: Record<string, string[]> = {};
+    for (const [userId, rooms] of Object.entries(content))
+      if (Array.isArray(rooms)) out[userId] = rooms.filter((r): r is string => typeof r === "string");
+    return out;
+  }
+
+  /** The direct chat with a user this user is in and the other user has not left, newest first. */
+  findDirectRoom(userId: string): Room | undefined {
+    const candidates = (this.getDirectRooms()[userId] ?? [])
+      .map((id) => this.rooms.get(id))
+      .filter((r): r is Room => r !== undefined && r.membership === "join")
+      .filter((r) => {
+        const m = r.state.membership(userId);
+        return m === "join" || m === "invite";
+      });
+    return candidates.sort((a, b) => (b.lastEvent()?.originServerTs ?? 0) - (a.lastEvent()?.originServerTs ?? 0))[0];
+  }
+
+  /** Start a direct chat (encrypted unless `encrypted: false`) and record it in m.direct. */
+  async createDirectRoom(userId: string, opts: { encrypted?: boolean } = {}): Promise<string> {
+    const roomId = await this.createRoom({
+      isDirect: true,
+      invite: [userId],
+      preset: "trusted_private_chat",
+      encrypted: opts.encrypted ?? true,
+    });
+    await this.markDirect(roomId, userId);
+    return roomId;
+  }
+
+  /**
+   * Record (or with `direct: false`, remove) a room as a direct chat with `userId` in m.direct.
+   * Read from the server first, so a change made on another device since the last sync is kept.
+   */
+  async markDirect(roomId: string, userId: string, direct = true): Promise<void> {
+    const current = ((await this.account.getAccountData("m.direct")) ?? {}) as Record<string, unknown>;
+    const next: Record<string, string[]> = {};
+    for (const [u, rooms] of Object.entries(current))
+      if (Array.isArray(rooms)) next[u] = rooms.filter((r): r is string => typeof r === "string" && r !== roomId);
+    if (direct) next[userId] = [...(next[userId] ?? []), roomId];
+    for (const [u, rooms] of Object.entries(next)) if (rooms.length === 0) delete next[u];
+    await this.account.setAccountData("m.direct", next);
+    this.accountData.set("m.direct", next);
+  }
+
+  /**
+   * Join the room an upgraded room points to (m.room.tombstone), through the server of whoever
+   * upgraded it. Resolves with the new room's ID, or undefined when the room was not upgraded.
+   */
+  async followUpgrade(roomId: string): Promise<string | undefined> {
+    const room = this.rooms.get(roomId);
+    const successor = room?.successor();
+    if (!successor) return undefined;
+    const sender = room!.state.get("m.room.tombstone")?.sender;
+    return this.joinRoom(successor.roomId, { via: sender ? [sender.slice(sender.indexOf(":") + 1)] : undefined });
   }
 
   /** Ask to join a room whose join rule is `knock` (https://spec.matrix.org/v1.19/client-server-api/#knocking-on-rooms). */
@@ -935,7 +1033,10 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     });
     const events = (res.chunk ?? []).map((raw) => new MatrixEvent({ ...raw, room_id: roomId }));
     const added = room.timeline.prepend(events, res.end && (res.chunk?.length ?? 0) > 0 ? res.end : undefined);
+    const toDecrypt: Array<{ event: MatrixEvent; room: Room }> = [];
+    for (const event of added) this.indexRelations(event, room, emits, toDecrypt);
     for (const emit of emits) emit();
+    for (const { event } of toDecrypt) await this.decryptAndEmit(event, room);
     for (const event of added) {
       if (event.isEncrypted()) await this.decryptAndEmit(event, room);
       this.emit("room.timeline", event, room, { live: false });
@@ -1119,7 +1220,9 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     if (room) {
       room.timeline.append([echo]);
       this.localEchoes.set(txnId, { event: echo, room });
+      const target = room.applyRelations(echo);
       this.emit("room.localEcho", echo, room);
+      if (target) this.emit("room.relation", target, echo, room);
     }
     try {
       return await this.sendPrepared(roomId, room, echo, type, content as Record<string, unknown>, txnId);
@@ -1236,6 +1339,68 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     if (encrypted) content.file = await this.media.uploadEncrypted(data);
     else content.url = await this.media.upload(data, { contentType: opts.contentType, filename: opts.filename });
     return this.sendEvent(roomId, "m.room.message", content as ContentOf<"m.room.message">);
+  }
+
+  /**
+   * Edit a message (https://spec.matrix.org/v1.19/client-server-api/#event-replacements). The
+   * edit's top-level body is a "* …" fallback for clients without edits; `m.mentions` at the top
+   * level holds only the users newly mentioned, so they are not pinged twice.
+   */
+  async sendEdit(roomId: string, eventId: string, newContent: ContentOf<"m.room.message">): Promise<string> {
+    const original = this.rooms.get(roomId)?.timeline.find(eventId) ?? (await this.fetchEvent(roomId, eventId));
+    const { "m.relates_to": _dropped, ...replacement } = newContent as ContentOf<"m.room.message"> & { "m.relates_to"?: unknown };
+    const before = new Set((original.latestContent as { "m.mentions"?: { user_ids?: string[] } })["m.mentions"]?.user_ids ?? []);
+    const mentioned = (replacement["m.mentions"]?.user_ids ?? []).filter((u) => !before.has(u));
+    return this.sendEvent(roomId, original.type, {
+      ...replacement,
+      body: `* ${replacement.body}`,
+      ...(typeof replacement.formatted_body === "string" ? { formatted_body: `* ${replacement.formatted_body}` } : {}),
+      "m.mentions": mentioned.length ? { user_ids: mentioned } : {},
+      "m.new_content": replacement,
+      "m.relates_to": { rel_type: "m.replace", event_id: eventId },
+    } as Record<string, unknown>);
+  }
+
+  /**
+   * Reply to an event (rich replies, https://spec.matrix.org/v1.19/client-server-api/#rich-replies).
+   * The replied-to sender is mentioned. A reply to an event in a thread stays in the thread.
+   */
+  async sendReply(roomId: string, inReplyTo: string, content: ContentOf<"m.room.message">): Promise<string> {
+    const target = this.rooms.get(roomId)?.timeline.find(inReplyTo) ?? (await this.fetchEvent(roomId, inReplyTo).catch(() => undefined));
+    const mentions = new Set(content["m.mentions"]?.user_ids ?? []);
+    if (target?.sender && target.sender !== this.userId) mentions.add(target.sender);
+    const thread = target?.threadRootId;
+    return this.sendMessage(roomId, {
+      ...content,
+      "m.mentions": { ...content["m.mentions"], user_ids: [...mentions] },
+      "m.relates_to": thread
+        ? { rel_type: "m.thread", event_id: thread, is_falling_back: false, "m.in_reply_to": { event_id: inReplyTo } }
+        : { "m.in_reply_to": { event_id: inReplyTo } },
+    });
+  }
+
+  /**
+   * Send a message in a thread (https://spec.matrix.org/v1.19/client-server-api/#threading). It
+   * carries a fallback reply to the thread's latest event, for clients without threads.
+   */
+  async sendThreadMessage(roomId: string, rootId: string, content: ContentOf<"m.room.message">): Promise<string> {
+    const room = this.rooms.get(roomId);
+    const latest = room?.threadSummary(rootId)?.latestEvent?.eventId ?? rootId;
+    return this.sendMessage(roomId, {
+      ...content,
+      "m.relates_to": { rel_type: "m.thread", event_id: rootId, is_falling_back: true, "m.in_reply_to": { event_id: latest } },
+    });
+  }
+
+  /** Take back this user's reaction with `key` on an event (redacts the reaction). Resolves false if there was none. */
+  async removeReaction(roomId: string, eventId: string, key: string): Promise<boolean> {
+    const mine = this.rooms
+      .get(roomId)
+      ?.reactions(eventId)
+      .find((g) => g.key === key)?.myEventId;
+    if (!mine) return false;
+    await this.redactEvent(roomId, mine);
+    return true;
   }
 
   sendReaction(roomId: string, eventId: string, key: string): Promise<string> {

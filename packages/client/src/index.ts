@@ -26,6 +26,9 @@ export { DirectoryApi } from "./directory/directory.ts";
 export { MediaApi, parseMxc } from "./media/media.ts";
 export { AttachmentError, decryptAttachment, encryptAttachment } from "./media/attachments.ts";
 
+// Spaces
+export { SpacesApi, type SpaceChild } from "./spaces/spaces.ts";
+
 // Push
 export { PushApi, type PushOutcome } from "./push/push.ts";
 
@@ -39,6 +42,7 @@ export {
   type LocalEchoStatus,
 } from "./models/event.ts";
 export { Room, type Receipt, type RoomSummary } from "./models/room.ts";
+export { isValidReplacement, Relations, relationOf, type ReactionGroup, type ThreadSummary } from "./models/relations.ts";
 export { RoomState, type RoomMember } from "./models/room-state.ts";
 export { Timeline } from "./models/timeline.ts";
 export type * from "@katrix/shared/types";

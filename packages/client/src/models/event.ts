@@ -1,4 +1,4 @@
-import type { ContentOf, KnownEventType, ClientEvent, UnsignedData } from "@katrix/shared";
+import type { ContentOf, KnownEventType, ClientEvent, RelatesTo, UnsignedData } from "@katrix/shared";
 
 export type DecryptionStatus = "none" | "pending" | "decrypted" | "failed";
 
@@ -52,6 +52,8 @@ export class MatrixEvent<T extends string = string> {
   txnId?: string;
   /** Set when a redaction for this event arrived. */
   redactedBy?: string;
+  /** The edit shown for this event (the newest valid m.replace), kept up to date by its room. */
+  replacement?: MatrixEvent;
 
   constructor(wire: ClientEvent) {
     this.wire = wire;
@@ -101,6 +103,39 @@ export class MatrixEvent<T extends string = string> {
 
   isRedacted(): boolean {
     return this.redactedBy !== undefined || this.wire.unsigned?.redacted_because !== undefined;
+  }
+
+  /**
+   * The content to show: an edit's `m.new_content` once the event was edited, with the
+   * original's `m.relates_to` kept (https://spec.matrix.org/v1.19/client-server-api/#applying-mnew_content).
+   */
+  get latestContent(): ContentOf<T> {
+    const newContent = this.replacement?.content as { "m.new_content"?: Record<string, unknown> } | undefined;
+    if (!newContent?.["m.new_content"] || this.isRedacted()) return this.content;
+    const { "m.relates_to": _ignored, ...rest } = newContent["m.new_content"];
+    const relatesTo = (this.content as { "m.relates_to"?: unknown })["m.relates_to"];
+    return (relatesTo === undefined ? rest : { ...rest, "m.relates_to": relatesTo }) as ContentOf<T>;
+  }
+
+  isEdited(): boolean {
+    return this.replacement !== undefined && !this.isRedacted();
+  }
+
+  /** The event this one replies to (rich replies, https://spec.matrix.org/v1.19/client-server-api/#rich-replies). */
+  get replyToEventId(): string | undefined {
+    const rel =
+      (this.content as { "m.relates_to"?: RelatesTo })["m.relates_to"] ??
+      (this.wire.content as { "m.relates_to"?: RelatesTo })["m.relates_to"];
+    const id = rel?.["m.in_reply_to"]?.event_id;
+    return typeof id === "string" ? id : undefined;
+  }
+
+  /** The thread root this event is in, if it is a thread reply. */
+  get threadRootId(): string | undefined {
+    const rel =
+      (this.content as { "m.relates_to"?: RelatesTo })["m.relates_to"] ??
+      (this.wire.content as { "m.relates_to"?: RelatesTo })["m.relates_to"];
+    return rel?.rel_type === "m.thread" && typeof rel.event_id === "string" ? rel.event_id : undefined;
   }
 
   /** Narrows the event's type (and so its content) to `type`. */
