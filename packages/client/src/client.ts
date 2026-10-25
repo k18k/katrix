@@ -33,7 +33,7 @@ import {
 import { isAbortError, newAbortController, setTimer, sleep, type AbortControllerLike } from "./platform.ts";
 import { nativeE2EEProtocol } from "./protocol/native.ts";
 import type { E2EEProtocol, PickleKey } from "./protocol/protocol.ts";
-import type { StorageAdapter } from "./storage/adapter.ts";
+import { STORES, type StorageAdapter } from "./storage/adapter.ts";
 import { MemoryStorage } from "./storage/memory.ts";
 import { Store, type Transaction } from "./storage/store.ts";
 import type { JoinedRoomUpdate, SyncResult, SyncTransport, TimelineUpdate } from "./sync/types.ts";
@@ -172,6 +172,9 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   /** Our events being sent, by transaction ID, to match the copy that comes down /sync. */
   private localEchoes = new Map<string, { event: MatrixEvent; room: Room }>();
   private accountData = new Map<string, Record<string, unknown>>();
+  private presenceByUser = new Map<string, ContentOf<"m.presence">>();
+  /** set_presence for /sync: from the options, then from the last presence.set(). */
+  private setPresence?: "online" | "offline" | "unavailable";
   private started?: Promise<void>;
   private loaded = false;
   /** During a sync round after the first: the new events from others, to evaluate push rules on. */
@@ -207,7 +210,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     this.account = new AccountApi(this.api, userId);
     this.devices = new DevicesApi(this.api);
     this.profile = new ProfileApi(this.api, userId);
-    this.presence = new PresenceApi(this.api, userId);
+    this.setPresence = opts.sync?.setPresence;
+    this.presence = new PresenceApi(this.api, userId, (presence) => (this.setPresence = presence));
     this.directory = new DirectoryApi(this.api);
     this.admin = new AdminApi(this.api);
     this.push = new PushApi(this.api, userId, (type) => this.accountData.get(type));
@@ -270,6 +274,11 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     return this.accountData.get(type);
   }
 
+  /** A user's latest presence from /sync (this.presence.get asks the server). */
+  getPresence(userId: string): ContentOf<"m.presence"> | undefined {
+    return this.presenceByUser.get(userId);
+  }
+
   isPrepared(): boolean {
     return this.prepared;
   }
@@ -308,10 +317,24 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     await this.waitFor("sync", (s) => s === "prepared");
   }
 
-  /** Log out on the server and stop. */
-  async logout(): Promise<void> {
+  /**
+   * Log out on the server and stop. The device's keys are gone on the server then, so its
+   * stored state is useless: `clearStorage` (default true) deletes it, keys included.
+   */
+  async logout(opts: { clearStorage?: boolean } = {}): Promise<void> {
     await this.stop();
     await this.api.endpoint("POST /v3/logout", {}, { body: {} });
+    if (opts.clearStorage !== false) await this.clearStorage();
+  }
+
+  /** Delete everything this client stored (rooms, sync token, crypto state). The client is unusable afterwards. */
+  async clearStorage(): Promise<void> {
+    await this.store.transaction(async (tx) => {
+      for (const store of STORES) for (const [key] of await tx.list(store, "")) tx.delete(store, key);
+    });
+    this.rooms.clear();
+    this.accountData.clear();
+    this.syncToken = undefined;
   }
 
   async close(): Promise<void> {
@@ -328,7 +351,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
           since: this.syncToken,
           timeoutMs: this.syncToken ? (this.opts.sync?.pollTimeoutMs ?? 30_000) : 0,
           signal: this.syncAbort.signal,
-          setPresence: this.opts.sync?.setPresence,
+          setPresence: this.setPresence,
         });
         if (!this.running) break;
         await this.processSync(result);
@@ -390,7 +413,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       for (const [roomId, update] of Object.entries(result.rooms.leave)) {
         const room = this.roomFor(roomId, "leave", emits);
         this.setMembership(room, "leave", emits);
-        this.applyStateAndTimeline(tx, room, update.state, update.timeline, false, emits, toDecrypt, encryptedJoins);
+        this.applyStateAndTimeline(tx, room, update.state, update.timeline, false, emits, toDecrypt, encryptedJoins, update.stateAfter);
         this.persistRoom(tx, room);
       }
       if (this.e2ee && encryptedJoins.size > 0) await this.e2ee.devices.track(tx, encryptedJoins);
@@ -407,7 +430,10 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
           .handleToDevice(event)
           .catch((e) => this.logger.warn("a verification message failed", describeError(e)));
     }
-    for (const ev of result.presence) this.emit("presence", ev);
+    for (const ev of result.presence) {
+      if (typeof ev.sender === "string") this.presenceByUser.set(ev.sender, ev.content as ContentOf<"m.presence">);
+      this.emit("presence", ev);
+    }
 
     if (this.e2ee) {
       await this.e2ee.afterSync(result, outcome);
@@ -516,7 +542,22 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
         notification: update.unreadNotifications.notification_count ?? room.unreadNotifications.notification,
       };
     }
-    this.applyStateAndTimeline(tx, room, update.state, update.timeline, update.initial === true, emits, toDecrypt, encryptedJoins);
+    this.applyStateAndTimeline(
+      tx,
+      room,
+      update.state,
+      update.timeline,
+      update.initial === true,
+      emits,
+      toDecrypt,
+      encryptedJoins,
+      update.stateAfter,
+    );
+    if (update.unreadThreadNotifications) {
+      room.threadNotifications.clear();
+      for (const [threadId, c] of Object.entries(update.unreadThreadNotifications))
+        room.threadNotifications.set(threadId, { highlight: c?.highlight_count ?? 0, notification: c?.notification_count ?? 0 });
+    }
     for (const ev of update.ephemeral) this.applyEphemeral(room, ev, emits);
     for (const ev of update.accountData) {
       if (typeof ev.type !== "string") continue;
@@ -535,12 +576,14 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     emits: Array<() => void>,
     toDecrypt: Array<{ event: MatrixEvent; room: Room }>,
     encryptedJoins: Set<string>,
+    stateAfter = false,
   ): void {
     if (replaceState && state.length > 0 && room.state.all().length > 0) {
       for (const old of room.state.all()) tx.delete("room_state", `${room.roomId}|${old.wire.type}|${old.stateKey}`);
       room.state.clear();
     }
-    for (const raw of state) this.applyState(tx, room, { ...raw, room_id: room.roomId }, emits, encryptedJoins);
+    // `state` comes before the timeline, or (state_after) after it, where it has the last word.
+    if (!stateAfter) for (const raw of state) this.applyState(tx, room, { ...raw, room_id: room.roomId }, emits, encryptedJoins);
     if (timeline.limited) room.timeline.reset(timeline.prevBatch);
     else if (room.timeline.events.length === 0 && room.timeline.backToken === undefined) room.timeline.backToken = timeline.prevBatch;
 
@@ -588,6 +631,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       if (!event.isEncrypted() && this.e2ee && isVerificationEvent(event)) emits.push(() => void this.routeVerification(event));
       emits.push(() => this.emit("room.timeline", event, room, { live: true }));
     }
+    if (stateAfter) for (const raw of state) this.applyState(tx, room, { ...raw, room_id: room.roomId }, emits, encryptedJoins);
   }
 
   private applyState(tx: Transaction, room: Room, raw: ClientEvent, emits: Array<() => void>, encryptedJoins: Set<string>): void {

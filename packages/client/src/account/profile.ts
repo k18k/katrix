@@ -61,17 +61,24 @@ export class ProfileApi {
 export class PresenceApi {
   private readonly api: MatrixHttpApi;
   private readonly userId: string;
+  private readonly onSet?: (presence: PresenceState) => void;
 
-  constructor(api: MatrixHttpApi, userId: string) {
+  constructor(api: MatrixHttpApi, userId: string, onSet?: (presence: PresenceState) => void) {
     this.api = api;
     this.userId = userId;
+    this.onSet = onSet;
   }
 
   get(userId = this.userId): Promise<PresenceResponse> {
     return this.api.endpoint("GET /v3/presence/:userId/status", { userId }, {});
   }
 
+  /**
+   * Set this user's presence. The client's /sync then keeps it (as set_presence): a sync without
+   * it means "online" (spec), which would undo "unavailable" at the next round.
+   */
   async set(presence: PresenceState, statusMsg?: string): Promise<void> {
     await this.api.endpoint("PUT /v3/presence/:userId/status", { userId: this.userId }, { body: { presence, status_msg: statusMsg } });
+    this.onSet?.(presence);
   }
 }

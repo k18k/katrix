@@ -24,6 +24,8 @@ export class Room {
   readonly timeline: Timeline;
   summary: RoomSummary = {};
   unreadNotifications = { highlight: 0, notification: 0 };
+  /** Unread counts per thread root, from the server (unread_thread_notifications). */
+  threadNotifications = new Map<string, { highlight: number; notification: number }>();
   /** Users typing now. */
   typing: string[] = [];
   /** Receipts by type ("m.read", "m.read.private") and user. */
@@ -148,6 +150,22 @@ export class Room {
 
   isSpace(): boolean {
     return this.type() === "m.space";
+  }
+
+  /** Whether this user's member event marks the room as a direct chat (is_direct, set by the invite). */
+  isDirect(): boolean {
+    const own = this.state.get("m.room.member", this.myUserId)?.content.is_direct;
+    const invite = this.inviteState.find((e) => e.type === "m.room.member" && e.state_key === this.myUserId)?.content.is_direct;
+    return own === true || invite === true;
+  }
+
+  /** When something last happened in the room (its newest event), for sorting room lists. */
+  lastActivity(): number {
+    for (let i = this.timeline.events.length - 1; i >= 0; i--) {
+      const ts = this.timeline.events[i].originServerTs;
+      if (ts !== undefined) return ts;
+    }
+    return 0;
   }
 
   isEncrypted(): boolean {

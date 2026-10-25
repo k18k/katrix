@@ -244,3 +244,31 @@ test("an encrypted session survives a restart on SQLite: keys, rooms and history
     await t.close();
   }
 });
+
+test("state after the timeline wins; presence from sync; logout clears the storage", async () => {
+  const t = await homeserver();
+  try {
+    const storage = new MemoryStorage();
+    const alice = await t.login("alice", { e2ee: false, storage });
+    const bob = await t.login("bob", { e2ee: false });
+    await Promise.all([alice.start(), bob.start()]);
+    await Promise.all([alice.waitForPrepared(), bob.waitForPrepared()]);
+    const roomId = await alice.createRoom({ invite: [bob.userId], name: "one" });
+    await bob.joinRoom(roomId);
+    await alice.setRoomName(roomId, "two");
+    await alice.setRoomName(roomId, "three");
+    await until("the last name", () => bob.getRoom(roomId)?.name() === "three");
+
+    await alice.presence.set("unavailable", "away for lunch");
+    await until("presence", () => bob.getPresence(alice.userId)?.presence === "unavailable");
+    assert.equal(bob.getPresence(alice.userId)?.status_msg, "away for lunch");
+
+    assert.ok((await storage.list("rooms", "")).length > 0);
+    await alice.logout();
+    for (const store of ["rooms", "sync", "client", "room_state", "room_timeline"] as const)
+      assert.deepEqual(await storage.list(store, ""), [], store);
+    assert.equal(alice.getRooms().length, 0);
+  } finally {
+    await t.close();
+  }
+});

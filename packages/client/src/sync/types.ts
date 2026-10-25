@@ -39,12 +39,16 @@ export interface JoinedRoomUpdate {
    * (a first sync of this room, or sliding sync's `initial: true`): the old state is replaced.
    */
   state: ClientEvent[];
+  /** `state` is the state at the end of the timeline (v3 state_after): applied after it, and it wins. */
+  stateAfter?: boolean;
   initial?: boolean;
   timeline: TimelineUpdate;
   ephemeral: ClientEvent[];
   accountData: ClientEvent[];
   summary?: { heroes?: string[]; joinedMemberCount?: number; invitedMemberCount?: number };
   unreadNotifications?: { highlight_count?: number; notification_count?: number };
+  /** Per thread root ("main" is not included: that is unreadNotifications). */
+  unreadThreadNotifications?: Record<string, { highlight_count?: number; notification_count?: number }>;
 }
 
 export interface InvitedRoomUpdate {
@@ -53,6 +57,7 @@ export interface InvitedRoomUpdate {
 
 export interface LeftRoomUpdate {
   state: ClientEvent[];
+  stateAfter?: boolean;
   timeline: TimelineUpdate;
   accountData: ClientEvent[];
 }

@@ -200,3 +200,27 @@ test("relations: bundled edits, edit validity, one reaction per sender and key",
   for (const r of [react("$r1", "@al:x", "👍"), react("$r2", "@al:x", "👍"), react("$r3", "@me:x", "👍")]) room.applyRelations(r);
   assert.deepEqual(room.reactions("$a1"), [{ key: "👍", count: 2, senders: ["@al:x", "@me:x"], myEventId: "$r3" }]);
 });
+
+test("parseV3: state_after (use_state_after) replaces state and is applied after the timeline", () => {
+  const res = parseV3(
+    {
+      next_batch: "s2",
+      rooms: {
+        join: {
+          "!r:x": {
+            state_after: { events: [{ type: "m.room.name", state_key: "", content: { name: "after" }, sender: "@a:x", event_id: "$2" }] },
+            timeline: { events: [], limited: false },
+            unread_thread_notifications: { $root: { notification_count: 2, highlight_count: 1 } },
+          },
+        },
+      },
+    },
+    false,
+  );
+  const room = res.rooms.join["!r:x"];
+  assert.equal(room.stateAfter, true);
+  assert.equal(room.state[0].content.name, "after");
+  assert.deepEqual(room.unreadThreadNotifications, { $root: { notification_count: 2, highlight_count: 1 } });
+  const old = parseV3({ next_batch: "s3", rooms: { join: { "!r:x": { state: { events: [] }, timeline: { events: [] } } } } }, false);
+  assert.equal(old.rooms.join["!r:x"].stateAfter, false, "servers without use_state_after");
+});
