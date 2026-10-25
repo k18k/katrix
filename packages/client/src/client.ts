@@ -28,7 +28,7 @@ import {
   type SearchResponse,
   type ToDeviceEvent,
 } from "@katrix/shared";
-import { isAbortError, newAbortController, sleep, type AbortControllerLike } from "./platform.ts";
+import { isAbortError, newAbortController, setTimer, sleep, type AbortControllerLike } from "./platform.ts";
 import { nativeE2EEProtocol } from "./protocol/native.ts";
 import type { E2EEProtocol, PickleKey } from "./protocol/protocol.ts";
 import type { StorageAdapter } from "./storage/adapter.ts";
@@ -111,6 +111,8 @@ interface StoredRoom {
 }
 
 const MAX_BACKOFF_MS = 30_000;
+/** How long a missing room key may take to arrive before the backup and other devices are asked. */
+const KEY_WAIT_MS = 5_000;
 
 /**
  * A Matrix client: sync, rooms, timelines, sending, and end-to-end encryption.
@@ -201,6 +203,16 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     if (e2ee) {
       this.e2ee = new E2EEEngine({
         api: this.api,
+        primitives: this.primitives,
+        accountData: {
+          // Synced account data when there is some, else the server's (secret storage is read
+          // before the first sync when a device is set up).
+          get: async (type) => this.accountData.get(type) ?? (await this.account.getAccountData(type)),
+          set: async (type, content) => {
+            await this.account.setAccountData(type, content);
+            this.accountData.set(type, content);
+          },
+        },
         store: this.store,
         protocol: e2ee.protocol ?? nativeE2EEProtocol(this.primitives),
         pickleKey: e2ee.pickleKey,
@@ -211,6 +223,10 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       });
     }
     this.transport = opts.sync?.transport ?? new SyncV3Transport(this.api, opts.sync);
+    if (this.e2ee)
+      this.e2ee.onNewSessions = (sessions) => {
+        for (const s of sessions) void this.retryAwaiting(s.roomId, s.sessionId);
+      };
   }
 
   /** A transaction ID unique for this device (random, so restarts never reuse one). */
@@ -656,7 +672,16 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       if (typeof sessionId !== "string") return;
       const key = `${room.roomId}|${sessionId}`;
       let set = this.awaitingKeys.get(key);
-      if (!set) this.awaitingKeys.set(key, (set = new Set()));
+      if (!set) {
+        this.awaitingKeys.set(key, (set = new Set()));
+        // The first event of a session without its key: if the key has not come a few seconds
+        // later (it is usually on its way, in the same or the next sync), look in the backup and
+        // ask our other devices.
+        const e2ee = this.e2ee;
+        setTimer(() => {
+          if (this.running && this.awaitingKeys.has(key)) void e2ee.keyMissing(event);
+        }, KEY_WAIT_MS);
+      }
       // Bounded: events that never get a key do not pile up forever.
       if (set.size < 500) set.add(event);
     }

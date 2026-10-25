@@ -47,6 +47,8 @@ export class MatrixEvent<T extends string = string> {
   decryptionStatus: DecryptionStatus = "none";
   decryptionError?: DecryptionFailureCode;
   decryptionInfo?: DecryptionInfo;
+  /** For a missing room key: the sender said it will not share it (m.room_key.withheld), and why. */
+  withheld?: { code: string; reason?: string };
   /** For our own events while they are sent. */
   localStatus?: LocalEchoStatus;
   txnId?: string;

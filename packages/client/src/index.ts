@@ -85,6 +85,18 @@ export {
 } from "./protocol/protocol.ts";
 export { nativeE2EEProtocol } from "./protocol/native.ts";
 export { E2EEEngine, type ToDeviceOutcome } from "./e2ee/engine.ts";
+export { CrossSigning, type CrossSigningPrivateKeys, type DeviceTrust, type UserTrust } from "./e2ee/cross-signing.ts";
+export {
+  decodeRecoveryKey,
+  encodeRecoveryKey,
+  SecretStorage,
+  SecretStorageError,
+  type AccountDataAccess,
+  type SecretStorageKeyDescription,
+} from "./e2ee/secret-storage.ts";
+export { decryptBackupSession, encryptBackupSession, KeyBackup, type BackedUpSession } from "./e2ee/backup.ts";
+export { KeySharing, type SecretProvider } from "./e2ee/sharing.ts";
+export { Recovery, SECRET_NAMES } from "./e2ee/recovery.ts";
 export type { DeviceInfo } from "./e2ee/crypto-store.ts";
 export type { DecryptedToDevice } from "./e2ee/olm.ts";
 export type { RoomEncryptionInfo } from "./e2ee/megolm.ts";

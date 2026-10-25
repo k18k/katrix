@@ -272,11 +272,15 @@ export class MegolmService {
     if (existing) {
       // Another device cannot take over a session; the same device may resend it, and only an
       // earlier starting index (more history) replaces what we have.
-      if (existing.senderKey !== decrypted.senderKey || existing.senderUserId !== decrypted.sender) {
+      // A copy from a backup or another of our devices does not prove its origin; the sending
+      // device's own m.room_key replaces it when it reaches as far back.
+      const weaker = existing.source === "forwarded" || existing.source === "backup";
+      if (existing.senderKey !== decrypted.senderKey || (!weaker && existing.senderUserId !== decrypted.sender)) {
         this.logger.warn("ignoring an m.room_key for a session another device sent", { sender: decrypted.sender, roomId: c.room_id });
         return undefined;
       }
-      if (session.compare(this.pickler.inbound(existing)) !== "better") return undefined;
+      const order = session.compare(this.pickler.inbound(existing));
+      if (order !== "better" && !(weaker && order === "equal")) return undefined;
     }
     tx.put("inbound_group_sessions", key, {
       pickle: this.pickler.pickle(session),
@@ -319,7 +323,9 @@ export class MegolmService {
           throw new MegolmDecryptionError("BAD_ENCRYPTED_MESSAGE", `The message does not decrypt (${e.code})`);
         throw e;
       }
-      if (record.senderUserId !== event.sender)
+      // A session from a backup does not say whose it is (senderUserId ""); it is checked against
+      // the sender's devices below, and never counts as authenticated.
+      if (record.senderUserId !== "" && record.senderUserId !== event.sender)
         throw new MegolmDecryptionError("SENDER_MISMATCH", "The room key belongs to another user than the event's sender");
 
       // https://spec.matrix.org/v1.16/client-server-api/#mmegolmv1aes-sha2: clients must guard
@@ -354,10 +360,12 @@ export class MegolmService {
       if (clearContent["m.relates_to"] === undefined && content["m.relates_to"] !== undefined)
         clearContent["m.relates_to"] = content["m.relates_to"];
 
-      const device = await this.devices.deviceByCurveKey(record.senderUserId, record.senderKey, tx);
+      const device = await this.devices.deviceByCurveKey(record.senderUserId || event.sender!, record.senderKey, tx);
       let authenticity: DecryptionInfo["authenticity"];
       if (record.source === "own") authenticity = "authenticated";
       else if (!device) authenticity = "unknown_device";
+      // Forwarded and backed-up keys do not prove which device made the session.
+      else if (record.source !== "m.room_key") authenticity = "unauthenticated";
       else authenticity = device.ed25519 === record.claimedEd25519Key ? "authenticated" : "unauthenticated";
       return {
         clear: { type: payload.type, content: clearContent },
