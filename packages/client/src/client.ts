@@ -13,6 +13,7 @@ import { MatrixHttpApi } from "./http/api.ts";
 import { ConnectionError, MatrixError } from "./http/errors.ts";
 import { DirectoryApi } from "./directory/directory.ts";
 import { MediaApi } from "./media/media.ts";
+import { PushApi, type PushOutcome } from "./push/push.ts";
 import { MatrixEvent } from "./models/event.ts";
 import { Room } from "./models/room.ts";
 import {
@@ -77,6 +78,12 @@ export interface ClientEvents {
   "room.receipt": [room: Room, event: ClientEvent];
   "room.accountData": [room: Room, event: ClientEvent];
   "event.decrypted": [event: MatrixEvent, room: Room];
+  /**
+   * A new event from someone else that the user's push rules say notifies, evaluated on the
+   * client, so on the plaintext of encrypted events (once decrypted; also when its key arrives
+   * later). Not emitted for the first sync's events.
+   */
+  notification: [event: MatrixEvent, room: Room, outcome: PushOutcome];
   accountData: [event: ClientEvent];
   toDevice: [event: ToDeviceEvent, decrypted?: DecryptedToDevice];
   presence: [event: ClientEvent];
@@ -122,6 +129,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   readonly admin: AdminApi;
   /** Uploads, downloads, thumbnails, URL previews, encrypted attachments. */
   readonly media: MediaApi;
+  /** Pushers, push rules, the notification list, and evaluating rules locally. */
+  readonly push: PushApi;
   private readonly logger: Logger;
   private readonly primitives: CryptoPrimitives;
   private readonly transport: SyncTransport;
@@ -141,6 +150,10 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   private accountData = new Map<string, Record<string, unknown>>();
   private started?: Promise<void>;
   private loaded = false;
+  /** During a sync round after the first: the new events from others, to evaluate push rules on. */
+  private notifyQueue?: Array<{ event: MatrixEvent; room: Room }>;
+  /** Encrypted events still to be evaluated once decrypted. */
+  private notifyOnDecrypt = new WeakSet<MatrixEvent>();
 
   constructor(opts: ClientOptions) {
     super();
@@ -171,6 +184,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     this.presence = new PresenceApi(this.api, userId);
     this.directory = new DirectoryApi(this.api);
     this.admin = new AdminApi(this.api);
+    this.push = new PushApi(this.api, userId, (type) => this.accountData.get(type));
     const e2ee = opts.e2ee === false ? undefined : (opts.e2ee ?? {});
     this.primitives = e2ee?.primitives ?? nobleCryptoPrimitives();
     this.media = new MediaApi(this.api, this.primitives);
@@ -305,6 +319,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     const toDecrypt: Array<{ event: MatrixEvent; room: Room }> = [];
     const encryptedJoins = new Set<string>();
     let outcome: ToDeviceOutcome = { events: result.toDevice.map((event) => ({ event })), newSessions: [], wedged: [] };
+    const notifyQueue: Array<{ event: MatrixEvent; room: Room }> = [];
+    this.notifyQueue = this.prepared ? notifyQueue : undefined;
 
     await this.store.transaction(async (tx) => {
       if (this.e2ee) outcome = await this.e2ee.processSync(tx, result);
@@ -328,6 +344,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       if (this.e2ee && encryptedJoins.size > 0) await this.e2ee.devices.track(tx, encryptedJoins);
       tx.put("sync", "token", result.nextBatch);
     });
+    this.notifyQueue = undefined;
     this.syncToken = result.nextBatch;
 
     for (const emit of emits) emit();
@@ -342,6 +359,40 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       for (const { event, room } of toDecrypt) await this.decryptAndEmit(event, room);
       for (const s of outcome.newSessions) await this.retryAwaiting(s.roomId, s.sessionId);
     }
+    for (const { event, room } of notifyQueue) {
+      if (event.isEncrypted() && event.decryptionStatus !== "decrypted") this.notifyOnDecrypt.add(event);
+      else this.notifyIfRulesSay(event, room);
+    }
+  }
+
+  private notifyIfRulesSay(event: MatrixEvent, room: Room): void {
+    const outcome = this.push.evaluate(event, room);
+    if (outcome.notify) this.emit("notification", event, room, outcome);
+  }
+
+  /**
+   * Unread counts. For an unencrypted room they are the server's. For an encrypted room the
+   * server can only count every encrypted message, so they are counted here, on the decrypted
+   * events after the user's latest receipt (their own messages count as read): `exact` is false
+   * when that receipt is older than the timeline in memory, and the count is a lower bound then.
+   */
+  getUnreadCounts(roomId: string): { notification: number; highlight: number; exact: boolean } {
+    const room = this.rooms.get(roomId);
+    if (!room) return { notification: 0, highlight: 0, exact: true };
+    if (!room.isEncrypted()) return { ...room.unreadNotifications, exact: true };
+    const read = new Set([room.readReceipt(this.userId, "m.read")?.eventId, room.readReceipt(this.userId, "m.read.private")?.eventId]);
+    let notification = 0;
+    let highlight = 0;
+    const events = room.timeline.events;
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if ((e.eventId && read.has(e.eventId)) || e.sender === this.userId) return { notification, highlight, exact: true };
+      if (e.isEncrypted() && e.decryptionStatus !== "decrypted") continue;
+      const outcome = this.push.evaluate(e, room);
+      if (outcome.notify) notification++;
+      if (outcome.notify && outcome.highlight) highlight++;
+    }
+    return { notification, highlight, exact: room.timeline.atStart };
   }
 
   private roomFor(roomId: string, membership: Membership, emits: Array<() => void>): Room {
@@ -466,6 +517,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     }
     for (const event of room.timeline.append(fresh)) {
       if (event.isEncrypted()) toDecrypt.push({ event, room });
+      if (this.notifyQueue && room.membership === "join" && event.sender !== this.userId) this.notifyQueue.push({ event, room });
       emits.push(() => this.emit("room.timeline", event, room, { live: true }));
     }
   }
@@ -566,6 +618,10 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     }
     if (await this.e2ee.decryptRoomEvent(event)) {
       this.emit("event.decrypted", event, room);
+      if (this.notifyOnDecrypt.has(event)) {
+        this.notifyOnDecrypt.delete(event);
+        this.notifyIfRulesSay(event, room);
+      }
     } else if (event.decryptionError === "MISSING_ROOM_KEY" || event.decryptionError === "UNKNOWN_MESSAGE_INDEX") {
       const sessionId = (event.wire.content as { session_id?: unknown }).session_id;
       if (typeof sessionId !== "string") return;

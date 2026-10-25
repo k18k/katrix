@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { globMatch, globSearchWords } from "#core/glob.ts";
+import { globMatch, globSearchWords } from "../src/glob.ts";
 
 test("globs match * and ?", () => {
   assert.equal(globMatch("*.example.com", "matrix.example.com"), true);

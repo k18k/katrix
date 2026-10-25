@@ -26,6 +26,9 @@ export { DirectoryApi } from "./directory/directory.ts";
 export { MediaApi, parseMxc } from "./media/media.ts";
 export { AttachmentError, decryptAttachment, encryptAttachment } from "./media/attachments.ts";
 
+// Push
+export { PushApi, type PushOutcome } from "./push/push.ts";
+
 // Models
 export {
   MatrixEvent,

@@ -13,3 +13,14 @@ export type * from "./errors.ts";
 export type * from "./events.ts";
 export type * from "./api/index.ts";
 export { endpointPath, endpointUrlPath } from "./api/endpoints.ts";
+export { globMatch, globSearchWords } from "./glob.ts";
+export {
+  defaultPushRules,
+  evaluatePushRules,
+  PUSH_RULE_KINDS,
+  pushTweaks,
+  valueAtPath,
+  type LooseRule,
+  type PushEvalContext,
+  type PushRuleSet,
+} from "./push.ts";
