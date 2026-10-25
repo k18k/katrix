@@ -26,6 +26,12 @@ export interface E2EEOptions {
   primitives: CryptoPrimitives;
   /** The user's account data (secret storage lives there). */
   accountData: AccountDataAccess;
+  /**
+   * Share room keys only with verified devices (cross-signed, or verified here), as Element's
+   * "never send to unverified sessions". Default false: every device of the room's members
+   * (trust on first use). Per room: E2EEEngine.setOnlyVerifiedDevices.
+   */
+  onlyVerifiedDevices?: boolean;
   /** Send a room event (encrypted when the room is): in-room verification. */
   sendRoomEvent: (roomId: string, type: string, content: Record<string, unknown>) => Promise<string>;
   store: Store;
@@ -77,6 +83,7 @@ export class E2EEEngine {
   /** Called when room keys arrive outside a sync (from the backup, after a request): retry decryption. */
   onNewSessions?: (sessions: Array<{ roomId: string; sessionId: string }>) => void;
   private readonly restoreTried = new Set<string>();
+  private onlyVerified: boolean;
   private readonly api: MatrixHttpApi;
   private readonly store: Store;
   private readonly pickler: Pickler;
@@ -202,6 +209,11 @@ export class E2EEEngine {
       logger: opts.logger,
       txnId: opts.txnId,
     });
+    this.onlyVerified = opts.onlyVerifiedDevices ?? false;
+    this.megolm.deviceFilter = async (device, roomId) => {
+      const only = (await this.store.get<boolean>("client", `only_verified|${roomId}`)) ?? this.onlyVerified;
+      return !only || (await this.crossSigning.deviceTrust(device.userId, device.deviceId)).verified;
+    };
   }
 
   get identityKeys(): { curve25519: string; ed25519: string } {
@@ -456,6 +468,18 @@ export class E2EEEngine {
         if (sessions.length) this.onNewSessions?.(sessions);
       }
     }
+  }
+
+  /** Share keys only with verified devices: everywhere (`roomId` omitted), or in one room (undefined: as everywhere). */
+  async setOnlyVerifiedDevices(only: boolean | undefined, roomId?: string): Promise<void> {
+    if (roomId === undefined) {
+      if (only !== undefined) this.onlyVerified = only;
+      return;
+    }
+    await this.store.transaction(async (tx) => {
+      if (only === undefined) tx.delete("client", `only_verified|${roomId}`);
+      else tx.put("client", `only_verified|${roomId}`, only);
+    });
   }
 
   /** A membership change in an encrypted room: start tracking new members' devices. */

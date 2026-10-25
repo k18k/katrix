@@ -174,3 +174,39 @@ test("key and secret sharing between verified own devices", async () => {
     await t.close();
   }
 });
+
+test("only verified devices get room keys when asked; the others are told why", async () => {
+  const t = await homeserver();
+  try {
+    const alice = await t.login("alice", { e2ee: { onlyVerifiedDevices: true } });
+    const bob = await t.login("bob");
+    await Promise.all([alice.start(), bob.start()]);
+    await Promise.all([alice.waitForPrepared(), bob.waitForPrepared()]);
+    await alice.e2ee!.crossSigning.bootstrap(passwordAuth(alice.userId, "password"));
+    await bob.e2ee!.crossSigning.bootstrap(passwordAuth(bob.userId, "password"));
+    const roomId = await alice.createRoom({ encrypted: true, invite: [bob.userId] });
+    await until("the invite", () => bob.getRoom(roomId)?.membership === "invite");
+    await bob.joinRoom(roomId);
+    await until("bob joined", () => alice.getRoom(roomId)?.state.membership(bob.userId) === "join");
+
+    await alice.sendText(roomId, "not for unverified eyes");
+    const withheld = await until("the withheld notice", () => {
+      const e = bob.getRoom(roomId)?.timeline.events.find((ev) => ev.isEncrypted() && ev.withheld);
+      return e;
+    });
+    assert.equal(withheld.withheld?.code, "m.unverified");
+
+    // Alice verifies Bob: her next message reaches him. The key comes at the session's current
+    // index, so the message before stays unreadable for him (as with matrix-sdk-crypto).
+    await alice.e2ee!.devices.refresh([bob.userId], { force: true });
+    await alice.e2ee!.crossSigning.verifyUser(bob.userId);
+    await alice.sendText(roomId, "now you may read");
+    await until("bob reads it", () => findEvent(bob, roomId, (e) => body(e) === "now you may read"));
+    assert.equal(
+      findEvent(bob, roomId, (e) => body(e) === "not for unverified eyes"),
+      undefined,
+    );
+  } finally {
+    await t.close();
+  }
+});

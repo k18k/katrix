@@ -56,7 +56,15 @@ export interface ClientOptions {
   storage?: StorageAdapter;
   logger?: Logger;
   /** End-to-end encryption (on by default); false turns it off: encrypted rooms then cannot be written to. */
-  e2ee?: false | { primitives?: CryptoPrimitives; protocol?: E2EEProtocol; pickleKey?: PickleKey };
+  e2ee?:
+    | false
+    | {
+        primitives?: CryptoPrimitives;
+        protocol?: E2EEProtocol;
+        pickleKey?: PickleKey;
+        /** Share room keys only with verified devices (default false: every device, trusted on first use). */
+        onlyVerifiedDevices?: boolean;
+      };
   sync?: V3SyncOptions & { transport?: SyncTransport; pollTimeoutMs?: number; setPresence?: "online" | "offline" | "unavailable" };
   /** Voice and video calls: the app's WebRTC (RTCPeerConnection, or react-native-webrtc's). */
   calls?: { peerConnectionFactory?: PeerConnectionFactory };
@@ -244,6 +252,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
         store: this.store,
         protocol: e2ee.protocol ?? nativeE2EEProtocol(this.primitives),
         pickleKey: e2ee.pickleKey,
+        onlyVerifiedDevices: e2ee.onlyVerifiedDevices,
         logger: this.logger,
         userId,
         deviceId,
