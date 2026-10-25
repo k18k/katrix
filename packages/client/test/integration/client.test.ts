@@ -4,6 +4,11 @@ import { MatrixClient } from "../../src/client.ts";
 import { MatrixError } from "../../src/http/errors.ts";
 import { MemoryStorage } from "../../src/storage/memory.ts";
 import { Auth } from "../../src/auth/login.ts";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { sqliteStorage } from "../../src/adapters/sqlite.ts";
+import { nodeSqlite } from "../env/sqlite.ts";
 import { body, findEvent, homeserver, until } from "./helpers.ts";
 
 test("login flows, password login, whoami, profile", async () => {
@@ -191,6 +196,50 @@ test("a revoked access token stops the sync loop with loggedOut", async () => {
     await alice.api.request("POST", "/v3/logout", { body: {} });
     const [err] = await loggedOut;
     assert.equal(err.errcode, "M_UNKNOWN_TOKEN");
+  } finally {
+    await t.close();
+  }
+});
+
+test("an encrypted session survives a restart on SQLite: keys, rooms and history", async () => {
+  const path = join(mkdtempSync(join(tmpdir(), "katrix-")), "client.sqlite");
+  const t = await homeserver();
+  try {
+    const pickleKey = new Uint8Array(32).fill(7);
+    const first = await t.login("alice", { storage: sqliteStorage(nodeSqlite(path)), e2ee: { pickleKey } });
+    const bob = await t.login("bob");
+    await Promise.all([first.start(), bob.start()]);
+    await Promise.all([first.waitForPrepared(), bob.waitForPrepared()]);
+    const roomId = await first.createRoom({ encrypted: true, invite: [bob.userId] });
+    await until("the invite", () => bob.getRoom(roomId)?.membership === "invite");
+    await bob.joinRoom(roomId);
+    await until("bob joined", () => first.getRoom(roomId)?.state.membership(bob.userId) === "join");
+    await until("bob has the room", () => bob.getRoom(roomId)?.state.membership(first.userId) === "join");
+    await bob.sendText(roomId, "kept across restarts");
+    await until("decrypted", () => findEvent(first, roomId, (e) => body(e) === "kept across restarts"));
+    await first.stop();
+    const credentials = {
+      userId: first.userId,
+      deviceId: first.deviceId,
+      accessToken: (first as unknown as { tokens: { accessToken(): string } }).tokens.accessToken(),
+    };
+
+    const second = new MatrixClient({
+      baseUrl: t.baseUrl,
+      http: t.http,
+      credentials,
+      storage: sqliteStorage(nodeSqlite(path)),
+      e2ee: { pickleKey },
+      sync: { pollTimeoutMs: 1000 },
+    });
+    await second.start();
+    assert.ok(
+      findEvent(second, roomId, (e) => body(e) === "kept across restarts"),
+      "decrypted from the stored timeline and keys",
+    );
+    await bob.sendText(roomId, "after the restart");
+    await until("new message decrypted", () => findEvent(second, roomId, (e) => body(e) === "after the restart"));
+    await second.stop();
   } finally {
     await t.close();
   }
