@@ -15,6 +15,8 @@ import { Recovery, SECRET_NAMES } from "./recovery.ts";
 import { SecretBox } from "./secret-box.ts";
 import { SecretStorage, type AccountDataAccess } from "./secret-storage.ts";
 import { KeySharing } from "./sharing.ts";
+import { VerificationManager } from "./verification/manager.ts";
+import { seedFromSecret } from "./cross-signing.ts";
 import type { CryptoPrimitives } from "../crypto/primitives.ts";
 import { MegolmDecryptionError, MegolmService, type RoomEncryptionInfo } from "./megolm.ts";
 import { OlmDecryptionError, OlmService, type DecryptedToDevice } from "./olm.ts";
@@ -24,6 +26,8 @@ export interface E2EEOptions {
   primitives: CryptoPrimitives;
   /** The user's account data (secret storage lives there). */
   accountData: AccountDataAccess;
+  /** Send a room event (encrypted when the room is): in-room verification. */
+  sendRoomEvent: (roomId: string, type: string, content: Record<string, unknown>) => Promise<string>;
   store: Store;
   protocol: E2EEProtocol;
   pickleKey?: PickleKey;
@@ -68,6 +72,8 @@ export class E2EEEngine {
   readonly sharing: KeySharing;
   /** Set up and use recovery (cross-signing, backup and secret storage together). */
   readonly recovery: Recovery;
+  /** Key verification (SAS, QR codes) with other users and the user's other devices. */
+  readonly verification: VerificationManager;
   /** Called when room keys arrive outside a sync (from the backup, after a request): retry decryption. */
   onNewSessions?: (sessions: Array<{ roomId: string; sessionId: string }>) => void;
   private readonly restoreTried = new Set<string>();
@@ -169,6 +175,24 @@ export class E2EEEngine {
       secretStorage: this.secretStorage,
       logger: opts.logger,
       onNewSessions: (sessions) => this.onNewSessions?.(sessions),
+    });
+    this.verification = new VerificationManager({
+      api: opts.api,
+      txnId: opts.txnId,
+      sendRoomEvent: opts.sendRoomEvent,
+      ctx: {
+        primitives: opts.primitives,
+        crossSigning: this.crossSigning,
+        devices: this.devices,
+        logger: opts.logger,
+        userId: opts.userId,
+        deviceId: opts.deviceId,
+        deviceEd25519: () => this.olm.identityKeys.ed25519,
+        onVerified: (request) => {
+          if (request.otherUserId === opts.userId)
+            void this.afterOwnVerification().catch((e) => opts.logger.warn("could not fetch secrets after verification", describeError(e)));
+        },
+      },
     });
     this.megolm = new MegolmService({
       store: opts.store,
@@ -406,6 +430,32 @@ export class E2EEEngine {
     await this.sharing
       .requestRoomKey(roomId, sessionId, typeof content.sender_key === "string" ? content.sender_key : undefined)
       .catch((e) => this.logger.warn("could not request a room key", describeError(e)));
+  }
+
+  /**
+   * After this device and another of ours verified each other: ask it for the cross-signing and
+   * backup keys this device lacks (it answers only verified devices), and use them.
+   */
+  async afterOwnVerification(): Promise<void> {
+    const have = await this.crossSigning.privateKeys();
+    const [ssk, usk] = await Promise.all([
+      have.selfSigning ? undefined : this.sharing.requestSecret(SECRET_NAMES.selfSigning),
+      have.userSigning ? undefined : this.sharing.requestSecret(SECRET_NAMES.userSigning),
+    ]);
+    if (ssk || usk)
+      await this.crossSigning.importPrivateKeys({
+        selfSigning: ssk ? seedFromSecret(ssk) : undefined,
+        userSigning: usk ? seedFromSecret(usk) : undefined,
+      });
+    if (!(await this.backup.active())?.hasPrivateKey) {
+      const backupKey = await this.sharing.requestSecret(SECRET_NAMES.backup);
+      if (backupKey) {
+        const privateKey = seedFromSecret(backupKey);
+        await this.backup.enableWithPrivateKey(privateKey);
+        const sessions = await this.backup.restore({ privateKey });
+        if (sessions.length) this.onNewSessions?.(sessions);
+      }
+    }
   }
 
   /** A membership change in an encrypted room: start tracking new members' devices. */

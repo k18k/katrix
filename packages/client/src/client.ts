@@ -111,6 +111,13 @@ interface StoredRoom {
 }
 
 const MAX_BACKOFF_MS = 30_000;
+
+function isVerificationEvent(event: MatrixEvent): boolean {
+  return (
+    event.type.startsWith("m.key.verification.") ||
+    (event.type === "m.room.message" && (event.content as { msgtype?: unknown }).msgtype === "m.key.verification.request")
+  );
+}
 /** How long a missing room key may take to arrive before the backup and other devices are asked. */
 const KEY_WAIT_MS = 5_000;
 
@@ -213,6 +220,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
             this.accountData.set(type, content);
           },
         },
+        sendRoomEvent: (roomId, type, content) => this.sendEvent(roomId, type, content),
         store: this.store,
         protocol: e2ee.protocol ?? nativeE2EEProtocol(this.primitives),
         pickleKey: e2ee.pickleKey,
@@ -374,7 +382,13 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     this.syncToken = result.nextBatch;
 
     for (const emit of emits) emit();
-    for (const { event, decrypted } of outcome.events) this.emit("toDevice", event, decrypted);
+    for (const { event, decrypted } of outcome.events) {
+      this.emit("toDevice", event, decrypted);
+      if (this.e2ee && event.type.startsWith("m.key.verification."))
+        await this.e2ee.verification
+          .handleToDevice(event)
+          .catch((e) => this.logger.warn("a verification message failed", describeError(e)));
+    }
     for (const ev of result.presence) this.emit("presence", ev);
 
     if (this.e2ee) {
@@ -389,6 +403,10 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       if (event.isEncrypted() && event.decryptionStatus !== "decrypted") this.notifyOnDecrypt.add(event);
       else this.notifyIfRulesSay(event, room);
     }
+  }
+
+  private async routeVerification(event: MatrixEvent): Promise<void> {
+    await this.e2ee?.verification.handleRoomEvent(event).catch((e) => this.logger.warn("a verification event failed", describeError(e)));
   }
 
   private notifyIfRulesSay(event: MatrixEvent, room: Room): void {
@@ -545,6 +563,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       this.indexRelations(event, room, emits, toDecrypt);
       if (event.isEncrypted()) toDecrypt.push({ event, room });
       if (this.notifyQueue && room.membership === "join" && event.sender !== this.userId) this.notifyQueue.push({ event, room });
+      if (!event.isEncrypted() && this.e2ee && isVerificationEvent(event)) emits.push(() => void this.routeVerification(event));
       emits.push(() => this.emit("room.timeline", event, room, { live: true }));
     }
   }
@@ -660,6 +679,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     }
     if (await this.e2ee.decryptRoomEvent(event)) {
       this.emit("event.decrypted", event, room);
+      if (isVerificationEvent(event)) await this.routeVerification(event);
       // Edits and reactions count once decrypted (their type and m.new_content are inside).
       const target = room.applyRelations(event);
       if (target) this.emit("room.relation", target, event, room);

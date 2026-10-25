@@ -97,6 +97,17 @@ export {
 export { decryptBackupSession, encryptBackupSession, KeyBackup, type BackedUpSession } from "./e2ee/backup.ts";
 export { KeySharing, type SecretProvider } from "./e2ee/sharing.ts";
 export { Recovery, SECRET_NAMES } from "./e2ee/recovery.ts";
+export { VerificationManager, type VerificationManagerEvents } from "./e2ee/verification/manager.ts";
+export {
+  ALL_METHODS as VERIFICATION_METHODS,
+  VerificationRequest,
+  type SasCode,
+  type VerificationChannel,
+  type VerificationEvents,
+  type VerificationPhase,
+} from "./e2ee/verification/request.ts";
+export { SAS_EMOJI } from "./e2ee/verification/sas.ts";
+export { decodeQr, encodeQr, type QrData, type QrMode } from "./e2ee/verification/qr.ts";
 export type { DeviceInfo } from "./e2ee/crypto-store.ts";
 export type { DecryptedToDevice } from "./e2ee/olm.ts";
 export type { RoomEncryptionInfo } from "./e2ee/megolm.ts";
