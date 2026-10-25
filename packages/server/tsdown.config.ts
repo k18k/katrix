@@ -1,5 +1,11 @@
 import { defineConfig } from "tsdown";
 
+// publint and arethetypeswrong check the packed package: tsdown runs `npm pack`, and npm (10, at
+// least) runs `prepare` for it despite --ignore-scripts, which would build again, and pack again,
+// without end; CI runners were killed by that loop. The variable tells the nested `prepare`
+// (package.json) that it is inside this build, and it does nothing.
+process.env.KATRIX_TSDOWN = "1";
+
 // The published @katrix/server: one .js, .d.ts and source map per source module in dist/
 // (unbundled: Node does not strip types inside node_modules, and the module structure stays as
 // in src/ for stack traces and debugging). Development, tests and the examples run src/ directly.
