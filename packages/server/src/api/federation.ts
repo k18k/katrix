@@ -1,11 +1,10 @@
+import { isObject, isValidUserId, M } from "@katrix/shared";
 import { eventsByTimestamp } from "#api/timeline.ts";
 import { MatrixError, errors } from "#core/errors.ts";
 import { fullProfile } from "#core/profile.ts";
 import { relationshipsForServer } from "#api/relationships.ts";
 import { authEventKeys, checkAuth, getState, membershipOf, powerLevels, userLevel, type StateMap } from "#core/authrules.ts";
 import { SUPPORTED_ROOM_VERSIONS, eventIdOf, redact, roomVersionFeatures, splitStateKey, stateKey, type PDU } from "#core/events.ts";
-import { isObject } from "#core/json.ts";
-import { isValidUserId } from "#core/ids.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
 import { randomToken, signJson, verifyJsonSignature } from "#core/crypto.ts";
 import type { StoredEvent } from "#core/rooms.ts";
@@ -34,7 +33,6 @@ const publicRoomsBody = body({
 });
 import { canonicalJsonResponse } from "#http/handler.ts";
 import { roomDetails } from "#api/spaces.ts";
-import { M } from "#core/m.ts";
 
 const F = "/_matrix/federation";
 

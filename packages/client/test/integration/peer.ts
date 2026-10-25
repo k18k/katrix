@@ -3,7 +3,7 @@ import { deviceKeysObject, oneTimeKeysObject, signObject } from "../../src/e2ee/
 import type { MatrixClient } from "../../src/client.ts";
 import { nativeE2EEProtocol } from "../../src/protocol/native.ts";
 import type { OlmAccount, OlmMessage, OlmSession, OutboundGroupSession } from "../../src/protocol/protocol.ts";
-import { encodeUtf8 } from "../../src/util/utf8.ts";
+import { encodeUtf8 } from "@katrix/shared";
 
 /**
  * A hand-driven device for negative tests: real keys on the server, but every message it sends

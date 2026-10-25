@@ -1,9 +1,8 @@
+import { LOCALPART_RE, M } from "@katrix/shared";
 import { timingSafeEqual } from "node:crypto";
 import { MatrixError, errors } from "#core/errors.ts";
 import { randomToken } from "#core/crypto.ts";
 import { escapeHtml } from "#core/html.ts";
-import { LOCALPART_RE } from "#core/ids.ts";
-import { M } from "#core/m.ts";
 import { setProfileField } from "#core/profile.ts";
 import { legacyClientRedirect } from "#core/sso.ts";
 import { OAUTH_PREFIX, OAuthError, allowCrossSigningReset, type ClientMetadata, type OAuthServer } from "#core/oauthserver.ts";

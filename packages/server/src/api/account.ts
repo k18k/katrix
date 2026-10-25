@@ -1,8 +1,7 @@
+import { isObject, LOCALPART_RE, type LoginFlow, M, UNSTABLE, type WellKnownClient } from "@katrix/shared";
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
-import { LOCALPART_RE } from "#core/ids.ts";
-import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
@@ -11,7 +10,6 @@ import { canonicalAddress, isMedium } from "#core/threepid.ts";
 import { toMsisdn } from "#core/phone.ts";
 import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
-import { M, UNSTABLE } from "#core/m.ts";
 import { checkRedirectUrl, legacyClientRedirect, type SsoResult } from "#core/sso.ts";
 import { OAUTH_PREFIX } from "#core/oauthserver.ts";
 import { readWebSession, setWebUser } from "#api/oauthserver.ts";
@@ -24,8 +22,8 @@ const deviceFields = {
   refresh_token: lenient(v.boolean()),
   inhibit_login: lenient(v.boolean()),
 };
-const loginBody = body({ type: lenient(v.string()), token: lenient(v.string()), password: lenient(v.string()), ...deviceFields });
-const registerBody = body({
+export const loginBody = body({ type: lenient(v.string()), token: lenient(v.string()), password: lenient(v.string()), ...deviceFields });
+export const registerBody = body({
   type: lenient(v.string()),
   auth: lenient(v.looseObject({ type: lenient(v.string()) })),
   username: v.string(fail("M_INVALID_PARAM", "username must be a string")).optional(),
@@ -42,12 +40,12 @@ const sharedSecretRegisterBody = body({
   displayname: lenient(v.string()),
 });
 
-function loginFlows(hs: Homeserver): Record<string, unknown>[] {
+function loginFlows(hs: Homeserver): LoginFlow[] {
   // With delegated OAuth, clients must use the authorization server instead.
   if (hs.oauth) return [];
   // The spec: a server without the legacy API answers 404 M_UNRECOGNIZED.
   if (hs.oauthServer && !hs.oauthServer.legacyApi) throw errors.unrecognized("Log in with the OAuth 2.0 API");
-  const flows: Record<string, unknown>[] = [];
+  const flows: LoginFlow[] = [];
   if (hs.userAuth.passwordLoginEnabled) flows.push({ type: M.LOGIN.PASSWORD });
   if (hs.sso || hs.oauthServer) {
     flows.push({
@@ -212,7 +210,7 @@ export const ssoConfirmPage = (serverName: string, result: SsoResult) => {
 const OAUTH_DISCOVERY_VERSIONS = ["v1", "unstable/org.matrix.msc2965"];
 
 export function registerAccountRoutes(r: Router): void {
-  r.client("GET", "/login", procedure({ handler: (ctx) => ({ flows: loginFlows(ctx.hs) }) }));
+  r.client("GET", "/login", procedure({ endpoint: "GET /v3/login", handler: (ctx) => ({ flows: loginFlows(ctx.hs) }) }));
 
   r.client(
     "GET",
@@ -304,6 +302,7 @@ export function registerAccountRoutes(r: Router): void {
     "POST",
     "/login",
     procedure({
+      endpoint: "POST /v3/login",
       rateLimit: "login",
       input: loginBody,
       handler: async (ctx) => {
@@ -379,6 +378,7 @@ export function registerAccountRoutes(r: Router): void {
     "POST",
     "/refresh",
     procedure({
+      endpoint: "POST /v3/refresh",
       input: body({ refresh_token: lenient(v.string()) }),
       handler: async (ctx) => {
         const body = ctx.input;
@@ -421,6 +421,7 @@ export function registerAccountRoutes(r: Router): void {
     "GET",
     "/account/whoami",
     procedure({
+      endpoint: "GET /v3/account/whoami",
       auth: "user",
       handler: async (ctx) => {
         const s = ctx.session;
@@ -466,6 +467,7 @@ export function registerAccountRoutes(r: Router): void {
     "POST",
     "/register",
     procedure({
+      endpoint: "POST /v3/register",
       input: registerBody,
       handler: async (ctx) => {
         const hs = ctx.hs;
@@ -690,9 +692,9 @@ export async function redeemRegistrationToken(hs: Homeserver, token: string): Pr
   });
 }
 
-export function wellKnown(hs: Homeserver): Record<string, any> | null {
+export function wellKnown(hs: Homeserver): WellKnownClient | null {
   if (!hs.config.publicBaseUrl) return null;
-  const wk: Record<string, any> = { [M.HOMESERVER]: { base_url: hs.config.publicBaseUrl } };
+  const wk: WellKnownClient = { "m.homeserver": { base_url: hs.config.publicBaseUrl } };
   if (hs.config.rtc.transports?.length) wk[UNSTABLE.ORG.MATRIX.MSC4143.RTC_FOCI] = hs.config.rtc.transports;
   return wk;
 }

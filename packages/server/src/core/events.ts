@@ -1,6 +1,5 @@
-import { canonicalJson, isObject } from "#core/json.ts";
+import { canonicalJson, isObject, M } from "@katrix/shared";
 import { randomString, sha256, signJson, unpaddedBase64, urlSafeBase64, type SigningKey } from "#core/crypto.ts";
-import { M } from "#core/m.ts";
 
 export interface PDU {
   event_id?: string;

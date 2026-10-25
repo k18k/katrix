@@ -1,8 +1,8 @@
+import { isObject, M, UNSTABLE } from "@katrix/shared";
 import { MatrixError } from "#core/errors.ts";
 import { longPoll } from "#api/longpoll.ts";
 import { getState } from "#core/authrules.ts";
 import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
-import { isObject } from "#core/json.ts";
 import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Router } from "#http/router.ts";
@@ -18,7 +18,6 @@ const slidingSyncBody = bodySchema({
   extensions: lenient(v.record(v.string(), v.unknown())),
 });
 import { roomEphemeral, roomTimeline, toStripped, type SyncParams } from "#api/sync.ts";
-import { M, UNSTABLE } from "#core/m.ts";
 
 /**
  * Simplified sliding sync (MSC4186), as used by Element X.

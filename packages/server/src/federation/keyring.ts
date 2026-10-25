@@ -1,6 +1,6 @@
+import { isObject } from "@katrix/shared";
 import { createPublicKey, type KeyObject } from "node:crypto";
 import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
-import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 
 interface CachedKey {

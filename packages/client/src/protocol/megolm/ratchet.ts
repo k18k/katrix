@@ -1,6 +1,5 @@
 import type { CryptoPrimitives } from "../../crypto/primitives.ts";
-import { concatBytes } from "../../util/bytes.ts";
-import { encodeUtf8 } from "../../util/utf8.ts";
+import { concatBytes, encodeUtf8 } from "@katrix/shared";
 
 /**
  * The Megolm ratchet (megolm.md, "The Megolm ratchet algorithm"): four 256-bit parts R_0…R_3 and

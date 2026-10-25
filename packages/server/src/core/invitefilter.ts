@@ -1,7 +1,6 @@
-import { isObject } from "#core/json.ts";
+import { isObject, M, UNSTABLE } from "@katrix/shared";
 import { globMatch } from "#core/glob.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { M, UNSTABLE } from "#core/m.ts";
 
 export const INVITE_CONFIG_TYPE = UNSTABLE.ORG.MATRIX.MSC4155.INVITE_PERMISSION_CONFIG;
 

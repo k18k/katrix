@@ -1,7 +1,7 @@
+import { LOCALPART_RE } from "@katrix/shared";
 import { createHash, randomBytes } from "node:crypto";
 import { errors } from "#core/errors.ts";
 import { randomToken, urlSafeBase64 } from "#core/crypto.ts";
-import { LOCALPART_RE } from "#core/ids.ts";
 import type { Homeserver } from "#homeserver.ts";
 
 /**

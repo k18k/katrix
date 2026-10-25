@@ -1,3 +1,4 @@
+import { M } from "@katrix/shared";
 import { PartialStateService } from "#core/partialstate.ts";
 import { PolicyServers } from "#core/policy.ts";
 import { ThreepidService, type ThreepidOptions } from "#core/threepid.ts";
@@ -33,7 +34,6 @@ import { schema } from "#storage/schema.ts";
 import type { DatabaseAdapter } from "#storage/types.ts";
 import { Router } from "#http/router.ts";
 import { registerRoutes } from "#api/index.ts";
-import { M } from "#core/m.ts";
 import { addressPolicy, policyFetch, type AddressPolicy } from "#core/outbound.ts";
 
 export interface Logger {

@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "@katrix/server": "*",
+    "@katrix/shared": "*",
     "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6"
   },
   "engines": {

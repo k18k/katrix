@@ -1,3 +1,4 @@
+import { isObject, M, parseId } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { globMatch } from "#core/glob.ts";
 import { getState, membershipOf, type StateMap } from "#core/authrules.ts";
@@ -15,8 +16,6 @@ import {
   type PDU,
 } from "#core/events.ts";
 import { unpaddedBase64, urlSafeBase64 } from "#core/crypto.ts";
-import { isObject } from "#core/json.ts";
-import { parseId } from "#core/ids.ts";
 import { MissingStateError } from "#core/rooms.ts";
 import { authStateFromAuthEvents, checkAuth } from "#core/authrules.ts";
 import { resolveState } from "#core/stateres.ts";
@@ -24,7 +23,6 @@ import type { Homeserver } from "#homeserver.ts";
 import { FederationClient } from "#federation/client.ts";
 import { KeyRing } from "#federation/keyring.ts";
 import { TransactionSender } from "#federation/sender.ts";
-import { M } from "#core/m.ts";
 import { publicGet } from "#core/outbound.ts";
 
 export interface FederationOptions {

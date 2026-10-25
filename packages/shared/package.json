@@ -1,0 +1,20 @@
+{
+  "name": "@katrix/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Katrix: types and portable code shared by @katrix/server and @katrix/client (bundled into both, not published)",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

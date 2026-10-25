@@ -1,6 +1,5 @@
 import type { CryptoPrimitives } from "../crypto/primitives.ts";
-import { decodeBase64 } from "../util/base64.ts";
-import { encodeUtf8 } from "../util/utf8.ts";
+import { decodeBase64, encodeUtf8 } from "@katrix/shared";
 import { NativeInboundGroupSession } from "./megolm/inbound.ts";
 import { NativeOutboundGroupSession } from "./megolm/outbound.ts";
 import { NativeOlmAccount } from "./olm/account.ts";
