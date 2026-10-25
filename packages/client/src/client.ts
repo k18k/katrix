@@ -15,6 +15,8 @@ import { DirectoryApi } from "./directory/directory.ts";
 import { MediaApi } from "./media/media.ts";
 import { PushApi, type PushOutcome } from "./push/push.ts";
 import { SpacesApi } from "./spaces/spaces.ts";
+import type { PeerConnectionFactory } from "./voip/call.ts";
+import { CallsApi } from "./voip/calls.ts";
 import { MatrixEvent } from "./models/event.ts";
 import { relationOf } from "./models/relations.ts";
 import { Room } from "./models/room.ts";
@@ -56,6 +58,8 @@ export interface ClientOptions {
   /** End-to-end encryption (on by default); false turns it off: encrypted rooms then cannot be written to. */
   e2ee?: false | { primitives?: CryptoPrimitives; protocol?: E2EEProtocol; pickleKey?: PickleKey };
   sync?: V3SyncOptions & { transport?: SyncTransport; pollTimeoutMs?: number; setPresence?: "online" | "offline" | "unavailable" };
+  /** Voice and video calls: the app's WebRTC (RTCPeerConnection, or react-native-webrtc's). */
+  calls?: { peerConnectionFactory?: PeerConnectionFactory };
   /** Events kept per room in memory (default 1000) and in storage (default 50). */
   maxTimelineEvents?: number;
   storedTimelineEvents?: number;
@@ -149,6 +153,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   readonly push: PushApi;
   /** Creating spaces, their children and parents, the space hierarchy. */
   readonly spaces: SpacesApi;
+  /** Voice and video calls (signalling; media through the app's WebRTC). */
+  readonly calls: CallsApi;
   private readonly logger: Logger;
   private readonly primitives: CryptoPrimitives;
   private readonly transport: SyncTransport;
@@ -170,6 +176,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   private loaded = false;
   /** During a sync round after the first: the new events from others, to evaluate push rules on. */
   private notifyQueue?: Array<{ event: MatrixEvent; room: Room }>;
+  /** During a sync round: the new live events, for the m.call.* among them once decrypted. */
+  private callQueue?: Array<{ event: MatrixEvent; room: Room }>;
   /** Encrypted events still to be evaluated once decrypted. */
   private notifyOnDecrypt = new WeakSet<MatrixEvent>();
 
@@ -204,6 +212,14 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     this.admin = new AdminApi(this.api);
     this.push = new PushApi(this.api, userId, (type) => this.accountData.get(type));
     this.spaces = new SpacesApi(this);
+    this.calls = new CallsApi({
+      api: this.api,
+      logger: this.logger,
+      userId,
+      factory: opts.calls?.peerConnectionFactory,
+      sendRoomEvent: (roomId, type, content) => this.sendEvent(roomId, type, content),
+      makeId: () => encodeBase64(this.primitives.randomBytes(12), { urlSafe: true }),
+    });
     const e2ee = opts.e2ee === false ? undefined : (opts.e2ee ?? {});
     this.primitives = e2ee?.primitives ?? nobleCryptoPrimitives();
     this.media = new MediaApi(this.api, this.primitives);
@@ -355,6 +371,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     let outcome: ToDeviceOutcome = { events: result.toDevice.map((event) => ({ event })), newSessions: [], wedged: [] };
     const notifyQueue: Array<{ event: MatrixEvent; room: Room }> = [];
     this.notifyQueue = this.prepared ? notifyQueue : undefined;
+    const callQueue: Array<{ event: MatrixEvent; room: Room }> = [];
+    this.callQueue = callQueue;
 
     await this.store.transaction(async (tx) => {
       if (this.e2ee) outcome = await this.e2ee.processSync(tx, result);
@@ -399,6 +417,9 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       for (const { event, room } of toDecrypt) await this.decryptAndEmit(event, room);
       for (const s of outcome.newSessions) await this.retryAwaiting(s.roomId, s.sessionId);
     }
+    this.callQueue = undefined;
+    const callEvents = callQueue.filter(({ event }) => event.type.startsWith("m.call."));
+    if (callEvents.length) await this.calls.handleEvents(callEvents);
     for (const { event, room } of notifyQueue) {
       if (event.isEncrypted() && event.decryptionStatus !== "decrypted") this.notifyOnDecrypt.add(event);
       else this.notifyIfRulesSay(event, room);
@@ -563,6 +584,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       this.indexRelations(event, room, emits, toDecrypt);
       if (event.isEncrypted()) toDecrypt.push({ event, room });
       if (this.notifyQueue && room.membership === "join" && event.sender !== this.userId) this.notifyQueue.push({ event, room });
+      if (this.callQueue && room.membership === "join") this.callQueue.push({ event, room });
       if (!event.isEncrypted() && this.e2ee && isVerificationEvent(event)) emits.push(() => void this.routeVerification(event));
       emits.push(() => this.emit("room.timeline", event, room, { live: true }));
     }
@@ -680,6 +702,8 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     if (await this.e2ee.decryptRoomEvent(event)) {
       this.emit("event.decrypted", event, room);
       if (isVerificationEvent(event)) await this.routeVerification(event);
+      // A call event decrypted outside a sync round (its key came late).
+      if (!this.callQueue && event.type.startsWith("m.call.")) await this.calls.handleEvents([{ event, room }]);
       // Edits and reactions count once decrypted (their type and m.new_content are inside).
       const target = room.applyRelations(event);
       if (target) this.emit("room.relation", target, event, room);

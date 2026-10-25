@@ -29,6 +29,22 @@ export { AttachmentError, decryptAttachment, encryptAttachment } from "./media/a
 // Spaces
 export { SpacesApi, type SpaceChild } from "./spaces/spaces.ts";
 
+// Calls
+export { CallsApi, type CallsEvents } from "./voip/calls.ts";
+export {
+  INVITE_LIFETIME_MS,
+  MatrixCall,
+  type CallEvents,
+  type CallHangupReason,
+  type CallState,
+  type IceCandidateLike,
+  type IceServer,
+  type PeerConnectionFactory,
+  type PeerConnectionLike,
+  type SessionDescriptionLike,
+  type StreamMetadata,
+} from "./voip/call.ts";
+
 // Push
 export { PushApi, type PushOutcome } from "./push/push.ts";
 
