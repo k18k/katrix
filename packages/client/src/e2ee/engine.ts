@@ -1,6 +1,6 @@
 import type { MatrixHttpApi } from "../http/api.ts";
 import type { MatrixEvent } from "../models/event.ts";
-import type { MegolmEncryptedContent, ToDeviceEvent } from "../models/types.ts";
+import type { MegolmEncryptedContent, ToDeviceEvent } from "@katrix/shared";
 import type { E2EEProtocol, PickleKey } from "../protocol/protocol.ts";
 import type { Store, Transaction } from "../storage/store.ts";
 import type { SyncResult } from "../sync/types.ts";
@@ -140,7 +140,7 @@ export class E2EEEngine {
         };
       });
       if (!body) return;
-      await this.api.request("POST", "/v3/keys/upload", { body });
+      await this.api.endpoint("POST /v3/keys/upload", {}, { body });
       await this.store.transaction(async (tx) => {
         const { record, account } = await loadAccount(tx, this.pickler);
         account.markKeysAsPublished();

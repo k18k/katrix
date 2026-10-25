@@ -10,7 +10,9 @@ export {
 } from "#http/adapters.ts";
 export { handleRequest } from "#http/handler.ts";
 export { MatrixError } from "#core/errors.ts";
-export { M, UNSTABLE } from "#core/m.ts";
+export { M, UNSTABLE } from "@katrix/shared";
+// The spec types shared with @katrix/client: events, endpoint requests and responses.
+export type * from "@katrix/shared/types";
 
 // Database adapters
 export type { DatabaseAdapter, Schema, ModelDef, FieldDef, WhereClause, Row, FindManyOptions, Operator } from "#storage/types.ts";

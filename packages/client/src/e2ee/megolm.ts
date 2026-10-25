@@ -1,10 +1,9 @@
 import type { MatrixEvent, DecryptionFailureCode, DecryptionInfo } from "../models/event.ts";
-import type { MegolmEncryptedContent } from "../models/types.ts";
+import { decodeUtf8, encodeUtf8, type MegolmEncryptedContent } from "@katrix/shared";
 import { ProtocolError } from "../protocol/protocol.ts";
 import type { Store, Transaction } from "../storage/store.ts";
 import { describeError, type Logger } from "../util/logger.ts";
 import { KeyedMutex } from "../util/mutex.ts";
-import { decodeUtf8, encodeUtf8 } from "../util/utf8.ts";
 import {
   inboundKey,
   type DeviceInfo,

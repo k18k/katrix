@@ -22,15 +22,23 @@ export default defineConfig({
   clean: true,
   fixedExtension: false,
   sourcemap: true,
-  // Declarations through tsgo (TypeScript 7), from the sources only.
-  tsconfig: "tsconfig.build.json",
+  // Declarations through tsgo (TypeScript 7); see ../tsconfig.dts.json for why it lives there.
+  tsconfig: "../tsconfig.dts.json",
   dts: { sourcemap: true },
   // The sources import each other as #…/….ts (package.json "imports"); "matrix-src" maps them to
   // src/, and the build writes them as relative imports.
   inputOptions: { resolve: { conditionNames: ["matrix-src", "import", "node", "default"] } },
-  // Besides Node.js built-ins, the output may import only the audit bot's optional peer: the
-  // package has no runtime dependencies.
-  deps: { onlyImport: ["@matrix-org/matrix-sdk-crypto-nodejs"] },
+  deps: {
+    // @katrix/shared is not published: its code and types are built into dist/shared/.
+    alwaysBundle: [/^@katrix\/shared(\/|$)/],
+    // Besides Node.js built-ins, the output may import only the audit bot's optional peer: the
+    // package has no runtime dependencies.
+    onlyImport: ["@matrix-org/matrix-sdk-crypto-nodejs"],
+  },
+  outputOptions: {
+    // dist/shared/… rather than dist/shared/src/… for the bundled @katrix/shared modules.
+    entryFileNames: (chunk) => `${chunk.name.replace(/^shared\/src\//, "shared/")}${chunk.name.endsWith(".d") ? ".ts" : ".js"}`,
+  },
   // https://github.com/k18k/katrix/issues/111: with the tsc build, the #-imports stayed in
   // dist/*.d.ts and attw failed on them under node10 resolution, so a script had to filter its
   // results. This build writes those imports as relative paths, and attw runs here unfiltered.

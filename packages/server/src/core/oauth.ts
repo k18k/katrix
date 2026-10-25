@@ -1,5 +1,5 @@
+import { LOCALPART_RE } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
-import { LOCALPART_RE } from "#core/ids.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Session } from "#core/auth.ts";
 

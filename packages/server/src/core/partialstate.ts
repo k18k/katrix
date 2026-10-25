@@ -1,8 +1,8 @@
+import { M } from "@katrix/shared";
 import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { EventEmitter } from "node:events";
 import { eventIdOf, roomVersionFeatures, stateKey } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { M } from "#core/m.ts";
 
 // MSC3902 "faster joins": a remote join with `omit_members=true` returns the room's state
 // without most membership events. The room is usable right away (sending, receiving, lazy

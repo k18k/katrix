@@ -1,7 +1,7 @@
+import { UNSTABLE } from "@katrix/shared";
 import { errors, MatrixError } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { UNSTABLE } from "#core/m.ts";
 
 /** When a delayed event whose send failed is tried again. */
 const RETRY_MS = 10_000;

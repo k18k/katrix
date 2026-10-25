@@ -1,6 +1,6 @@
+import { M, UNSTABLE } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { M, UNSTABLE } from "#core/m.ts";
 
 test("identifiers follow their paths", () => {
   assert.equal(M.ROOM.MEMBER, "m.room.member");

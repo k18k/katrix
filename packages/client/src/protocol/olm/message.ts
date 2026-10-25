@@ -1,4 +1,4 @@
-import { concatBytes } from "../../util/bytes.ts";
+import { concatBytes } from "@katrix/shared";
 import { ProtocolError } from "../protocol.ts";
 import { bytesField, intField, readFields, WireWriter } from "../wire.ts";
 

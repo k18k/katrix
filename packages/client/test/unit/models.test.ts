@@ -2,11 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MatrixEvent } from "../../src/models/event.ts";
 import { Room } from "../../src/models/room.ts";
-import type { RawEvent } from "../../src/models/types.ts";
+import type { ClientEvent } from "@katrix/shared";
 import { parseV3 } from "../../src/sync/v3.ts";
 
 const ME = "@me:x";
-const member = (userId: string, membership: string, displayname?: string): RawEvent => ({
+const member = (userId: string, membership: string, displayname?: string): ClientEvent => ({
   type: "m.room.member",
   state_key: userId,
   sender: userId,
@@ -14,7 +14,7 @@ const member = (userId: string, membership: string, displayname?: string): RawEv
   content: { membership, ...(displayname ? { displayname } : {}) } as never,
 });
 
-function room(events: RawEvent[], summary?: Room["summary"]) {
+function room(events: ClientEvent[], summary?: Room["summary"]) {
   const r = new Room("!r:x", ME, "join");
   for (const e of events) r.state.setRaw(e);
   if (summary) r.summary = summary;
@@ -56,7 +56,7 @@ test("member names are disambiguated when shared or when they look like a user I
 });
 
 test("power levels: defaults without the event, users and events from it", () => {
-  const create: RawEvent = { type: "m.room.create", state_key: "", sender: "@creator:x", content: { room_version: "10" } };
+  const create: ClientEvent = { type: "m.room.create", state_key: "", sender: "@creator:x", content: { room_version: "10" } };
   const r = room([create]);
   assert.equal(r.state.powerLevel("@creator:x"), 100);
   assert.equal(r.state.powerLevel("@other:x"), 0);

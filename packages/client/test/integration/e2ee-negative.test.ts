@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MatrixEvent } from "../../src/models/event.ts";
-import { decodeUtf8 } from "../../src/util/utf8.ts";
+import { decodeUtf8 } from "@katrix/shared";
 import { body, findEvent, homeserver, until } from "./helpers.ts";
 import { RawPeer } from "./peer.ts";
 
@@ -237,7 +237,7 @@ test("messages with low-order Curve25519 keys are rejected one by one; the sync 
     const { curve25519 } = await mallory.sessionTo(bob.userId, bob.deviceId);
     const zero = new Uint8Array(32);
     const { WireWriter } = await import("../../src/protocol/wire.ts");
-    const { encodeBase64 } = await import("../../src/util/base64.ts");
+    const { encodeBase64 } = await import("@katrix/shared");
     // A pre-key message whose base key is the all-zero point.
     const inner = new WireWriter().byte(3).bytesField(0x0a, zero).varintField(0x10, 0).bytesField(0x22, new Uint8Array(16)).finish();
     const preKey = new WireWriter()

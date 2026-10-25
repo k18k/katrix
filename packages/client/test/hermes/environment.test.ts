@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { nobleCryptoPrimitives } from "../../src/crypto/noble.ts";
 import { nativeE2EEProtocol } from "../../src/protocol/native.ts";
-import { decodeUtf8, encodeUtf8 } from "../../src/util/utf8.ts";
+import { decodeUtf8, encodeUtf8 } from "@katrix/shared";
 
 // Runs only under test/env/hermes.ts (npm run test:hermes).
 

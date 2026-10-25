@@ -1,8 +1,8 @@
+import { isValidAlias, isValidRoomId, isValidUserId, M, UNSTABLE } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { getState, ownerOfStateKey, powerLevels, roomCreators, userLevel, type StateMap } from "#core/authrules.ts";
 import { validatePowerLevelContent } from "#core/rooms.ts";
 import { SUPPORTED_ROOM_VERSIONS, roomVersionFeatures, splitStateKey, toClientEvent } from "#core/events.ts";
-import { isValidAlias, isValidRoomId, isValidUserId } from "#core/ids.ts";
 import { assertNotSuspended, type Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
@@ -10,7 +10,6 @@ import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
 import { v } from "#core/vpm.ts";
 import { body, fail } from "#http/input.ts";
-import { M, UNSTABLE } from "#core/m.ts";
 
 export const parseToken = (token: string | null): number | null => {
   if (token === null || token === "") return null;
@@ -193,6 +192,7 @@ export function registerRoomRoutes(r: Router): void {
     "POST",
     "/createRoom",
     procedure({
+      endpoint: "POST /v3/createRoom",
       auth: "user",
       input: body({}),
       handler: async (ctx) => {
@@ -223,6 +223,7 @@ export function registerRoomRoutes(r: Router): void {
     "PUT",
     "/rooms/:roomId/send/:eventType/:txnId",
     procedure({
+      endpoint: "PUT /v3/rooms/:roomId/send/:eventType/:txnId",
       auth: "user",
       rateLimit: "message",
       handler: async (ctx) => {
@@ -331,6 +332,7 @@ export function registerRoomRoutes(r: Router): void {
     "GET",
     "/rooms/:roomId/members",
     procedure({
+      endpoint: "GET /v3/rooms/:roomId/members",
       auth: "user",
       handler: async (ctx) => {
         const s = ctx.session;
@@ -412,6 +414,7 @@ export function registerRoomRoutes(r: Router): void {
     "PUT",
     "/rooms/:roomId/redact/:eventId/:txnId",
     procedure({
+      endpoint: "PUT /v3/rooms/:roomId/redact/:eventId/:txnId",
       auth: "user",
       handler: async (ctx) => {
         const s = ctx.session;

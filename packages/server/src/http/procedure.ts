@@ -1,3 +1,4 @@
+import type { ClientEndpoint, EndpointResponse } from "@katrix/shared";
 import type { v } from "#core/vpm.ts";
 import type { Session } from "#core/auth.ts";
 import type { RateLimitAction } from "#core/ratelimit.ts";
@@ -14,6 +15,10 @@ import type { Handler, HandlerResult, RequestContext } from "#http/router.ts";
 //   3. body (`input`, a vpm schema (core/vpm.ts))
 //   4. the handler
 //   5. response (`output`, a vpm schema (core/vpm.ts); responses that are already a `Response` pass as they are)
+//
+// `endpoint` names the endpoint in the Client-Server API map that the client uses too
+// (ClientEndpoints in @katrix/shared). It is checked at compile time only: the handler must
+// return that endpoint's response type, so server and client cannot disagree on its shape.
 //
 // The order matters: a request without credentials is refused with 401 before its body is looked
 // at, and a rate-limited caller gets 429 without the server parsing anything.
@@ -34,16 +39,24 @@ export type ProcedureContext<A extends AuthMode = "none", I = undefined, G = unk
     input: I;
   };
 
-export interface ProcedureDef<A extends AuthMode, S extends v.Schema | undefined, O extends v.Schema | undefined, G extends object> {
+type Returns<O, E> = E extends ClientEndpoint ? EndpointResponse<E> | Response : O extends v.Schema ? v.input<O> | Response : HandlerResult;
+
+export interface ProcedureDef<
+  A extends AuthMode,
+  S extends v.Schema | undefined,
+  O extends v.Schema | undefined,
+  G extends object,
+  E extends ClientEndpoint | undefined = undefined,
+> {
   auth?: A;
+  /** The endpoint of the shared map this procedure implements (type-level only, see above). */
+  endpoint?: E;
   /** Runs instead of (or after) `auth`, and adds what it returns to the context. */
   guard?: (ctx: RequestContext) => Promise<G> | G;
   rateLimit?: RateLimitAction;
   input?: S;
   output?: O;
-  handler: (
-    ctx: ProcedureContext<A, Parsed<S>, G>,
-  ) => Promise<O extends v.Schema ? v.input<O> | Response : HandlerResult> | (O extends v.Schema ? v.input<O> | Response : HandlerResult);
+  handler: (ctx: ProcedureContext<A, Parsed<S>, G>) => Promise<Returns<O, E>> | Returns<O, E>;
 }
 
 export function procedure<
@@ -51,7 +64,8 @@ export function procedure<
   S extends v.Schema | undefined = undefined,
   O extends v.Schema | undefined = undefined,
   G extends object = {},
->(def: ProcedureDef<A, S, O, G>): Handler {
+  E extends ClientEndpoint | undefined = undefined,
+>(def: ProcedureDef<A, S, O, G, E>): Handler {
   return async (ctx: RequestContext) => {
     const session = def.auth === "user" ? await ctx.auth() : def.auth === "optional" ? await ctx.optionalAuth() : undefined;
     const extra = def.guard ? await def.guard(ctx) : ({} as G);

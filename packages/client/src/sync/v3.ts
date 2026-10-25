@@ -1,5 +1,6 @@
+import type { SyncResponse } from "@katrix/shared";
 import type { MatrixHttpApi } from "../http/api.ts";
-import type { RawEvent } from "../models/types.ts";
+import type { ClientEvent } from "@katrix/shared";
 import type { JoinedRoomUpdate, LeftRoomUpdate, SyncRequest, SyncResult, SyncTransport, TimelineUpdate } from "./types.ts";
 
 /** Options for the /sync filter (https://spec.matrix.org/v1.16/client-server-api/#filtering). */
@@ -15,8 +16,8 @@ export interface V3SyncOptions {
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const obj = (v: unknown): Record<string, any> =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, any>) : {};
-const events = (v: unknown): RawEvent[] =>
-  arr<RawEvent>(obj(v).events).filter((e) => typeof e === "object" && e !== null && typeof e.type === "string");
+const events = (v: unknown): ClientEvent[] =>
+  arr<ClientEvent>(obj(v).events).filter((e) => typeof e === "object" && e !== null && typeof e.type === "string");
 
 function timeline(v: unknown): TimelineUpdate {
   const t = obj(v);
@@ -46,17 +47,26 @@ export class SyncV3Transport implements SyncTransport {
   }
 
   async sync(req: SyncRequest): Promise<SyncResult> {
-    const res = await this.api.request("GET", "/v3/sync", {
-      query: { since: req.since, timeout: req.timeoutMs, filter: this.filter, set_presence: req.setPresence },
-      signal: req.signal,
-      // The server holds the request for up to timeoutMs; allow for the network on top.
-      timeoutMs: req.timeoutMs + 30_000,
-    });
+    const res = await this.api.endpoint(
+      "GET /v3/sync",
+      {},
+      {
+        query: { since: req.since, timeout: req.timeoutMs, filter: this.filter, set_presence: req.setPresence },
+        signal: req.signal,
+        // The server holds the request for up to timeoutMs; allow for the network on top.
+        timeoutMs: req.timeoutMs + 30_000,
+      },
+    );
     return parseV3(res, req.since === undefined);
   }
 }
 
-export function parseV3(res: Record<string, any>, initial: boolean): SyncResult {
+/**
+ * The response is typed as the spec's SyncResponse (@katrix/shared) but read as untrusted data:
+ * every field is checked, and anything malformed is skipped rather than trusted.
+ */
+export function parseV3(response: SyncResponse | Record<string, unknown>, initial: boolean): SyncResult {
+  const res = response as Record<string, any>;
   if (typeof res.next_batch !== "string") throw new Error("Sync response has no next_batch");
   const rooms = obj(res.rooms);
   const join: Record<string, JoinedRoomUpdate> = {};

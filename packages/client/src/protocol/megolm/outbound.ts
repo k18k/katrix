@@ -1,6 +1,5 @@
 import type { CryptoPrimitives, KeyPair } from "../../crypto/primitives.ts";
-import { encodeBase64 } from "../../util/base64.ts";
-import { concatBytes } from "../../util/bytes.ts";
+import { concatBytes, encodeBase64 } from "@katrix/shared";
 import { b64, field, readPickle, writePickle } from "../pickle.ts";
 import type { OutboundGroupSession, PickleKey } from "../protocol.ts";
 import { encodeBody, MAC_LENGTH } from "./message.ts";

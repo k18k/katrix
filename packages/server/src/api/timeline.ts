@@ -1,14 +1,13 @@
+import { isObject, M } from "@katrix/shared";
 import type { Row } from "#storage/types.ts";
 import { errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
 import { toClientEvent, type PDU } from "#core/events.ts";
-import { isObject } from "#core/json.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { matchesFilter, parseRoomEventFilter, type EventFilter } from "#api/filters.ts";
-import { M } from "#core/m.ts";
 import { parseToken, requireRoom, viewerOf, visibleState } from "#api/rooms.ts";
 
 // Room timelines: /messages (with backfill over federation), single events, /context, relations,
@@ -250,6 +249,8 @@ export async function eventsByTimestamp(hs: Homeserver, roomId: string, dir: "f"
 }
 
 export function registerTimelineRoutes(r: Router): void {
+  // Not bound to the shared endpoint map ("GET /v3/rooms/:roomId/messages") yet: the response is
+  // assembled as Record<string, any>.
   r.client(
     "GET",
     "/rooms/:roomId/messages",

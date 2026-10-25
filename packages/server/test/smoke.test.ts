@@ -1,10 +1,10 @@
+import { M } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { memoryAdapter, memoryMedia, sqliteAdapter } from "#index.ts";
-import { M } from "#core/m.ts";
 import { testServer } from "./helpers.ts";
 
 // Smoke tests: does a homeserver work at all? One quick check per area a client uses on its first

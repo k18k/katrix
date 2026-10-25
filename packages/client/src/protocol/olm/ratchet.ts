@@ -1,6 +1,5 @@
 import type { CryptoPrimitives, KeyPair } from "../../crypto/primitives.ts";
-import { bytesEqual, constantTimeEqual } from "../../util/bytes.ts";
-import { encodeUtf8 } from "../../util/utf8.ts";
+import { bytesEqual, constantTimeEqual, encodeUtf8 } from "@katrix/shared";
 import { b64, field, type Pickled } from "../pickle.ts";
 import { ProtocolError } from "../protocol.ts";
 import { decodeNormal, encodeNormalBody, MAC_LENGTH, withMac } from "./message.ts";

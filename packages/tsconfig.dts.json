@@ -1,0 +1,26 @@
+{
+  // Declarations for the tsdown builds of @katrix/server and @katrix/client (their
+  // tsdown.config.ts). It lives here, above both packages and packages/shared, because the dts
+  // plugin runs tsgo with --rootDir set to this file's directory, and @katrix/shared, bundled
+  // into both, has to be inside it. Only declarations are emitted (with --noCheck); type
+  // checking stays with each package's own tsconfig.json.
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["esnext"],
+    "types": ["node"],
+    "strict": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "customConditions": ["matrix-src"],
+    // Through node_modules, @katrix/shared would count as an external library, and TypeScript
+    // emits no declarations for those: make its sources part of the program.
+    "paths": { "@katrix/shared": ["./shared/src/index.ts"], "@katrix/shared/types": ["./shared/src/types.ts"] }
+  },
+  "include": ["shared/src", "client/src", "server/src"]
+}

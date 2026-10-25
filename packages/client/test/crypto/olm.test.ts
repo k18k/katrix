@@ -4,8 +4,7 @@ import { nobleCryptoPrimitives } from "../../src/crypto/noble.ts";
 import { MAX_MESSAGE_GAP, MAX_SKIPPED_MESSAGE_KEYS } from "../../src/protocol/olm/ratchet.ts";
 import { nativeE2EEProtocol } from "../../src/protocol/native.ts";
 import { ProtocolError, type OlmMessage, type OlmSession } from "../../src/protocol/protocol.ts";
-import { decodeBase64, encodeBase64 } from "../../src/util/base64.ts";
-import { decodeUtf8, encodeUtf8 } from "../../src/util/utf8.ts";
+import { decodeBase64, decodeUtf8, encodeBase64, encodeUtf8 } from "@katrix/shared";
 
 const primitives = nobleCryptoPrimitives();
 const protocol = nativeE2EEProtocol(primitives);

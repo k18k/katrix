@@ -1,3 +1,4 @@
+import { M } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { canonicalAddress, isMedium, type ThreepidPurpose } from "#core/threepid.ts";
 import type { RequestContext, Router } from "#http/router.ts";
@@ -5,7 +6,6 @@ import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { requireUia } from "#api/uia.ts";
 import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
-import { M } from "#core/m.ts";
 
 const submitField = v.string(fail("M_MISSING_PARAM", "sid, client_secret and token are required"));
 const submitBody = body({ sid: submitField, client_secret: submitField, token: submitField });

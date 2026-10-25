@@ -4,8 +4,8 @@
  * Node.js, browsers and React Native (Hermes) all provide.
  *
  * Deliberately not used anywhere in the SDK, because Hermes lacks them or ships incomplete
- * versions: `TextDecoder` and, for symmetry, `TextEncoder` (see util/utf8.ts; Hermes has
- * TextEncoder since React Native 0.74, and @noble/curves needs it at import), `atob`/`btoa` (util/base64.ts),
+ * versions: `TextDecoder` and, for symmetry, `TextEncoder` (see @katrix/shared utf8.ts; Hermes has
+ * TextEncoder since React Native 0.74, and @noble/curves needs it at import), `atob`/`btoa` (@katrix/shared base64.ts),
  * `URL`/`URLSearchParams` (util/query.ts), `crypto.subtle`, `WebAssembly`, `structuredClone`,
  * `AbortSignal.timeout`/`AbortSignal.any`, `Buffer`, `process`.
  */
