@@ -27,6 +27,7 @@ test("push: pushers, rules, the notification list", async () => {
 
     const rules = await alice.push.rules();
     assert.ok(rules.override?.some((r) => r.rule_id === ".m.rule.master"));
+    assert.deepEqual(await alice.push.rules({ scope: "global" }), rules);
     await alice.push.setRule("content", "pizza", { pattern: "pizza", actions: ["notify", { set_tweak: "highlight" }] });
     assert.equal((await alice.push.getRule("content", "pizza")).pattern, "pizza");
     await alice.push.setRuleEnabled("content", "pizza", false);

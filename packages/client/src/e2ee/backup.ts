@@ -283,7 +283,7 @@ export class KeyBackup {
           (rooms[record.roomId] ??= { sessions: {} }).sessions[record.sessionId] = data;
         }
         try {
-          await this.api.endpoint("PUT /v3/room_keys/keys", {}, { query: { version: active.version }, body: { rooms } });
+          await this.upload(active.version, rooms);
         } catch (e) {
           if (e instanceof MatrixError && e.errcode === "M_WRONG_ROOM_KEYS_VERSION") {
             this.logger.warn("the key backup was replaced on the server; stopping uploads", { version: active.version });
@@ -301,6 +301,76 @@ export class KeyBackup {
         uploaded += pending.length;
       }
     });
+  }
+
+  /** One session or one room goes to its own endpoint (a smaller request); more go to PUT /room_keys/keys. */
+  private async upload(version: string, rooms: Record<string, { sessions: Record<string, KeyBackupData> }>): Promise<void> {
+    const query = { version };
+    const roomIds = Object.keys(rooms);
+    if (roomIds.length === 1) {
+      const [roomId] = roomIds;
+      const sessions = rooms[roomId].sessions;
+      const ids = Object.keys(sessions);
+      if (ids.length === 1) {
+        await this.api.endpoint(
+          "PUT /v3/room_keys/keys/:roomId/:sessionId",
+          { roomId, sessionId: ids[0] },
+          { query, body: sessions[ids[0]] },
+        );
+        return;
+      }
+      await this.api.endpoint("PUT /v3/room_keys/keys/:roomId", { roomId }, { query, body: { sessions } });
+      return;
+    }
+    if (roomIds.length > 0) await this.api.endpoint("PUT /v3/room_keys/keys", {}, { query, body: { rooms } });
+  }
+
+  /** One backup version's information. */
+  async versionInfo(version: string): Promise<BackupVersionResponse | undefined> {
+    try {
+      return await this.api.endpoint("GET /v3/room_keys/version/:version", { version }, {});
+    } catch (e) {
+      if (e instanceof MatrixError && e.errcode === "M_NOT_FOUND") return undefined;
+      throw e;
+    }
+  }
+
+  /**
+   * Add the master key's signature to the current backup's auth_data (after cross-signing was
+   * set up or reset, so other devices trust the backup through the identity).
+   */
+  async signWithMasterKey(masterKey: Uint8Array): Promise<void> {
+    const active = await this.active();
+    const info = active ? await this.versionInfo(active.version) : undefined;
+    if (!info) throw new Error("No active key backup");
+    const mpk = encodeBase64(this.primitives.ed25519PublicKey(masterKey));
+    const { signatures, ...unsigned } = info.auth_data;
+    const sig = encodeBase64(this.primitives.ed25519Sign(masterKey, encodeUtf8(signingJson(unsigned as Record<string, unknown>))));
+    const authData = {
+      ...info.auth_data,
+      signatures: { ...signatures, [this.userId]: { ...signatures?.[this.userId], [`ed25519:${mpk}`]: sig } },
+    };
+    await this.api.endpoint(
+      "PUT /v3/room_keys/version/:version",
+      { version: info.version },
+      { body: { algorithm: info.algorithm, auth_data: authData, version: info.version } },
+    );
+  }
+
+  /** Delete backed-up keys on the server: all of them, one room's, or one session. */
+  async deleteKeys(opts: { roomId?: string; sessionId?: string } = {}): Promise<void> {
+    const active = await this.active();
+    const version = active?.version ?? (await this.serverInfo())?.version;
+    if (!version) return;
+    const query = { version };
+    if (opts.roomId && opts.sessionId)
+      await this.api.endpoint(
+        "DELETE /v3/room_keys/keys/:roomId/:sessionId",
+        { roomId: opts.roomId, sessionId: opts.sessionId },
+        { query },
+      );
+    else if (opts.roomId) await this.api.endpoint("DELETE /v3/room_keys/keys/:roomId", { roomId: opts.roomId }, { query });
+    else await this.api.endpoint("DELETE /v3/room_keys/keys", {}, { query });
   }
 
   private async sessionData(record: InboundGroupSessionRecord, publicKey: Uint8Array): Promise<KeyBackupData | undefined> {

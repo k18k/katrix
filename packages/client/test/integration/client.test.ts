@@ -250,7 +250,7 @@ test("state after the timeline wins; presence from sync; logout clears the stora
   try {
     const storage = new MemoryStorage();
     const alice = await t.login("alice", { e2ee: false, storage });
-    const bob = await t.login("bob", { e2ee: false });
+    const bob = await t.login("bob");
     await Promise.all([alice.start(), bob.start()]);
     await Promise.all([alice.waitForPrepared(), bob.waitForPrepared()]);
     const roomId = await alice.createRoom({ invite: [bob.userId], name: "one" });
@@ -258,6 +258,11 @@ test("state after the timeline wins; presence from sync; logout clears the stora
     await alice.setRoomName(roomId, "two");
     await alice.setRoomName(roomId, "three");
     await until("the last name", () => bob.getRoom(roomId)?.name() === "three");
+
+    // Device list changes between two tokens (keys/changes).
+    const from = (await bob.store.get<string>("sync", "token"))!;
+    const changes = await bob.e2ee!.devices.changesBetween(from, from);
+    assert.deepEqual(changes, { changed: [], left: [] });
 
     await alice.presence.set("unavailable", "away for lunch");
     await until("presence", () => bob.getPresence(alice.userId)?.presence === "unavailable");

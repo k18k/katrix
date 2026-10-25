@@ -159,6 +159,18 @@ export class DeviceTracker {
     };
   }
 
+  /**
+   * The users whose devices changed between two sync tokens (GET /keys/changes): they are marked
+   * outdated, and their keys queried again before we next encrypt for them. For a client that
+   * resumes from an older token than its device lists were last updated at.
+   */
+  async changesBetween(from: string, to: string): Promise<{ changed: string[]; left: string[] }> {
+    const res = await this.api.endpoint("GET /v3/keys/changes", {}, { query: { from, to } });
+    const lists = { changed: res.changed ?? [], left: res.left ?? [] };
+    await this.store.transaction((tx) => this.handleDeviceLists(tx, lists));
+    return lists;
+  }
+
   /** Change what this device trusts about a user (the record is created if the user is not known yet). */
   async updateTrust(userId: string, change: (trust: UserTrustRecord) => UserTrustRecord): Promise<void> {
     await this.store.transaction(async (tx) => {

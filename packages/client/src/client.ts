@@ -833,14 +833,19 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    */
   async joinRoom(roomIdOrAlias: string, opts: { via?: string[]; reason?: string } = {}): Promise<string> {
     const invite = this.rooms.get(roomIdOrAlias)?.inviteState.find((e) => e.type === "m.room.member" && e.state_key === this.userId);
-    const res = await this.api.endpoint(
-      "POST /v3/join/:roomIdOrAlias",
-      { roomIdOrAlias },
-      {
-        query: { via: opts.via, server_name: opts.via },
-        body: { reason: opts.reason },
-      },
-    );
+    // A room ID without servers to go through: /rooms/{roomId}/join, which takes no via;
+    // aliases, or a list of servers: /join/{roomIdOrAlias}.
+    const res =
+      roomIdOrAlias.startsWith("!") && !opts.via?.length
+        ? await this.api.endpoint("POST /v3/rooms/:roomId/join", { roomId: roomIdOrAlias }, { body: { reason: opts.reason } })
+        : await this.api.endpoint(
+            "POST /v3/join/:roomIdOrAlias",
+            { roomIdOrAlias },
+            {
+              query: { via: opts.via, server_name: opts.via },
+              body: { reason: opts.reason },
+            },
+          );
     if (invite?.content.is_direct === true && invite.sender)
       await this.markDirect(res.room_id, invite.sender).catch((e) => this.logger.warn("could not update m.direct", describeError(e)));
     return res.room_id;

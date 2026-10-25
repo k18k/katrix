@@ -104,6 +104,20 @@ test("recovery: set up, then a new device gets the identity and the history with
     await alice.e2ee!.devices.refresh([alice.userId], { force: true });
     assert.equal((await alice.e2ee!.crossSigning.deviceTrust(alice.userId, alice2.deviceId)).verified, true);
 
+    // Backup management: the version, the master key's signature on it, deleting keys.
+    const version = (await alice.e2ee!.backup.active())!.version;
+    assert.equal((await alice.e2ee!.backup.versionInfo(version))?.version, version);
+    const masterSeed = Uint8Array.from(
+      Buffer.from(
+        (await alice.e2ee!.secretStorage.get("m.cross_signing.master", await alice.e2ee!.recovery.keyFrom(recoveryKey)))!,
+        "base64",
+      ),
+    );
+    await alice.e2ee!.backup.signWithMasterKey(masterSeed);
+    assert.equal(await alice2.e2ee!.backup.isTrusted((await alice2.e2ee!.backup.serverInfo())!), true);
+    await alice.e2ee!.backup.deleteKeys({ roomId });
+    assert.equal((await alice.e2ee!.backup.serverInfo())?.count, 0);
+
     // The passphrase opens it too.
     const alice3 = await anotherDevice(t, "alice");
     extra.push(alice3);

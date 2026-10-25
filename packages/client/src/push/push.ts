@@ -68,7 +68,9 @@ export class PushApi {
 
   // ─── Push rules ───────────────────────────────────────────────────────────
 
-  async rules(): Promise<PushRuleset> {
+  /** The user's push rules, from GET /pushrules/ (`scope: "global"` asks for /pushrules/global/ directly). */
+  async rules(opts: { scope?: "all" | "global" } = {}): Promise<PushRuleset> {
+    if (opts.scope === "global") return this.api.endpoint("GET /v3/pushrules/global/", {}, {});
     return (await this.api.endpoint("GET /v3/pushrules/", {}, {})).global ?? {};
   }
 
