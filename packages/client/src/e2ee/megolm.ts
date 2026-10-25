@@ -28,6 +28,13 @@ export interface RoomEncryptionInfo {
 }
 
 /**
+ * Whether a device may get the room's keys. Undefined: every device does (trust on first use).
+ * Devices refused are told so with m.room_key.withheld (m.unverified), and get the key once the
+ * filter lets them.
+ */
+export type DeviceFilter = (device: DeviceInfo, roomId: string) => Promise<boolean>;
+
+/**
  * Defaults of m.room.encryption (https://spec.matrix.org/v1.16/client-server-api/#mroomencryption):
  * a week and 100 messages.
  */
@@ -52,6 +59,8 @@ export class MegolmService {
   private readonly logger: Logger;
   private readonly txnId: () => string;
   private readonly roomLocks = new KeyedMutex();
+  /** Set by the engine when only verified devices may get keys. */
+  deviceFilter?: DeviceFilter;
 
   constructor(opts: { store: Store; pickler: Pickler; olm: OlmService; devices: DeviceTracker; logger: Logger; txnId: () => string }) {
     this.store = opts.store;
@@ -66,9 +75,13 @@ export class MegolmService {
   encrypt(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>): Promise<MegolmEncryptedContent> {
     return this.roomLocks.run(room.roomId, async () => {
       if (room.algorithm !== MEGOLM_ALGORITHM) throw new Error(`Unsupported room encryption algorithm ${room.algorithm}`);
-      const targets = await this.targetDevices(room);
+      const all = await this.targetDevices(room);
+      const targets: DeviceInfo[] = [];
+      const refused: DeviceInfo[] = [];
+      for (const d of all) (!this.deviceFilter || (await this.deviceFilter(d, room.roomId)) ? targets : refused).push(d);
       const outbound = await this.prepareSession(room, targets);
       await this.share(room, outbound, targets);
+      if (refused.length) await this.withhold(room, refused, "m.unverified", "The sender only shares keys with verified devices.");
       return this.encryptWith(room, type, content);
     });
   }
@@ -113,7 +126,7 @@ export class MegolmService {
             ? "age"
             : JSON.stringify(existing.settings) !== JSON.stringify(settings)
               ? "settings"
-              : Object.entries(existing.sharedWith).some(([k, s]) => !current.has(`${k}|${s.curve25519}`))
+              : Object.entries(existing.sharedWith).some(([k, s]) => s.withheld === undefined && !current.has(`${k}|${s.curve25519}`))
                 ? "device removed"
                 : undefined;
       if (!reason) return existing!;
@@ -150,7 +163,8 @@ export class MegolmService {
   private async share(room: RoomEncryptionInfo, record: OutboundGroupSessionRecord, targets: DeviceInfo[]): Promise<void> {
     const pending = targets.filter((d) => {
       const s = record.sharedWith[`${d.userId}|${d.deviceId}`];
-      return !s || s.curve25519 !== d.curve25519;
+      // A device refused before (m.unverified) that is now allowed gets the key.
+      return !s || s.curve25519 !== d.curve25519 || s.withheld === "m.unverified";
     });
     if (pending.length === 0) return;
     const noSession = new Set((await this.olm.ensureSessions(pending)).map((d) => `${d.userId}|${d.deviceId}`));
@@ -206,6 +220,38 @@ export class MegolmService {
       for (const { device } of messages) sharedWith[`${device.userId}|${device.deviceId}`] = { curve25519: device.curve25519, index };
       for (const device of withheld)
         sharedWith[`${device.userId}|${device.deviceId}`] = { curve25519: device.curve25519, withheld: "m.no_olm" };
+      tx.put("outbound_group_sessions", room.roomId, { ...current, sharedWith });
+    });
+  }
+
+  /** Tell devices, once per session, that they will not get its key (m.room_key.withheld, unencrypted). */
+  private async withhold(room: RoomEncryptionInfo, devices: DeviceInfo[], code: string, reason: string): Promise<void> {
+    const record = (await this.store.get<OutboundGroupSessionRecord>("outbound_group_sessions", room.roomId))!;
+    const fresh = devices.filter((d) => record.sharedWith[`${d.userId}|${d.deviceId}`]?.withheld !== code);
+    if (fresh.length === 0) return;
+    await this.olm
+      .sendToDevice(
+        "m.room_key.withheld",
+        fresh.map((device) => ({
+          device,
+          content: {
+            algorithm: MEGOLM_ALGORITHM,
+            room_id: room.roomId,
+            session_id: record.sessionId,
+            sender_key: this.olm.identityKeys.curve25519,
+            code,
+            reason,
+          },
+        })),
+        this.txnId,
+      )
+      .catch((e) => this.logger.warn("could not send m.room_key.withheld", describeError(e)));
+    await this.store.transaction(async (tx) => {
+      const current = (await tx.get<OutboundGroupSessionRecord>("outbound_group_sessions", room.roomId))!;
+      const sharedWith = { ...current.sharedWith };
+      for (const d of fresh)
+        if (!sharedWith[`${d.userId}|${d.deviceId}`]?.index)
+          sharedWith[`${d.userId}|${d.deviceId}`] = { curve25519: d.curve25519, withheld: code };
       tx.put("outbound_group_sessions", room.roomId, { ...current, sharedWith });
     });
   }
@@ -272,11 +318,15 @@ export class MegolmService {
     if (existing) {
       // Another device cannot take over a session; the same device may resend it, and only an
       // earlier starting index (more history) replaces what we have.
-      if (existing.senderKey !== decrypted.senderKey || existing.senderUserId !== decrypted.sender) {
+      // A copy from a backup or another of our devices does not prove its origin; the sending
+      // device's own m.room_key replaces it when it reaches as far back.
+      const weaker = existing.source === "forwarded" || existing.source === "backup";
+      if (existing.senderKey !== decrypted.senderKey || (!weaker && existing.senderUserId !== decrypted.sender)) {
         this.logger.warn("ignoring an m.room_key for a session another device sent", { sender: decrypted.sender, roomId: c.room_id });
         return undefined;
       }
-      if (session.compare(this.pickler.inbound(existing)) !== "better") return undefined;
+      const order = session.compare(this.pickler.inbound(existing));
+      if (order !== "better" && !(weaker && order === "equal")) return undefined;
     }
     tx.put("inbound_group_sessions", key, {
       pickle: this.pickler.pickle(session),
@@ -319,7 +369,9 @@ export class MegolmService {
           throw new MegolmDecryptionError("BAD_ENCRYPTED_MESSAGE", `The message does not decrypt (${e.code})`);
         throw e;
       }
-      if (record.senderUserId !== event.sender)
+      // A session from a backup does not say whose it is (senderUserId ""); it is checked against
+      // the sender's devices below, and never counts as authenticated.
+      if (record.senderUserId !== "" && record.senderUserId !== event.sender)
         throw new MegolmDecryptionError("SENDER_MISMATCH", "The room key belongs to another user than the event's sender");
 
       // https://spec.matrix.org/v1.16/client-server-api/#mmegolmv1aes-sha2: clients must guard
@@ -354,10 +406,12 @@ export class MegolmService {
       if (clearContent["m.relates_to"] === undefined && content["m.relates_to"] !== undefined)
         clearContent["m.relates_to"] = content["m.relates_to"];
 
-      const device = await this.devices.deviceByCurveKey(record.senderUserId, record.senderKey, tx);
+      const device = await this.devices.deviceByCurveKey(record.senderUserId || event.sender!, record.senderKey, tx);
       let authenticity: DecryptionInfo["authenticity"];
       if (record.source === "own") authenticity = "authenticated";
       else if (!device) authenticity = "unknown_device";
+      // Forwarded and backed-up keys do not prove which device made the session.
+      else if (record.source !== "m.room_key") authenticity = "unauthenticated";
       else authenticity = device.ed25519 === record.claimedEd25519Key ? "authenticated" : "unauthenticated";
       return {
         clear: { type: payload.type, content: clearContent },

@@ -24,6 +24,8 @@ export interface CryptoPrimitives {
 
   sha256(data: Uint8Array): Uint8Array;
   hmacSha256(key: Uint8Array, data: Uint8Array): Uint8Array;
+  /** PBKDF2 with HMAC-SHA-512 (RFC 8018), for secret storage passphrases. */
+  pbkdf2Sha512(password: Uint8Array, salt: Uint8Array, iterations: number, length: number): Uint8Array;
   /** HKDF-SHA-256 (RFC 5869). An empty or missing salt means HashLen zero bytes, as in the RFC. */
   hkdfSha256(ikm: Uint8Array, salt: Uint8Array | undefined, info: Uint8Array, length: number): Uint8Array;
 

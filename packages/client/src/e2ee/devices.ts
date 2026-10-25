@@ -3,7 +3,8 @@ import type { E2EEProtocol } from "../protocol/protocol.ts";
 import type { Store, Transaction } from "../storage/store.ts";
 import type { Logger } from "../util/logger.ts";
 import { Mutex } from "../util/mutex.ts";
-import { deviceKey, type DeviceInfo, type UserDevicesRecord } from "./crypto-store.ts";
+import type { CrossSigningKey, KeysQueryResponse } from "@katrix/shared";
+import { deviceKey, type CrossSigningKeys, type DeviceInfo, type UserDevicesRecord, type UserTrustRecord } from "./crypto-store.ts";
 import { verifyObject } from "./keys.ts";
 
 /**
@@ -99,6 +100,12 @@ export class DeviceTracker {
         const answered = res.device_keys?.[userId];
         if (failedServers.has(server) || typeof answered !== "object" || answered === null) continue;
         const rec = (await tx.get<UserDevicesRecord>("devices", deviceKey(userId))) ?? { devices: {}, tracked: true, outdated: 0 };
+        const crossSigning = this.crossSigningKeys(userId, res);
+        // Trust on first use: the first master key seen is pinned; a later different one is an
+        // identity change the app must show (https://spec.matrix.org/v1.19/client-server-api/#key-and-signature-security).
+        const master = crossSigning.master ? publicKeyOf(crossSigning.master) : undefined;
+        const trust = { ...rec.trust };
+        if (master && !trust.pinnedMaster) trust.pinnedMaster = master;
         const devices: Record<string, DeviceInfo> = {};
         for (const [deviceId, keys] of Object.entries(answered)) {
           const device = this.validate(userId, deviceId, keys);
@@ -113,8 +120,62 @@ export class DeviceTracker {
         }
         // Still outdated if another change was announced while this query ran.
         const current = (await tx.get<UserDevicesRecord>("devices", deviceKey(userId)))?.outdated ?? 0;
-        tx.put("devices", deviceKey(userId), { devices, tracked: true, outdated: current === outdated ? 0 : current });
+        tx.put("devices", deviceKey(userId), {
+          ...rec,
+          devices,
+          tracked: true,
+          outdated: current === outdated ? 0 : current,
+          crossSigning,
+          trust,
+        } satisfies UserDevicesRecord);
       }
+    });
+  }
+
+  /**
+   * A user's cross-signing keys from a query, each checked: it names the user, has the right
+   * usage and one key, and the self-signing and user-signing keys carry the master key's
+   * signature. Keys that fail are dropped (and with a bad master key, all of them).
+   */
+  private crossSigningKeys(userId: string, res: KeysQueryResponse): CrossSigningKeys {
+    const valid = (k: CrossSigningKey | undefined, usage: string) =>
+      k &&
+      typeof k === "object" &&
+      k.user_id === userId &&
+      Array.isArray(k.usage) &&
+      k.usage.includes(usage) &&
+      publicKeyOf(k) !== undefined
+        ? k
+        : undefined;
+    const master = valid(res.master_keys?.[userId], "master");
+    if (!master) return {};
+    const mpk = publicKeyOf(master)!;
+    const signedByMaster = (k: CrossSigningKey | undefined) =>
+      k && verifyObject(this.protocol, k as unknown as Record<string, unknown>, userId, mpk, mpk) ? k : undefined;
+    return {
+      master,
+      selfSigning: signedByMaster(valid(res.self_signing_keys?.[userId], "self_signing")),
+      userSigning: signedByMaster(valid(res.user_signing_keys?.[userId], "user_signing")),
+    };
+  }
+
+  /**
+   * The users whose devices changed between two sync tokens (GET /keys/changes): they are marked
+   * outdated, and their keys queried again before we next encrypt for them. For a client that
+   * resumes from an older token than its device lists were last updated at.
+   */
+  async changesBetween(from: string, to: string): Promise<{ changed: string[]; left: string[] }> {
+    const res = await this.api.endpoint("GET /v3/keys/changes", {}, { query: { from, to } });
+    const lists = { changed: res.changed ?? [], left: res.left ?? [] };
+    await this.store.transaction((tx) => this.handleDeviceLists(tx, lists));
+    return lists;
+  }
+
+  /** Change what this device trusts about a user (the record is created if the user is not known yet). */
+  async updateTrust(userId: string, change: (trust: UserTrustRecord) => UserTrustRecord): Promise<void> {
+    await this.store.transaction(async (tx) => {
+      const rec = (await tx.get<UserDevicesRecord>("devices", deviceKey(userId))) ?? { devices: {}, tracked: false, outdated: 1 };
+      tx.put("devices", deviceKey(userId), { ...rec, trust: change({ ...rec.trust }) });
     });
   }
 
@@ -131,7 +192,9 @@ export class DeviceTracker {
       return undefined;
     }
     const displayName = keys.unsigned?.device_display_name;
+    const { unsigned: _unsigned, ...signed } = keys;
     return {
+      signed,
       userId,
       deviceId,
       curve25519,
@@ -140,4 +203,13 @@ export class DeviceTracker {
       displayName: typeof displayName === "string" ? displayName : undefined,
     };
   }
+}
+
+/** The one Ed25519 public key of a cross-signing key object. */
+export function publicKeyOf(key: CrossSigningKey): string | undefined {
+  const entries = Object.entries(key.keys ?? {});
+  if (entries.length !== 1) return undefined;
+  const [id, value] = entries[0];
+  // The key ID is the public key itself ("ed25519:<unpadded base64 key>").
+  return id === `ed25519:${value}` && typeof value === "string" ? value : undefined;
 }

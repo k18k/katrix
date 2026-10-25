@@ -149,3 +149,78 @@ test("/sync v3 responses are parsed defensively", () => {
   assert.equal(res.unusedFallbackKeyTypes, undefined, "absent means: not reported");
   assert.throws(() => parseV3({}, false), /next_batch/);
 });
+
+test("relations: bundled edits, edit validity, one reaction per sender and key", () => {
+  const room = new Room("!r:x", "@me:x", "join");
+  const ev = (id: string, sender: string, content: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    new MatrixEvent({
+      type: "m.room.message",
+      event_id: id,
+      sender,
+      room_id: "!r:x",
+      origin_server_ts: Number(id.slice(2)),
+      content,
+      ...extra,
+    } as never);
+  const edit = (id: string, sender: string, target: string, text: string) =>
+    ev(id, sender, { body: `* ${text}`, "m.new_content": { body: text }, "m.relates_to": { rel_type: "m.replace", event_id: target } });
+
+  // The server bundled the newest edit with the original (v1.7).
+  const original = ev(
+    "$a1",
+    "@al:x",
+    { msgtype: "m.text", body: "v1" },
+    {
+      unsigned: { "m.relations": { "m.replace": edit("$a5", "@al:x", "$a1", "v3").wire } },
+    },
+  );
+  room.timeline.append([original]);
+  room.applyRelations(original);
+  assert.equal((original.latestContent as { body: string }).body, "v3");
+
+  // An older edit that arrives later does not win; a newer one does; others' edits never count.
+  for (const e of [edit("$a3", "@al:x", "$a1", "v2"), edit("$a9", "@mallory:x", "$a1", "evil")]) room.applyRelations(e);
+  assert.equal((original.latestContent as { body: string }).body, "v3");
+  room.applyRelations(edit("$a7", "@al:x", "$a1", "v4"));
+  assert.equal((original.latestContent as { body: string }).body, "v4");
+  // An edit of a state event, or of an edit, is ignored.
+  const state = ev("$s1", "@al:x", { name: "n" }, { state_key: "" });
+  room.timeline.append([state]);
+  room.applyRelations(edit("$s2", "@al:x", "$s1", "x"));
+  assert.equal(state.isEdited(), false);
+
+  const react = (id: string, sender: string, key: string) =>
+    new MatrixEvent({
+      type: "m.reaction",
+      event_id: id,
+      sender,
+      room_id: "!r:x",
+      content: { "m.relates_to": { rel_type: "m.annotation", event_id: "$a1", key } },
+    });
+  for (const r of [react("$r1", "@al:x", "👍"), react("$r2", "@al:x", "👍"), react("$r3", "@me:x", "👍")]) room.applyRelations(r);
+  assert.deepEqual(room.reactions("$a1"), [{ key: "👍", count: 2, senders: ["@al:x", "@me:x"], myEventId: "$r3" }]);
+});
+
+test("parseV3: state_after (use_state_after) replaces state and is applied after the timeline", () => {
+  const res = parseV3(
+    {
+      next_batch: "s2",
+      rooms: {
+        join: {
+          "!r:x": {
+            state_after: { events: [{ type: "m.room.name", state_key: "", content: { name: "after" }, sender: "@a:x", event_id: "$2" }] },
+            timeline: { events: [], limited: false },
+            unread_thread_notifications: { $root: { notification_count: 2, highlight_count: 1 } },
+          },
+        },
+      },
+    },
+    false,
+  );
+  const room = res.rooms.join["!r:x"];
+  assert.equal(room.stateAfter, true);
+  assert.equal(room.state[0].content.name, "after");
+  assert.deepEqual(room.unreadThreadNotifications, { $root: { notification_count: 2, highlight_count: 1 } });
+  const old = parseV3({ next_batch: "s3", rooms: { join: { "!r:x": { state: { events: [] }, timeline: { events: [] } } } } }, false);
+  assert.equal(old.rooms.join["!r:x"].stateAfter, false, "servers without use_state_after");
+});

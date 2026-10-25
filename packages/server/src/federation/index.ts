@@ -1,6 +1,6 @@
 import { isObject, M, parseId } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
-import { globMatch } from "#core/glob.ts";
+import { globMatch } from "@katrix/shared";
 import { getState, membershipOf, type StateMap } from "#core/authrules.ts";
 import {
   SUPPORTED_ROOM_VERSIONS,
