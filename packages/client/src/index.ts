@@ -4,6 +4,7 @@ export { MatrixClient, type ClientEvents, type ClientOptions, type SyncState, ty
 // Authentication
 export { Auth, CredentialsTokenProvider, type LoginOptions } from "./auth/login.ts";
 export type { Credentials, CredentialsStore, TokenProvider } from "./auth/types.ts";
+export { dummyAuth, nextStage, passwordAuth, withUserInteractiveAuth, type UiaCallback, type UiaSession } from "./auth/uia.ts";
 export {
   completeAuthorization,
   createAuthorizationRequest,
@@ -13,6 +14,13 @@ export {
   type AuthorizationRequest,
   type OAuthTokens,
 } from "./auth/oauth.ts";
+
+// Account, profile, directory, administration
+export { AccountApi } from "./account/account.ts";
+export { AdminApi } from "./account/admin.ts";
+export { DevicesApi } from "./account/devices.ts";
+export { PresenceApi, ProfileApi } from "./account/profile.ts";
+export { DirectoryApi } from "./directory/directory.ts";
 
 // Models
 export {

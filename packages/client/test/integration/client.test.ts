@@ -12,9 +12,9 @@ test("login flows, password login, whoami, profile", async () => {
     const flows = await new Auth({ baseUrl: t.baseUrl, http: t.http }).loginFlows();
     assert.ok(flows.some((f) => f.type === "m.login.password"));
     const alice = await t.login("alice");
-    assert.equal((await alice.whoami()).user_id, "@alice:localhost");
-    await alice.setDisplayName("Alice A.");
-    assert.equal((await alice.getProfile(alice.userId)).displayname, "Alice A.");
+    assert.equal((await alice.account.whoami()).user_id, "@alice:localhost");
+    await alice.profile.setDisplayName("Alice A.");
+    assert.equal((await alice.profile.get()).displayname, "Alice A.");
     const wrong = await new Auth({ baseUrl: t.baseUrl, http: t.http }).loginWithPassword("alice", "nope").catch((e) => e);
     assert.ok(wrong instanceof MatrixError && wrong.errcode === "M_FORBIDDEN");
     const registered = await new Auth({ baseUrl: t.baseUrl, http: t.http }).register("newbie", "a long password");

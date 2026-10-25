@@ -33,6 +33,8 @@ export interface SyncTimeline {
 export interface JoinedRoom {
   summary?: RoomSummary;
   state?: { events: ClientEvent[] };
+  /** Instead of `state`, with `use_state_after=true` (v1.16): the state at the end of the timeline. */
+  state_after?: { events: ClientEvent[] };
   timeline?: SyncTimeline;
   ephemeral?: { events: ClientEvent[] };
   account_data?: { events: ClientEvent[] };
@@ -50,6 +52,7 @@ export interface KnockedRoom {
 
 export interface LeftRoom {
   state?: { events: ClientEvent[] };
+  state_after?: { events: ClientEvent[] };
   timeline?: SyncTimeline;
   account_data?: { events: ClientEvent[] };
 }
