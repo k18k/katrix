@@ -43,8 +43,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "test": "node --conditions=matrix-src --test \"test/unit/**/*.test.ts\" \"test/crypto/**/*.test.ts\" \"test/integration/**/*.test.ts\" && npm run test:hermes",
     "test:hermes": "node --conditions=matrix-src --import ./test/env/hermes.ts --test \"test/hermes/**/*.test.ts\" \"test/crypto/olm.test.ts\" \"test/crypto/megolm.test.ts\" \"test/unit/storage.test.ts\" \"test/unit/models.test.ts\"",
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
-    "check:package": "publint && attw --pack . --profile esm-only",
+    "build": "tsdown",
     "prepare": "npm run build"
   },
   "dependencies": {
@@ -53,10 +52,8 @@
     "@noble/hashes": "2.4.0"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.18.5",
     "@katrix/server": "*",
-    "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6",
-    "publint": "^0.3.25"
+    "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6"
   },
   "engines": {
     "node": ">=22"

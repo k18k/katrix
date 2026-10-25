@@ -31,10 +31,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
-      # The published packages must build (tsc → dist/, .js and .d.ts per module), and their exports
-      # and types must resolve for consumers (publint, arethetypeswrong; both are ESM only).
+      # The published packages must build (tsdown → dist/, unbundled: .js, .d.ts and source maps per
+      # module), and their exports and types must resolve for consumers: the build itself runs
+      # publint and arethetypeswrong and fails on their errors (tsdown.config.ts).
       - run: npm pack --dry-run -w @katrix/server -w @katrix/client
-      - run: npm run check:package -w @katrix/server -w @katrix/client
 
   # The package supports every maintained Node.js LTS; development uses the latest release.
   tests:
