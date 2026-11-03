@@ -47,10 +47,6 @@
       "default": "./dist/auditbot/index.js"
     }
   },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
-  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --conditions=matrix-src --test \"test/**/*.test.ts\"",

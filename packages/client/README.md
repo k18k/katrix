@@ -6,6 +6,15 @@ It speaks the Client-Server API as the spec defines it, so it is meant for any h
 
 > The Olm and Megolm implementation is new and has not had an outside security review yet.
 
+```sh
+npm install --allow-git=root github:k18k/katrix#client
+```
+
+Katrix is not on the npm registry: each release is pushed, built, to the `client` branch of
+[the repository](https://github.com/k18k/katrix/tree/client), and tagged `client-X.Y.Z` (`#client`
+is the latest release, `#client-0.4.0` a given one). npm 12 fetches git dependencies only when
+allowed (`--allow-git=root`, or `allow-git=root` in `.npmrc`); no token is needed.
+
 ```ts
 import { Auth, MatrixClient, fetchHttpAdapter } from "@katrix/client";
 

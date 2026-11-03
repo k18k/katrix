@@ -7,7 +7,7 @@ but direct messages) and writes each event as one JSON line.
 It needs the crypto library, an optional peer dependency:
 
 ```sh
-npm install @katrix/server @matrix-org/matrix-sdk-crypto-nodejs
+npm install --allow-git=root github:k18k/katrix#server @matrix-org/matrix-sdk-crypto-nodejs
 ```
 
 ```ts

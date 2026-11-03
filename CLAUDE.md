@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-The repository is Katrix, an npm workspace: the published packages are `packages/server` (npm `@katrix/server`, the homeserver library) and `packages/client` (npm `@katrix/client`, the client SDK), released together with one version; `apps/` holds private apps built on them (`apps/public`, `apps/dev-idp`).
+The repository is Katrix, an npm workspace: the published packages are `packages/server` (`@katrix/server`, the homeserver library) and `packages/client` (`@katrix/client`, the client SDK), released together with one version, on GitHub rather than the npm registry: `scripts/release-github.ts` pushes each build to the `server` and `client` branches with a tag per version; `apps/` holds private apps built on them (`apps/public`, `apps/dev-idp`).
 
 ## Findings are documented where they are fixed
 

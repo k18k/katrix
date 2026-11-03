@@ -35,10 +35,6 @@
       "default": "./dist/index.js"
     }
   },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
-  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "test": "node --conditions=matrix-src --test \"test/unit/**/*.test.ts\" \"test/crypto/**/*.test.ts\" \"test/integration/**/*.test.ts\" && npm run test:hermes",
