@@ -1,10 +1,13 @@
 name: Release
 
 # With changesets on main, opens (or updates) the "Version Packages" pull request that bumps the
-# versions and writes the CHANGELOG.md files. Merging that pull request publishes @katrix/server and
-# @katrix/client to npm (one version for both: a "fixed" group in .changeset/config.json), tags the
-# release per package (@katrix/server@X.Y.Z, @katrix/client@X.Y.Z) and creates the GitHub releases. Publishing uses npm trusted publishing (OIDC):
-# no npm token is stored; npmjs.com trusts this workflow, which also adds provenance.
+# versions and writes the CHANGELOG.md files. Merging that pull request releases @katrix/server and
+# @katrix/client on GitHub (one version for both: a "fixed" group in .changeset/config.json):
+# scripts/release-github.ts pushes each built package to its branch of this repository ("server",
+# "client") with a tag per version ("server-X.Y.Z"), which is what `npm install github:k18k/katrix#server`
+# installs. The action then tags the source commit (@katrix/server@X.Y.Z, @katrix/client@X.Y.Z) and
+# creates the GitHub releases. Nothing goes to a package registry, so no registry token is involved:
+# the workflow's own GITHUB_TOKEN (contents: write) pushes the branches and tags.
 on:
   push:
     branches: [main]
@@ -14,7 +17,6 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
-  id-token: write
 
 jobs:
   release:
@@ -24,7 +26,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 26
-          registry-url: https://registry.npmjs.org
           # No dependency cache in this privileged job: a poisoned cache could reach the published package.
       - run: npm ci
       # Security (https://github.com/k18k/katrix/issues/15): third-party action pinned to a commit, not a movable tag,

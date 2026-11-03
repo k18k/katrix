@@ -35,6 +35,9 @@ jobs:
       # and types must resolve for consumers (publint, arethetypeswrong; both are ESM only).
       - run: npm pack --dry-run -w @katrix/server -w @katrix/client
       - run: npm run check:package -w @katrix/server -w @katrix/client
+      # The release script (Release workflow) builds the trees it would push to the server and client
+      # branches; --dry-run pushes nothing.
+      - run: node scripts/release-github.ts --dry-run
 
   # The package supports every maintained Node.js LTS; development uses the latest release.
   tests:

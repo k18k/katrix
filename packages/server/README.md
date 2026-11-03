@@ -22,8 +22,15 @@ it as a horizontally scaled chat backend that replaces Slack or Teams.
 ## Installation
 
 ```sh
-npm install @katrix/server
+npm install --allow-git=root github:k18k/katrix#server
 ```
+
+Katrix is not on the npm registry: each release is pushed, built, to the `server` branch of
+[the repository](https://github.com/k18k/katrix/tree/server), and tagged `server-X.Y.Z`. `#server`
+installs the latest release, `#server-0.4.0` a given one; the lockfile records the commit, and
+running the same `npm install` again moves to the latest release. The package keeps its name,
+so imports are `@katrix/server`. npm 12 fetches git dependencies only when allowed: pass
+`--allow-git=root` or put `allow-git=root` in the project's `.npmrc`. No token is needed.
 
 ```ts
 import { createServer } from "node:http";
@@ -513,8 +520,11 @@ npx changeset        # pick the bump (patch, minor, major) and describe the chan
 Commit the generated file in `.changeset/` with the change. On `main`, the Release workflow
 keeps a "Release" pull request open that bumps the version and writes `CHANGELOG.md`.
 `@katrix/server` and `@katrix/client` share one version (a `fixed` group in
-`.changeset/config.json`). Merging the pull request publishes both to npm (trusted publishing,
-with provenance), tags the releases and creates the GitHub releases.
+`.changeset/config.json`). Merging the pull request releases both on GitHub
+(`scripts/release-github.ts`): the built packages go to the `server` and `client` branches with a
+tag per version (`server-X.Y.Z`, `client-X.Y.Z`), the source commit is tagged
+`@katrix/server@X.Y.Z` and `@katrix/client@X.Y.Z`, and the GitHub releases are created. Nothing is
+published to a package registry.
 
 ### Complement
 

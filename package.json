@@ -16,7 +16,7 @@
     "format:check": "oxfmt --check .",
     "changeset": "changeset",
     "version-packages": "changeset version && oxfmt packages/*/package.json",
-    "release": "changeset publish"
+    "release": "node scripts/release-github.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
