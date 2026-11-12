@@ -1,5 +1,16 @@
 # matrix-nodejs-homeserver
 
+## 0.4.2
+
+### Patch Changes
+
+- 283df2e: Fields of incoming JSON are now checked before use. The server rejects a `createRoom` `initial_state` event whose `state_key` is not a string (it was stored as is). The client ignores call signalling with a malformed `party_id`, ICE candidate, stream metadata or negotiate description instead of adopting it, and reads verification MACs only when they are a map of strings. ([#128](https://github.com/k18k/katrix/issues/128))
+- 7685134: Event content is typed `Record<string, unknown>` in the server, so each field is checked where it is read. An event whose field has the wrong type (a non-string `membership`, `creator`, `displayname` or `join_rule`, for example) is now treated as if the field were missing, instead of the value being used as is. ([#128](https://github.com/k18k/katrix/issues/128))
+- 64dc5b0: The federation API checks fields of incoming requests before use: `/3pid/onbind` skips invites that are not objects, the room hierarchy lists only `allowed_room_ids` that are room IDs, and stripped invite state entries that are not objects are ignored. ([#128](https://github.com/k18k/katrix/issues/128))
+- 13c97da: Federation responses are checked before use: a `/state_ids` answer whose `pdu_ids` are not event IDs counts as having no state, a make_join/make_leave/make_knock template that is not a valid event is rejected, and a legacy-format event without an `event_id` is rejected as malformed. ([#128](https://github.com/k18k/katrix/issues/128))
+- fd369f5: Background work that fails (cluster cache invalidation, wake-ups to other instances, federation updates, the room-upgrade steps after the tombstone, admin-room reports) is now logged as a warning through the `logger` option instead of being dropped silently. ([#125](https://github.com/k18k/katrix/issues/125))
+- 9d97811: Request bodies are typed `Record<string, unknown>` (`ctx.json()` no longer takes a type argument), so handlers check each field. The admin user API ignores a `password`, `displayname` or deletion `message` that is not a string; send_join/send_leave/send_knock and exchange_third_party_invite reject malformed events; and to-device messages for remote users are forwarded only when their device map is an object. Breaking for code that calls `ctx.json<T>()` in custom routes. ([#128](https://github.com/k18k/katrix/issues/128))
+
 ## 0.4.1
 
 ### Patch Changes
