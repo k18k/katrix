@@ -1,13 +1,6 @@
 {
-  // The published package: one .js and one .d.ts per source module in dist/ (Node does not strip
-  // types inside node_modules). Development, tests and examples run the sources directly.
+  // The sources the published package is built from: tsdown.config.ts emits the declarations
+  // from them (tsgo, TypeScript 7). Type checking stays with tsconfig.json.
   "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": false,
-    "rootDir": "src",
-    "outDir": "dist",
-    "declaration": true,
-    "rewriteRelativeImportExtensions": true
-  },
   "include": ["src"]
 }

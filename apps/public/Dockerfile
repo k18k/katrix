@@ -10,9 +10,9 @@ COPY apps/public/package.json ./apps/public/
 COPY apps/dev-idp/package.json ./apps/dev-idp/
 # --include-workspace-root: the build needs the shared tools of the root (typescript, @types/node).
 RUN npm ci --ignore-scripts --no-audit --no-fund -w @katrix/server --include-workspace-root
-# Fix (https://github.com/k18k/katrix/issues/113): the build is tsc with tsconfig.build.json; the
-# tsdown config this copied was gone, and the image failed to build.
-COPY packages/server/tsconfig.json packages/server/tsconfig.build.json ./packages/server/
+# Fix (https://github.com/k18k/katrix/issues/113): copy what the build reads (tsdown again since
+# 0.4.1); a config file that no longer existed made the image fail to build.
+COPY packages/server/tsconfig.json packages/server/tsconfig.build.json packages/server/tsdown.config.ts ./packages/server/
 COPY packages/server/src ./packages/server/src
 RUN npm run build -w @katrix/server
 
