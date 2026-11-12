@@ -54,7 +54,7 @@ async function drain(req: IncomingMessage, chunks: AsyncIterator<Buffer>, budget
 /** How long a response waits, after it was sent, for the rest of a body nobody read (#103). */
 const DRAIN_MS = 5_000;
 
-async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Promise<{ request: Request; unread?: AsyncIterator<Buffer> }> {
+async function toWebRequest(req: NodeRequestWithBody): Promise<{ request: Request; unread?: AsyncIterator<Buffer> }> {
   const proto = (req.socket as any)?.encrypted ? "https" : "http";
   const host = req.headers.host ?? "localhost";
   const url = new URL(req.originalUrl ?? req.url ?? "/", `${proto}://${host}`);
@@ -68,7 +68,7 @@ async function toWebRequest(req: NodeRequestWithBody, presetBody?: unknown): Pro
   let body: any = undefined;
   let unread: AsyncIterator<Buffer> | undefined;
   if (method !== "GET" && method !== "HEAD") {
-    const pre = presetBody !== undefined ? presetBody : req.body;
+    const pre = req.body;
     if (pre !== undefined && pre !== null && (req as any).readableEnded !== false) {
       // A framework body-parser already consumed the stream.
       if (pre instanceof Uint8Array || typeof pre === "string") body = pre as any;
@@ -150,26 +150,33 @@ interface FastifyLike {
   removeAllContentTypeParsers(): void;
   addContentTypeParser(
     type: string,
-    opts: { parseAs: "buffer" },
-    parser: (req: any, body: Buffer, done: (err: Error | null, body?: unknown) => void) => void,
+    opts: { bodyLimit: number },
+    parser: (req: unknown, payload: unknown, done: (err: Error | null, body?: unknown) => void) => void,
   ): void;
   route(opts: { method: string[]; url: string; handler: (request: any, reply: any) => unknown }): void;
 }
 
 /**
  * Fastify plugin. Register with `fastify.register(getFastifyPlugin(hs))`.
- * The plugin is encapsulated so its raw body parser does not leak into your app.
+ * The plugin is encapsulated so its pass-through body parser does not leak into your app.
  */
 export function getFastifyPlugin(hs: Homeserver): (fastify: FastifyLike, opts: unknown, done?: (err?: Error) => void) => Promise<void> {
   return async (fastify) => {
     fastify.removeAllContentTypeParsers();
-    fastify.addContentTypeParser("*", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+    // https://github.com/k18k/katrix/issues/109: Fastify read every body into memory before routing
+    // and authentication, under its own limit (1 MiB by default), which refused uploads the server
+    // allows. The parser now leaves the body unread: it is passed on as a stream, read only by a
+    // handler that needs it, under the server's limit (#77), as in the Node adapter.
+    fastify.addContentTypeParser("*", { bodyLimit: maxRequestBody(hs) }, (_req, _payload, done) => done(null));
     const handler = async (request: any, reply: any) => {
-      const { request: webRequest } = await toWebRequest(request.raw, request.body ?? new Uint8Array());
+      const { request: webRequest } = await toWebRequest(request.raw);
       const response = await handleRequest(hs, webRequest, { ip: request.ip ?? null });
       reply.status(response.status);
       response.headers.forEach((value: string, key: string) => reply.header(key, value));
-      return reply.send(response.body ? Buffer.from(await response.arrayBuffer()) : null);
+      // https://github.com/k18k/katrix/issues/109: the whole response was copied into memory before
+      // it was sent, so every media download held a full copy. Fastify now pipes the stream, and
+      // destroys it (which cancels the response body) when the client disconnects.
+      return reply.send(response.body ? Readable.fromWeb(response.body) : null);
     };
     const methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"];
     for (const url of ["/_matrix/*", "/.well-known/matrix/*", "/_synapse/*"]) {
