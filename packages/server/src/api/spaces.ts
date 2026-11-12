@@ -1,4 +1,4 @@
-import { M } from "@katrix/shared";
+import { isObject, isStrings, M, stringOrUndefined } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { getState, membershipOf } from "#core/authrules.ts";
 import { splitStateKey, stripState } from "#core/events.ts";
@@ -76,10 +76,10 @@ async function remoteSummary(
     try {
       const res = await hs.federation.queryHierarchy(server, roomId, suggestedOnly);
       const room = res.room;
-      if (!room || room.room_id !== roomId) continue;
-      const rule = room.join_rule ?? "invite";
+      if (!isObject(room) || room.room_id !== roomId) continue;
+      const rule = stringOrUndefined(room.join_rule) ?? "invite";
       let accessible = room.world_readable === true || ["public", "knock", "knock_restricted"].includes(rule);
-      if (!accessible && rule === "restricted" && Array.isArray(room.allowed_room_ids)) {
+      if (!accessible && rule === "restricted" && isStrings(room.allowed_room_ids)) {
         for (const allowed of room.allowed_room_ids) {
           if ((await hs.rooms.exists(allowed)) && (await hs.rooms.membership(allowed, userId)) === "join") {
             accessible = true;

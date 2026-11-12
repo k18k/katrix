@@ -1,4 +1,4 @@
-import { isObject, M, parseId } from "@katrix/shared";
+import { isObject, isStrings, M, parseId } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { globMatch } from "@katrix/shared";
 import { getState, membershipOf, type StateMap } from "#core/authrules.ts";
@@ -65,7 +65,7 @@ export class FederationService {
   readonly keyring: KeyRing;
   readonly sender: TransactionSender;
   private options: FederationOptions;
-  private seenTxns = new Map<string, Promise<Record<string, any>>>();
+  private seenTxns = new Map<string, Promise<Record<string, unknown>>>();
   private deviceStreams = new Map<string, number>();
 
   constructor(hs: Homeserver, options: FederationOptions = {}) {
@@ -93,10 +93,10 @@ export class FederationService {
   // ---------------------------------------------------------------------------
 
   /** Convert a stored event into its federation (wire) format. */
-  toFederationPdu(pdu: PDU, version: string): Record<string, any> {
+  toFederationPdu(pdu: PDU, version: string): Record<string, unknown> {
     // https://github.com/k18k/katrix/issues/129: the fields were deleted from a copy, and core/rooms.ts strippedState repeated the
     // same rule; they are left out by destructuring now, and strippedState calls this.
-    const { unsigned: _unsigned, event_id, room_id, ...rest } = pdu as PDU & Record<string, any>;
+    const { unsigned: _unsigned, event_id, room_id, ...rest } = pdu as PDU & Record<string, unknown>;
     const f = roomVersionFeatures(version);
     return {
       ...rest,
@@ -105,9 +105,13 @@ export class FederationService {
     };
   }
 
-  computeEventId(raw: Record<string, any>, version: string): string {
+  computeEventId(raw: PDU | Record<string, unknown>, version: string) {
     const f = roomVersionFeatures(version);
-    if (f.legacyEventIds) return raw.event_id;
+    if (f.legacyEventIds) {
+      // https://github.com/k18k/katrix/issues/128: a legacy event's own event_id was returned unchecked (any).
+      if (typeof raw.event_id !== "string") throw errors.badJson("Missing event ID");
+      return raw.event_id;
+    }
     const hash = computeReferenceHash(raw, version);
     return `$${f.urlSafeEventIds ? urlSafeBase64(hash) : unpaddedBase64(hash)}`;
   }
@@ -125,7 +129,6 @@ export class FederationService {
       if (raw.room_id !== roomId) throw errors.badJson("PDU room_id mismatch");
     }
     const eventId = this.computeEventId(raw, version);
-    if (typeof eventId !== "string") throw errors.badJson("Missing event ID");
     const redacted = redact(raw, version);
     const senderDomain = domainOf(raw.sender);
     if (
@@ -198,7 +201,7 @@ export class FederationService {
   }
 
   /** Send an EDU to every server in the given rooms. */
-  async sendEduToRooms(roomIds: string[], eduType: string, content: Record<string, any>, durable = true): Promise<void> {
+  async sendEduToRooms(roomIds: string[], eduType: string, content: Record<string, unknown>, durable = true): Promise<void> {
     if (!this.enabled) return;
     const destinations = new Set<string>();
     for (const roomId of roomIds) {
@@ -223,7 +226,7 @@ export class FederationService {
 
   async onReceipt(roomId: string, userId: string, receiptType: string, eventId: string, ts: number, threadId: string): Promise<void> {
     if (!this.hs.isLocalUser(userId) || receiptType === M.READ.PRIVATE) return;
-    const data: Record<string, any> = { ts };
+    const data: Record<string, unknown> = { ts };
     if (threadId) data.thread_id = threadId;
     await this.sendEduToRooms([roomId], M.RECEIPT, { [roomId]: { [receiptType]: { [userId]: { event_ids: [eventId], data } } } });
   }
@@ -265,7 +268,7 @@ export class FederationService {
         0;
       const streamId = Math.max(await this.hs.streams.write(async (id) => id), prev + 1);
       this.deviceStreams.set(userId, streamId);
-      const content: Record<string, any> = { user_id: userId, device_id: u.deviceId, stream_id: streamId, prev_id: prev ? [prev] : [] };
+      const content: Record<string, unknown> = { user_id: userId, device_id: u.deviceId, stream_id: streamId, prev_id: prev ? [prev] : [] };
       if (u.deleted) content.deleted = true;
       else {
         const keys = await this.hs.db.findOne("device_keys", [
@@ -285,15 +288,15 @@ export class FederationService {
     const servers = await this.serversSharingRooms(userId);
     if (!servers.size) return;
     const rows = await this.hs.db.findMany("cross_signing_keys", { where: [{ field: "user_id", value: userId }] });
-    const content: Record<string, any> = { user_id: userId };
+    const content: Record<string, unknown> = { user_id: userId };
     for (const r of rows) if (r.key_type !== "user_signing") content[`${r.key_type}_key`] = r.key;
     await this.sender.sendEdu(servers, M.SIGNING_KEY_UPDATE, content);
   }
 
   /** Deliver to-device messages addressed to remote users. */
-  async sendToDevice(sender: string, type: string, messages: Record<string, Record<string, any>>, messageId: string): Promise<void> {
+  async sendToDevice(sender: string, type: string, messages: Record<string, Record<string, unknown>>, messageId: string): Promise<void> {
     if (!this.enabled) return;
-    const byServer = new Map<string, Record<string, any>>();
+    const byServer = new Map<string, Record<string, unknown>>();
     for (const [userId, devices] of Object.entries(messages)) {
       const server = domainOf(userId);
       if (server === this.hs.serverName || !this.serverAllowed(server)) continue;
@@ -308,16 +311,16 @@ export class FederationService {
   // Inbound transactions
   // ---------------------------------------------------------------------------
 
-  async receiveTransaction(origin: string, txnId: string, body: Record<string, any>): Promise<Record<string, any>> {
+  async receiveTransaction(origin: string, txnId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     const key = `fedtxn:${origin}|${txnId}`;
     void this.sender.wake(origin);
     // Retries of a transaction (possibly hitting another instance) get the original result.
     const local = this.seenTxns.get(key);
     if (local) return local;
-    const done = await this.hs.cluster.get<Record<string, any>>(key);
+    const done = await this.hs.cluster.get<Record<string, unknown>>(key);
     if (done) return done;
     const p = this.hs.cluster.lock(key, async () => {
-      const again = await this.hs.cluster.get<Record<string, any>>(key);
+      const again = await this.hs.cluster.get<Record<string, unknown>>(key);
       if (again) return again;
       const result = await this.processTransaction(origin, body);
       await this.hs.cluster.set(key, result, 24 * 3600_000);
@@ -328,10 +331,10 @@ export class FederationService {
     return p;
   }
 
-  private async processTransaction(origin: string, body: Record<string, any>): Promise<Record<string, any>> {
+  private async processTransaction(origin: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     const pdus = Array.isArray(body.pdus) ? body.pdus.slice(0, 50) : [];
     const edus = Array.isArray(body.edus) ? body.edus.slice(0, 100) : [];
-    const results: Record<string, any> = {};
+    const results: Record<string, unknown> = {};
     for (const raw of pdus) {
       const roomId = typeof raw?.room_id === "string" ? raw.room_id : null;
       let eventId = "unknown";
@@ -365,7 +368,7 @@ export class FederationService {
    * A PDU for a room we are not in can still matter: a local user's invite being
    * rescinded or their knock being accepted/rejected.
    */
-  private async handleOutOfRoomMembership(origin: string, roomId: string, raw: Record<string, any>): Promise<string> {
+  private async handleOutOfRoomMembership(origin: string, roomId: string, raw: Record<string, unknown>): Promise<string> {
     if (raw?.type !== M.ROOM.MEMBER || typeof raw.state_key !== "string" || !this.hs.isLocalUser(raw.state_key)) {
       throw errors.notFound("Unknown room");
     }
@@ -376,7 +379,7 @@ export class FederationService {
     if (!row) throw errors.notFound("Unknown room");
     const previous = await this.hs.rooms.getPdu(row.event_id);
     const strippedCreate = (p: PDU | null | undefined) =>
-      (p?.unsigned?.invite_room_state ?? p?.unsigned?.knock_room_state ?? []).find((e: any) => e?.type === M.ROOM.CREATE);
+      (p?.unsigned?.invite_room_state ?? p?.unsigned?.knock_room_state ?? []).find((e: unknown) => isObject(e) && e.type === M.ROOM.CREATE);
     let create = strippedCreate(previous);
     // https://github.com/k18k/katrix/issues/84: after a rejected knock or rescinded invite the latest
     // event is a leave without stripped state, the version fell back to 1, and the next event (from a newer room
@@ -414,7 +417,7 @@ export class FederationService {
   }
 
   /** Process one incoming PDU (caller holds the room lock). */
-  async handlePdu(origin: string, roomId: string, version: string, raw: Record<string, any>, depth = 0): Promise<void> {
+  async handlePdu(origin: string, roomId: string, version: string, raw: Record<string, unknown>, depth = 0): Promise<void> {
     const state = await this.hs.rooms.currentState(roomId);
     if (!serverAllowedByAcl(state, origin)) throw errors.forbidden("Server is denied by the room's ACL");
     const { pdu, joinAuthorisedSignatureValid } = await this.verifyPdu(raw, version, roomId);
@@ -544,7 +547,7 @@ export class FederationService {
     } catch {
       // Fall back to fetching the missing auth events (and their auth events) one by one.
       const seen = new Set<string>();
-      const raws: Record<string, any>[] = [];
+      const raws: Record<string, unknown>[] = [];
       let queue = missing;
       while (queue.length && seen.size < 100) {
         const next: string[] = [];
@@ -554,7 +557,7 @@ export class FederationService {
           const raw = await this.fetchRawEvent(origin, id).catch(() => null); // ts-pro-exception: an event the origin cannot serve is skipped; the gap is filled by later backfill
           if (!raw) continue;
           raws.push(raw);
-          for (const a of (raw.auth_events ?? []).map(eventIdOf)) next.push(a);
+          for (const a of (Array.isArray(raw.auth_events) ? raw.auth_events : []).map(eventIdOf)) if (typeof a === "string") next.push(a);
         }
         queue = next;
       }
@@ -565,7 +568,7 @@ export class FederationService {
   /** Fill a gap with /get_missing_events. Returns false when the response contained invalid events. */
   private async fetchMissingPrevEvents(origin: string, roomId: string, version: string, pdu: PDU): Promise<boolean> {
     const earliest = await this.hs.rooms.extremities(roomId);
-    let res: any;
+    let res: unknown;
     try {
       res = await this.client.request(origin, "POST", `/_matrix/federation/v1/get_missing_events/${encodeURIComponent(roomId)}`, {
         body: { earliest_events: earliest, latest_events: [pdu.event_id], limit: 10, min_depth: 0 },
@@ -573,7 +576,7 @@ export class FederationService {
     } catch {
       return true;
     }
-    const events = (Array.isArray(res.events) ? res.events : []).filter(isObject);
+    const events = (isObject(res) && Array.isArray(res.events) ? res.events : []).filter(isObject);
     for (const ev of events) {
       try {
         this.computeEventId(ev, version);
@@ -581,7 +584,8 @@ export class FederationService {
         return false;
       }
     }
-    events.sort((a: any, b: any) => (a.depth ?? 0) - (b.depth ?? 0));
+    const depthOf = (e: Record<string, unknown>) => (typeof e.depth === "number" ? e.depth : 0);
+    events.sort((a, b) => depthOf(a) - depthOf(b));
     const failed = new Set<string>();
     for (const ev of events) {
       try {
@@ -602,7 +606,7 @@ export class FederationService {
     if (raw) await this.storeOutliers(roomId, version, [raw]);
   }
 
-  private async fetchRawEvent(origin: string, eventId: string): Promise<Record<string, any> | null> {
+  private async fetchRawEvent(origin: string, eventId: string): Promise<Record<string, unknown> | null> {
     const r = await this.client.request(origin, "GET", `/_matrix/federation/v1/event/${encodeURIComponent(eventId)}`);
     return Array.isArray(r.pdus) && isObject(r.pdus[0]) ? r.pdus[0] : null;
   }
@@ -613,7 +617,7 @@ export class FederationService {
    */
   async fetchStateBefore(origin: string, roomId: string, version: string, eventId: string): Promise<Record<string, string>> {
     let stateIds: string[];
-    let res: any = null;
+    let res: unknown = null;
     // Computing the state of a large room can take the remote server a while.
     const timeoutMs = 300_000;
     try {
@@ -625,15 +629,18 @@ export class FederationService {
       this.hs.logger.debug("/state_ids failed, falling back to /state", origin, err);
     }
     // A response without state is useless (and must not be mistaken for "the room has no state").
-    if (res && (!Array.isArray(res.pdu_ids) || !res.pdu_ids.length)) throw errors.notFound("Remote server returned no state");
-    if (res) {
-      stateIds = res.pdu_ids;
+    // https://github.com/k18k/katrix/issues/128: the remote's pdu_ids were adopted unchecked (any); they must be
+    // event IDs, or the response counts as one without state.
+    const stateIdList = isObject(res) && isStrings(res.pdu_ids) ? res.pdu_ids : undefined;
+    if (res && !stateIdList?.length) throw errors.notFound("Remote server returned no state");
+    if (isObject(res) && stateIdList) {
+      stateIds = stateIdList;
       const wanted = [...(Array.isArray(res.auth_chain_ids) ? res.auth_chain_ids : []), ...stateIds];
       const missing: string[] = [];
       for (const id of wanted) if (typeof id === "string" && !(await this.hs.rooms.knowsEvent(id))) missing.push(id);
       // Fetch in parallel batches; auth chain first so that dependencies are stored before dependents.
       // Fetch everything first, then store in depth order so auth events precede dependents.
-      const raws: Record<string, any>[] = [];
+      const raws: Record<string, unknown>[] = [];
       for (let i = 0; i < missing.length; i += 20) {
         const batch = await Promise.all(missing.slice(i, i + 20).map((id) => this.fetchRawEvent(origin, id).catch(() => null))); // ts-pro-exception: an event the origin cannot serve is skipped; the gap is filled by later backfill
         for (const raw of batch) if (raw) raws.push(raw);
@@ -646,7 +653,7 @@ export class FederationService {
         query: { event_id: eventId },
         timeoutMs,
       });
-      const pdus: any[] = Array.isArray(res.pdus) ? res.pdus : [];
+      const pdus: unknown[] = Array.isArray(res.pdus) ? res.pdus : [];
       if (!pdus.length) throw errors.notFound("Remote server returned no state");
       await this.storeOutliers(roomId, version, [...(Array.isArray(res.auth_chain) ? res.auth_chain : []), ...pdus]);
       stateIds = pdus.filter(isObject).map((raw) => this.computeEventId(raw, version));
@@ -727,7 +734,7 @@ export class FederationService {
     return (await this.hs.partialState.servers(roomId)).includes(origin);
   }
 
-  async handleEdu(origin: string, edu: Record<string, any>): Promise<void> {
+  async handleEdu(origin: string, edu: Record<string, unknown>): Promise<void> {
     const content = edu?.content;
     if (!isObject(content)) return;
     switch (edu.edu_type) {
@@ -845,15 +852,18 @@ export class FederationService {
   // ---------------------------------------------------------------------------
 
   /** Build a full event from a make_join/make_leave/make_knock template and sign it. */
-  private finaliseTemplate(template: Record<string, any>, version: string, extraContent: Record<string, any>): PDU {
+  private finaliseTemplate(template: Record<string, unknown>, version: string, extraContent: Record<string, unknown>): PDU {
     const { event_id, hashes, signatures, unsigned, ...rest } = template;
-    const pdu = { ...rest, content: { ...rest.content, ...extraContent }, origin_server_ts: Date.now() } as PDU;
+    // https://github.com/k18k/katrix/issues/128: the remote template was cast to a PDU unchecked; it is checked like
+    // any incoming PDU now.
+    const pdu = { ...rest, content: { ...(isObject(rest.content) ? rest.content : {}), ...extraContent }, origin_server_ts: Date.now() };
+    if (!isPdu(pdu)) throw errors.badJson("Malformed event template");
     if (roomVersionFeatures(version).legacyEventIds) pdu.origin = this.hs.serverName;
     return finalisePdu(pdu, version, this.hs.serverName, this.hs.signingKey);
   }
 
   /** Join a room hosted on other servers. Returns the room ID. */
-  async joinRemoteRoom(userId: string, roomId: string, servers: string[], content: Record<string, any>): Promise<string> {
+  async joinRemoteRoom(userId: string, roomId: string, servers: string[], content: Record<string, unknown>): Promise<string> {
     this.requireEnabled();
     let lastError: unknown = errors.notFound("No server could be reached to join the room");
     for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName && this.serverAllowed(s))) {
@@ -901,9 +911,9 @@ export class FederationService {
     throw lastError;
   }
 
-  private async completeJoin(roomId: string, version: string, joinPdu: PDU, res: Record<string, any>, origin: string): Promise<void> {
-    const statePdus: any[] = Array.isArray(res.state) ? res.state : [];
-    const authChain: any[] = Array.isArray(res.auth_chain) ? res.auth_chain : [];
+  private async completeJoin(roomId: string, version: string, joinPdu: PDU, res: Record<string, unknown>, origin: string): Promise<void> {
+    const statePdus: unknown[] = Array.isArray(res.state) ? res.state : [];
+    const authChain: unknown[] = Array.isArray(res.auth_chain) ? res.auth_chain : [];
     await this.storeOutliers(roomId, version, [...authChain, ...statePdus]);
     const stateIds: Record<string, string> = {};
     let create: PDU | undefined;
@@ -980,7 +990,7 @@ export class FederationService {
     throw lastError;
   }
 
-  async knockRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string): Promise<{ pdu: PDU; knockState: any[] }> {
+  async knockRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string): Promise<{ pdu: PDU; knockState: unknown[] }> {
     this.requireEnabled();
     let lastError: unknown = errors.notFound("No server could be reached to knock on the room");
     for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName)) {
@@ -1012,7 +1022,7 @@ export class FederationService {
   }
 
   /** Ask the invitee's server to sign an invite; returns the countersigned event. */
-  async sendInvite(pdu: PDU, version: string, inviteRoomState: Record<string, any>[]): Promise<PDU> {
+  async sendInvite(pdu: PDU, version: string, inviteRoomState: Record<string, unknown>[]): Promise<PDU> {
     this.requireEnabled();
     const server = domainOf(pdu.state_key!);
     if (!this.serverAllowed(server)) throw errors.forbidden("Federation with this server is not allowed");
@@ -1037,7 +1047,7 @@ export class FederationService {
   // Queries
   // ---------------------------------------------------------------------------
 
-  async queryProfile(userId: string, field?: string): Promise<Record<string, any>> {
+  async queryProfile(userId: string, field?: string): Promise<Record<string, unknown>> {
     this.requireEnabled();
     return this.client.request(domainOf(userId), "GET", "/_matrix/federation/v1/query/profile", { query: { user_id: userId, field } });
   }
@@ -1050,15 +1060,15 @@ export class FederationService {
   async queryKeys(
     deviceKeys: Record<string, string[]>,
     timeoutMs = 10_000,
-  ): Promise<{ results: Record<string, any>[]; failures: Record<string, any> }> {
+  ): Promise<{ results: Record<string, unknown>[]; failures: Record<string, unknown> }> {
     const byServer = new Map<string, Record<string, string[]>>();
     for (const [userId, devices] of Object.entries(deviceKeys)) {
       const server = domainOf(userId);
       if (server === this.hs.serverName) continue;
       (byServer.get(server) ?? byServer.set(server, {}).get(server)!)[userId] = devices;
     }
-    const results: Record<string, any>[] = [];
-    const failures: Record<string, any> = {};
+    const results: Record<string, unknown>[] = [];
+    const failures: Record<string, unknown> = {};
     await Promise.all(
       [...byServer].map(async ([server, query]) => {
         try {
@@ -1080,15 +1090,15 @@ export class FederationService {
   async claimKeys(
     oneTimeKeys: Record<string, Record<string, string>>,
     timeoutMs = 10_000,
-  ): Promise<{ results: Record<string, any>; failures: Record<string, any> }> {
+  ): Promise<{ results: Record<string, unknown>; failures: Record<string, unknown> }> {
     const byServer = new Map<string, Record<string, Record<string, string>>>();
     for (const [userId, devices] of Object.entries(oneTimeKeys)) {
       const server = domainOf(userId);
       if (server === this.hs.serverName) continue;
       (byServer.get(server) ?? byServer.set(server, {}).get(server)!)[userId] = devices;
     }
-    const results: Record<string, any> = {};
-    const failures: Record<string, any> = {};
+    const results: Record<string, unknown> = {};
+    const failures: Record<string, unknown> = {};
     await Promise.all(
       [...byServer].map(async ([server, query]) => {
         try {
@@ -1106,12 +1116,12 @@ export class FederationService {
     return { results, failures };
   }
 
-  async queryPublicRooms(server: string, body: Record<string, any>): Promise<Record<string, any>> {
+  async queryPublicRooms(server: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     this.requireEnabled();
     return this.client.request(server, "POST", "/_matrix/federation/v1/publicRooms", { body });
   }
 
-  async queryHierarchy(server: string, roomId: string, suggestedOnly: boolean): Promise<Record<string, any>> {
+  async queryHierarchy(server: string, roomId: string, suggestedOnly: boolean): Promise<Record<string, unknown>> {
     this.requireEnabled();
     return this.client.request(server, "GET", `/_matrix/federation/v1/hierarchy/${encodeURIComponent(roomId)}`, {
       query: { suggested_only: String(suggestedOnly) },
@@ -1221,7 +1231,7 @@ export class FederationService {
   }
 
   /** Remote members who should receive the invitee's stripped state. */
-  strippedStateFor(state: StateMap): Record<string, any>[] {
+  strippedStateFor(state: StateMap): Record<string, unknown>[] {
     return this.hs.rooms.strippedState(state);
   }
 
@@ -1248,7 +1258,7 @@ export class FederationService {
     return false;
   }
 
-  stripped(pdu: PDU): Record<string, any> {
+  stripped(pdu: PDU): Record<string, unknown> {
     return stripState(pdu);
   }
 
