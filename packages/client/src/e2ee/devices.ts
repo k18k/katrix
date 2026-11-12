@@ -150,8 +150,7 @@ export class DeviceTracker {
     const master = valid(res.master_keys?.[userId], "master");
     if (!master) return {};
     const mpk = publicKeyOf(master)!;
-    const signedByMaster = (k: CrossSigningKey | undefined) =>
-      k && verifyObject(this.protocol, k as unknown as Record<string, unknown>, userId, mpk, mpk) ? k : undefined;
+    const signedByMaster = (k: CrossSigningKey | undefined) => (k && verifyObject(this.protocol, k, userId, mpk, mpk) ? k : undefined);
     return {
       master,
       selfSigning: signedByMaster(valid(res.self_signing_keys?.[userId], "self_signing")),

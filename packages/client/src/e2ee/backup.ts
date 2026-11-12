@@ -241,7 +241,7 @@ export class KeyBackup {
    * that the auth_data is trusted").
    */
   async isTrusted(info: BackupVersionResponse): Promise<boolean> {
-    const authData = info.auth_data as unknown as Record<string, unknown>;
+    const authData = info.auth_data;
     const sigs = (info.auth_data.signatures?.[this.userId] ?? {}) as Record<string, string>;
     const own = await this.devices.getUser(this.userId);
     const masterKey = await this.crossSigning.masterKey(this.userId);

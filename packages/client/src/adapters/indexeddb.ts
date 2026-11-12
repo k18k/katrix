@@ -122,7 +122,7 @@ class IndexedDbStorage implements StorageAdapter {
  * to the browser's.
  */
 export function indexedDbStorage(opts: { name?: string; indexedDB?: IDBFactoryLike; IDBKeyRange?: IDBKeyRangeLike } = {}): StorageAdapter {
-  const g = globalThis as unknown as { indexedDB?: IDBFactoryLike; IDBKeyRange?: IDBKeyRangeLike };
+  const g = globalThis as { indexedDB?: IDBFactoryLike; IDBKeyRange?: IDBKeyRangeLike };
   const factory = opts.indexedDB ?? g.indexedDB;
   const keyRange = opts.IDBKeyRange ?? g.IDBKeyRange;
   if (!factory || !keyRange) throw new Error("IndexedDB is not available here");

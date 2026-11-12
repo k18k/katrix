@@ -81,7 +81,6 @@ export function canonicalJson(value: unknown): string {
 }
 
 /** The canonical JSON that a signature covers: the object without `signatures` and `unsigned`. */
-export function signingJson(value: Record<string, unknown>): string {
-  const { signatures: _s, unsigned: _u, ...rest } = value;
-  return canonicalJson(rest);
+export function signingJson(value: object): string {
+  return canonicalJson(Object.fromEntries(Object.entries(value).filter(([key]) => key !== "signatures" && key !== "unsigned")));
 }

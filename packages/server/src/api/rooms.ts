@@ -329,7 +329,7 @@ export function registerRoomRoutes(r: Router): void {
       handler: async (ctx) => {
         const s = ctx.session;
         const state = await visibleState(ctx.hs, ctx.params.roomId, s.userId);
-        return [...state.values()].map((ev) => toClientEvent(ev)) as unknown as Record<string, unknown>;
+        return [...state.values()].map((ev) => toClientEvent(ev));
       },
     }),
   );

@@ -228,8 +228,7 @@ export class CrossSigning {
       else if (userId !== this.userId && (await this.ownIdentityTrusted())) {
         const usk = (await this.ownRecord())?.crossSigning?.userSigning;
         const uskPub = usk ? publicKeyOf(usk) : undefined;
-        verified =
-          uskPub !== undefined && verifyObject(this.protocol, master as unknown as Record<string, unknown>, this.userId, uskPub, uskPub);
+        verified = master !== undefined && uskPub !== undefined && verifyObject(this.protocol, master, this.userId, uskPub, uskPub);
       }
     }
     const pinned = rec?.trust?.pinnedMaster;
@@ -285,7 +284,7 @@ export class CrossSigning {
     const device =
       deviceId === this.deviceId ? await this.ownDeviceKeys() : (await this.devices.getUser(this.userId))?.devices[deviceId]?.signed;
     if (!device) throw new Error("Unknown device");
-    await this.uploadSignatures({ [this.userId]: { [deviceId]: this.sign(selfSigning, pub, device as unknown as DeviceKeys) } });
+    await this.uploadSignatures({ [this.userId]: { [deviceId]: this.sign(selfSigning, pub, device) } });
     await this.devices.refresh([this.userId], { force: true });
   }
 

@@ -311,7 +311,7 @@ export function registerTimelineRoutes(r: Router): void {
         if (!ev || ev.pdu.room_id !== ctx.params.roomId) throw errors.notFound("Event not found");
         const visible = await hs.rooms.filterVisible(s.userId, ctx.params.roomId, [ev]);
         if (visible.length === 0) throw errors.notFound("Event not found");
-        return hs.rooms.formatEvent(ev, viewerOf(s)) as unknown as Record<string, unknown>;
+        return hs.rooms.formatEvent(ev, viewerOf(s));
       },
     }),
   );

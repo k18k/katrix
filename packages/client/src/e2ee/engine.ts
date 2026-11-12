@@ -131,7 +131,7 @@ export class E2EEEngine {
     });
     const signWithDevice = async <T extends object>(obj: T): Promise<T> => {
       const { account } = await this.store.transaction((tx) => loadAccount(tx, this.pickler));
-      return signObject(account, this.userId, this.deviceId, obj as Record<string, unknown>) as unknown as T;
+      return signObject(account, this.userId, this.deviceId, obj);
     };
     this.secretStorage = new SecretStorage(opts.primitives, opts.accountData);
     this.backup = new KeyBackup({

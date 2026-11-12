@@ -135,7 +135,7 @@ export function registerLegacyRoutes(r: Router): void {
         const s = ctx.session;
         const ev = await ctx.hs.rooms.getEvent(ctx.params.eventId);
         if (!ev || !(await ctx.hs.rooms.filterVisible(s.userId, ev.pdu.room_id, [ev])).length) throw errors.notFound("Event not found");
-        return ctx.hs.rooms.formatEvent(ev, viewerOf(s), { includeRoomId: true }) as unknown as Record<string, unknown>;
+        return ctx.hs.rooms.formatEvent(ev, viewerOf(s), { includeRoomId: true });
       },
     }),
   );

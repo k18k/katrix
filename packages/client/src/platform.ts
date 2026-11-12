@@ -32,7 +32,9 @@ interface PlatformGlobals {
   console?: { debug(...a: unknown[]): void; info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...a: unknown[]): void };
 }
 
-const g = globalThis as unknown as PlatformGlobals;
+// https://github.com/k18k/katrix/issues/126: the globals are typed per runtime (Node, browsers, Hermes), and Node's timer
+// types do not overlap the platform-neutral ones, so this one double cast stays.
+const g = globalThis as unknown as PlatformGlobals; // ts-pro-exception: globals typed per runtime; see above
 
 export function setTimer(fn: () => void, ms: number): TimerHandle {
   return g.setTimeout(fn, ms);
@@ -106,6 +108,6 @@ export interface FetchResponseLike {
 }
 
 export function platformFetch(): FetchLike | undefined {
-  const f = (globalThis as unknown as { fetch?: unknown }).fetch;
+  const f = (globalThis as { fetch?: unknown }).fetch;
   return typeof f === "function" ? (f.bind(globalThis) as FetchLike) : undefined;
 }

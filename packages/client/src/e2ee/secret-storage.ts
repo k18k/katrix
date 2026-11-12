@@ -152,7 +152,7 @@ export class SecretStorage {
       iv: check.iv,
       mac: check.mac,
     };
-    await this.accountData.set(`m.secret_storage.key.${keyId}`, description as unknown as Record<string, unknown>);
+    await this.accountData.set(`m.secret_storage.key.${keyId}`, { ...description });
     if (opts.setDefault !== false) await this.accountData.set("m.secret_storage.default_key", { key: keyId });
     return { keyId, key, recoveryKey: encodeRecoveryKey(key) };
   }

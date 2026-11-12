@@ -1357,17 +1357,18 @@ export class RoomService {
     let prebuiltCreate: PDU | undefined;
     if (features.v12) {
       // The room ID is derived from the create event, which therefore has no room_id.
+      const create: Omit<PDU, "room_id"> = {
+        sender,
+        type: M.ROOM.CREATE,
+        state_key: "",
+        content: createContent,
+        origin_server_ts: Date.now(),
+        depth: 1,
+        prev_events: [],
+        auth_events: [],
+      };
       prebuiltCreate = finalisePdu(
-        {
-          sender,
-          type: M.ROOM.CREATE,
-          state_key: "",
-          content: createContent,
-          origin_server_ts: Date.now(),
-          depth: 1,
-          prev_events: [],
-          auth_events: [],
-        } as unknown as PDU,
+        create as PDU, // ts-pro-exception: a v12 create event has no room_id; PDU requires it
         version,
         this.hs.serverName,
         this.hs.signingKey,

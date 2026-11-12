@@ -1,4 +1,4 @@
-import type { CrossSigningKey } from "@katrix/shared";
+import type { CrossSigningKey, DeviceKeys } from "@katrix/shared";
 import type { Transaction } from "../storage/store.ts";
 import type { E2EEProtocol, InboundGroupSession, OlmAccount, OlmSession, OutboundGroupSession, PickleKey } from "../protocol/protocol.ts";
 
@@ -72,7 +72,8 @@ export interface DeviceInfo {
   algorithms: string[];
   displayName?: string;
   /** The signed device keys as the server sent them (without `unsigned`), to check cross-signing signatures. */
-  signed?: Record<string, unknown>;
+  // https://github.com/k18k/katrix/issues/126: typed as the device keys it is (it was a record, double-cast at use).
+  signed?: Omit<DeviceKeys, "unsigned">;
 }
 
 /** A user's cross-signing public keys (https://spec.matrix.org/v1.19/client-server-api/#cross-signing), as the server sent them. */

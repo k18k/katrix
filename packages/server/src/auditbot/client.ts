@@ -3,6 +3,8 @@ import {
   DeviceLists,
   OlmMachine,
   RoomId,
+  RoomMessageRequest,
+  ToDeviceRequest,
   UserId,
   type DecryptedRoomEvent,
   type RequestType,
@@ -118,21 +120,23 @@ export class CryptoClient {
           case Req.SignatureUpload:
             response = await this.request("POST", "/_matrix/client/v3/keys/signatures/upload", signatureUploadBody(r.body));
             break;
+          // https://github.com/k18k/katrix/issues/126: these were double casts to hand-written shapes; the crypto
+          // package's request classes narrow them instead.
           case Req.ToDevice: {
-            const t = r as unknown as { eventType: string; txnId: string; body: string };
+            if (!(r instanceof ToDeviceRequest)) continue;
             response = await this.request(
               "PUT",
-              `/_matrix/client/v3/sendToDevice/${encodeURIComponent(t.eventType)}/${encodeURIComponent(t.txnId)}`,
-              t.body,
+              `/_matrix/client/v3/sendToDevice/${encodeURIComponent(r.eventType)}/${encodeURIComponent(r.txnId)}`,
+              r.body,
             );
             break;
           }
           case Req.RoomMessage: {
-            const m = r as unknown as { roomId: string; eventType: string; txnId: string; body: string };
+            if (!(r instanceof RoomMessageRequest)) continue;
             response = await this.request(
               "PUT",
-              `/_matrix/client/v3/rooms/${encodeURIComponent(m.roomId)}/send/${encodeURIComponent(m.eventType)}/${encodeURIComponent(m.txnId)}`,
-              m.body,
+              `/_matrix/client/v3/rooms/${encodeURIComponent(r.roomId)}/send/${encodeURIComponent(r.eventType)}/${encodeURIComponent(r.txnId)}`,
+              r.body,
             );
             break;
           }

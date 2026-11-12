@@ -118,11 +118,7 @@ export class OlmService {
         const otk = entry && typeof entry[1] === "object" && entry[1] !== null ? entry[1] : undefined;
         // A one-time key must be signed by the device it is for, or the server could make us
         // encrypt to a key of its own.
-        if (
-          !otk ||
-          typeof otk.key !== "string" ||
-          !verifyObject(this.pickler.protocol, otk as unknown as Record<string, unknown>, d.userId, d.deviceId, d.ed25519)
-        ) {
+        if (!otk || typeof otk.key !== "string" || !verifyObject(this.pickler.protocol, otk, d.userId, d.deviceId, d.ed25519)) {
           if (entry) this.logger.warn("claimed one-time key has no valid signature", { userId: d.userId, deviceId: d.deviceId });
           failed.push(d);
           continue;
