@@ -1,30 +1,46 @@
-// The client
-export { MatrixClient } from "./client.js";
-// Authentication
-export { Auth, CredentialsTokenProvider } from "./auth/login.js";
-export { completeAuthorization, createAuthorizationRequest, getAuthMetadata, refreshOAuthToken, registerClient, } from "./auth/oauth.js";
-// Models
-export { MatrixEvent, redactContent, } from "./models/event.js";
-export { Room } from "./models/room.js";
-export { RoomState } from "./models/room-state.js";
-export { Timeline } from "./models/timeline.js";
-// Sync
-export { SyncV3Transport, parseV3 } from "./sync/v3.js";
-// Adapters: HTTP, storage
-export { fetchHttpAdapter } from "./http/adapter.js";
-export { MatrixHttpApi } from "./http/api.js";
-export { ConnectionError, MatrixError } from "./http/errors.js";
-export { STORES } from "./storage/adapter.js";
-export { MemoryStorage, memoryStorage } from "./storage/memory.js";
-export { Store, Transaction } from "./storage/store.js";
-// Crypto: primitives (level 1), protocol (level 2), the client's E2EE engine
-export { CryptoPrimitiveError } from "./crypto/primitives.js";
-export { nobleCryptoPrimitives } from "./crypto/noble.js";
-export { ProtocolError, } from "./protocol/protocol.js";
-export { nativeE2EEProtocol } from "./protocol/native.js";
-export { E2EEEngine } from "./e2ee/engine.js";
-// Utilities
-export { canonicalJson, signingJson } from "./util/canonical-json.js";
-export { decodeBase64, encodeBase64 } from "./util/base64.js";
-export { TypedEmitter } from "./util/emitter.js";
-export { consoleLogger, noopLogger } from "./util/logger.js";
+import { ConnectionError, MatrixError } from "./http/errors.js";
+import { dummyAuth, nextStage, passwordAuth, withUserInteractiveAuth } from "./auth/uia.js";
+import { AccountApi } from "./account/account.js";
+import { AdminApi } from "./account/admin.js";
+import { DevicesApi } from "./account/devices.js";
+import { PresenceApi, ProfileApi } from "./account/profile.js";
+import { consoleLogger, noopLogger } from "./util/logger.js";
+import { decodeBase64, encodeBase64 } from "./shared/base64.js";
+import { canonicalJson, signingJson } from "./shared/canonical-json.js";
+import { MatrixHttpApi } from "./http/api.js";
+import { completeAuthorization, createAuthorizationRequest, getAuthMetadata, refreshOAuthToken, registerClient } from "./auth/oauth.js";
+import { Auth, CredentialsTokenProvider } from "./auth/login.js";
+import { CryptoPrimitiveError } from "./crypto/primitives.js";
+import { nobleCryptoPrimitives } from "./crypto/noble.js";
+import { CrossSigning } from "./e2ee/cross-signing.js";
+import { KeyBackup, decryptBackupSession, encryptBackupSession } from "./e2ee/backup.js";
+import { SecretStorage, SecretStorageError, decodeRecoveryKey, encodeRecoveryKey } from "./e2ee/secret-storage.js";
+import { Recovery, SECRET_NAMES } from "./e2ee/recovery.js";
+import { KeySharing } from "./e2ee/sharing.js";
+import { TypedEmitter } from "./util/emitter.js";
+import { decodeQr, encodeQr } from "./e2ee/verification/qr.js";
+import { SAS_EMOJI } from "./e2ee/verification/sas.js";
+import { ALL_METHODS, VerificationRequest } from "./e2ee/verification/request.js";
+import { VerificationManager } from "./e2ee/verification/manager.js";
+import { ProtocolError } from "./protocol/protocol.js";
+import { E2EEEngine } from "./e2ee/engine.js";
+import { fetchHttpAdapter } from "./http/adapter.js";
+import { DirectoryApi } from "./directory/directory.js";
+import { AttachmentError, decryptAttachment, encryptAttachment } from "./media/attachments.js";
+import { MediaApi, parseMxc } from "./media/media.js";
+import { PushApi } from "./push/push.js";
+import { SpacesApi } from "./spaces/spaces.js";
+import { INVITE_LIFETIME_MS, MatrixCall } from "./voip/call.js";
+import { CallsApi } from "./voip/calls.js";
+import { MatrixEvent, redactContent } from "./models/event.js";
+import { Relations, isValidReplacement, relationOf } from "./models/relations.js";
+import { RoomState } from "./models/room-state.js";
+import { Timeline } from "./models/timeline.js";
+import { Room } from "./models/room.js";
+import { nativeE2EEProtocol } from "./protocol/native.js";
+import { STORES } from "./storage/adapter.js";
+import { MemoryStorage, memoryStorage } from "./storage/memory.js";
+import { Store, Transaction } from "./storage/store.js";
+import { SyncV3Transport, parseV3 } from "./sync/v3.js";
+import { MatrixClient } from "./client.js";
+export { AccountApi, AdminApi, AttachmentError, Auth, CallsApi, ConnectionError, CredentialsTokenProvider, CrossSigning, CryptoPrimitiveError, DevicesApi, DirectoryApi, E2EEEngine, INVITE_LIFETIME_MS, KeyBackup, KeySharing, MatrixCall, MatrixClient, MatrixError, MatrixEvent, MatrixHttpApi, MediaApi, MemoryStorage, PresenceApi, ProfileApi, ProtocolError, PushApi, Recovery, Relations, Room, RoomState, SAS_EMOJI, SECRET_NAMES, STORES, SecretStorage, SecretStorageError, SpacesApi, Store, SyncV3Transport, Timeline, Transaction, TypedEmitter, ALL_METHODS as VERIFICATION_METHODS, VerificationManager, VerificationRequest, canonicalJson, completeAuthorization, consoleLogger, createAuthorizationRequest, decodeBase64, decodeQr, decodeRecoveryKey, decryptAttachment, decryptBackupSession, dummyAuth, encodeBase64, encodeQr, encodeRecoveryKey, encryptAttachment, encryptBackupSession, fetchHttpAdapter, getAuthMetadata, isValidReplacement, memoryStorage, nativeE2EEProtocol, nextStage, nobleCryptoPrimitives, noopLogger, parseMxc, parseV3, passwordAuth, redactContent, refreshOAuthToken, registerClient, relationOf, signingJson, withUserInteractiveAuth };

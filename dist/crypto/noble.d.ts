@@ -1,4 +1,4 @@
-import { type CryptoPrimitives } from "./primitives.ts";
+import { CryptoPrimitives } from "./primitives.js";
 /**
  * The default primitives, on @noble/curves, @noble/ciphers and @noble/hashes: audited, pure
  * JavaScript (no WebAssembly, no WebCrypto), so they run unchanged on Hermes.
@@ -7,5 +7,6 @@ import { type CryptoPrimitives } from "./primitives.ts";
  * created, not on first use: a client must not start without a secure random source.
  */
 export declare function nobleCryptoPrimitives(opts?: {
-    randomValues?: (array: Uint8Array) => Uint8Array;
+  randomValues?: (array: Uint8Array) => Uint8Array;
 }): CryptoPrimitives;
+//# sourceMappingURL=noble.d.ts.map

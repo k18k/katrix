@@ -21,39 +21,40 @@
 /** The stores the client uses; an IndexedDB adapter creates them up front. */
 export declare const STORES: readonly [
 /** The Olm account, the device's identity. */
-"account", 
+"account",
 /** Olm sessions, by sender Curve25519 key and session ID. */
-"olm_sessions", 
+"olm_sessions",
 /** Megolm sessions we received, by room and session ID. */
-"inbound_group_sessions", 
+"inbound_group_sessions",
 /** The Megolm session we send with, per room. */
-"outbound_group_sessions", 
+"outbound_group_sessions",
 /** Message indices already decrypted per Megolm session: replay detection across restarts. */
-"megolm_indices", 
+"megolm_indices",
 /** Other users' devices and their keys, and which users are tracked. */
-"devices", 
+"devices",
 /** The sync token and other sync state. */
-"sync", 
+"sync",
 /** Room summaries, state and the recent timeline. */
-"rooms", "room_state", "room_timeline", 
+"rooms", "room_state", "room_timeline",
 /** Account data and other small client state. */
 "client"];
 export type StoreName = (typeof STORES)[number];
 export type WriteOp = {
-    readonly type: "put";
-    readonly store: StoreName;
-    readonly key: string;
-    readonly value: string;
+  readonly type: "put";
+  readonly store: StoreName;
+  readonly key: string;
+  readonly value: string;
 } | {
-    readonly type: "delete";
-    readonly store: StoreName;
-    readonly key: string;
+  readonly type: "delete";
+  readonly store: StoreName;
+  readonly key: string;
 };
 export interface StorageAdapter {
-    get(store: StoreName, key: string): Promise<string | undefined>;
-    /** Entries whose key starts with `prefix` (all with ""), sorted by key. */
-    list(store: StoreName, prefix: string): Promise<Array<[key: string, value: string]>>;
-    /** Apply every operation, in order, atomically. A rejected promise means none was applied. */
-    write(batch: readonly WriteOp[]): Promise<void>;
-    close?(): Promise<void>;
+  get(store: StoreName, key: string): Promise<string | undefined>;
+  /** Entries whose key starts with `prefix` (all with ""), sorted by key. */
+  list(store: StoreName, prefix: string): Promise<Array<[key: string, value: string]>>;
+  /** Apply every operation, in order, atomically. A rejected promise means none was applied. */
+  write(batch: readonly WriteOp[]): Promise<void>;
+  close?(): Promise<void>;
 }
+//# sourceMappingURL=adapter.d.ts.map

@@ -1,6 +1,6 @@
 {
   "name": "@katrix/client",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Katrix client: a Matrix client SDK in TypeScript with end-to-end encryption (Olm, Megolm) for Node.js, browsers and React Native",
   "keywords": [
     "client",
@@ -33,6 +33,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/adapters/sqlite.d.ts",
+      "default": "./dist/adapters/sqlite.js"
+    },
+    "./indexeddb": {
+      "types": "./dist/adapters/indexeddb.d.ts",
+      "default": "./dist/adapters/indexeddb.js"
     }
   },
   "dependencies": {
