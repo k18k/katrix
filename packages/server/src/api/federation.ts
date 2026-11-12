@@ -1,4 +1,4 @@
-import { isObject, isValidUserId, M } from "@katrix/shared";
+import { isObject, isValidUserId, M, stringOrUndefined } from "@katrix/shared";
 import { eventsByTimestamp } from "#api/timeline.ts";
 import { MatrixError, errors } from "#core/errors.ts";
 import { fullProfile } from "#core/profile.ts";
@@ -223,7 +223,9 @@ async function exchangeThirdPartyInvite(
   if (!pending) throw errors.forbidden("No such third-party invite");
   if (pending.sender !== sender) throw errors.forbidden("The third-party invite was sent by someone else");
   // The auth rules check `signed` against the invite's public keys.
-  await hs.rooms.invite(roomId, sender, invitee, { thirdPartyInvite: { display_name: pending.content?.display_name ?? "", signed } });
+  await hs.rooms.invite(roomId, sender, invitee, {
+    thirdPartyInvite: { display_name: stringOrUndefined(pending.content?.display_name) ?? "", signed },
+  });
 }
 
 async function sendMembership(ctx: RequestContext, origin: string, membership: string) {
@@ -741,7 +743,7 @@ export function registerFederationRoutes(r: Router): void {
       const summary = async (id: string, s: StateMap) => {
         const details = await roomDetails(hs, id);
         const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
-        if (["restricted", "knock_restricted"].includes(jr?.join_rule)) {
+        if (jr?.join_rule === "restricted" || jr?.join_rule === "knock_restricted") {
           details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : [])
             .filter((a: any) => a?.type === M.ROOM_MEMBERSHIP)
             .map((a: any) => a.room_id);
@@ -750,7 +752,7 @@ export function registerFederationRoutes(r: Router): void {
       };
       const accessible = async (s: StateMap) => {
         const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
-        const rule = jr?.join_rule ?? "invite";
+        const rule = stringOrUndefined(jr?.join_rule) ?? "invite";
         const hv = getState(s, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility;
         if (
           ["public", "knock", "knock_restricted"].includes(rule) ||

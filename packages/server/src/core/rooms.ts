@@ -1,4 +1,4 @@
-import { isObject, isValidUserId, M, parseId } from "@katrix/shared";
+import { isObject, isValidUserId, M, parseId, stringOrUndefined } from "@katrix/shared";
 import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { errors, MatrixError } from "#core/errors.ts";
 import {
@@ -93,6 +93,11 @@ export interface PersistResult {
 }
 
 /** Thrown when the state before an event cannot be computed because predecessors are unknown. */
+/** The room ID of the room a create event's content says this room replaces. */
+function predecessorOf(content: Record<string, unknown> | undefined) {
+  return isObject(content?.predecessor) ? stringOrUndefined(content.predecessor.room_id) : undefined;
+}
+
 export class MissingStateError extends Error {
   readonly eventIds: string[];
   constructor(eventIds: string[]) {
@@ -856,7 +861,7 @@ export class RoomService {
         unsigned.prev_sender = prevState.sender;
         unsigned.replaces_state = prevState.event_id;
       }
-      if (pdu.type === M.ROOM.MEMBER && ["invite", "knock"].includes(pdu.content.membership) && opts.local) {
+      if (pdu.type === M.ROOM.MEMBER && (pdu.content.membership === "invite" || pdu.content.membership === "knock") && opts.local) {
         unsigned[pdu.content.membership === "invite" ? "invite_room_state" : "knock_room_state"] = this.strippedState(beforeMap);
       }
       const stored: PDU = Object.keys(unsigned).length ? { ...pdu, unsigned } : pdu;
@@ -1231,7 +1236,7 @@ export class RoomService {
       let membership = "leave";
       if (userId) {
         const memId = ids[stateKey(M.ROOM.MEMBER, userId)];
-        membership = memId ? ((await this.getEvent(memId))?.pdu.content?.membership ?? "leave") : "leave";
+        membership = memId ? (stringOrUndefined((await this.getEvent(memId))?.pdu.content?.membership) ?? "leave") : "leave";
       }
       const ev: StoredEvent = userId ? { ...raw, viewerMembership: membership } : raw;
       if (userId && ev.pdu.type === M.ROOM.MEMBER && ev.pdu.state_key === userId) {
@@ -1595,7 +1600,7 @@ export class RoomService {
       this.hs.logger.debug("Remote join", userId, roomId, "via", servers);
       await this.hs.federation.joinRemoteRoom(userId, roomId, servers, content);
       const createEv = await this.createEventOf(roomId);
-      const predecessor = createEv?.content?.predecessor?.room_id;
+      const predecessor = predecessorOf(createEv?.content);
       if (typeof predecessor === "string") await copyRoomPushRules(this.hs, userId, predecessor, roomId);
       return roomId;
     }
@@ -1642,7 +1647,7 @@ export class RoomService {
       }
     }
     await this.sendEvent(roomId, userId, { type: M.ROOM.MEMBER, state_key: userId, content });
-    const predecessor = getState(state, M.ROOM.CREATE)?.content?.predecessor?.room_id;
+    const predecessor = predecessorOf(getState(state, M.ROOM.CREATE)?.content);
     if (typeof predecessor === "string") await copyRoomPushRules(this.hs, userId, predecessor, roomId);
     return roomId;
   }

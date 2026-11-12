@@ -1,4 +1,4 @@
-import { evaluatePushRules as evaluateRules, isObject, M, pushTweaks as tweaksOf } from "@katrix/shared";
+import { evaluatePushRules as evaluateRules, isObject, M, pushTweaks as tweaksOf, stringOrUndefined } from "@katrix/shared";
 import { getState, powerLevels, userLevel, type StateMap } from "#core/authrules.ts";
 import { splitStateKey, toClientEvent, type PDU } from "#core/events.ts";
 import { readOnlyRules } from "#core/pushrules.ts";
@@ -53,7 +53,7 @@ export class PushService {
       const actions = evaluateRules(rules, {
         event,
         userId,
-        displayName: getState(state, M.ROOM.MEMBER, userId)?.content?.displayname ?? null,
+        displayName: stringOrUndefined(getState(state, M.ROOM.MEMBER, userId)?.content?.displayname) ?? null,
         memberCount: joined.length,
         senderLevel: Number.isFinite(senderLevel) ? senderLevel : Number.MAX_SAFE_INTEGER,
         notificationLevels: pl.notifications,

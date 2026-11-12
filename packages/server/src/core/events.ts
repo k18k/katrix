@@ -7,7 +7,9 @@ export interface PDU {
   sender: string;
   type: string;
   state_key?: string;
-  content: Record<string, any>;
+  // https://github.com/k18k/katrix/issues/128: content was Record<string, any>, so every event field read
+  // anywhere in the server was unchecked; each read checks its type now.
+  content: Record<string, unknown>;
   origin_server_ts: number;
   depth: number;
   prev_events: any[];

@@ -1,4 +1,4 @@
-import { isObject, M, UNSTABLE } from "@katrix/shared";
+import { isObject, M, stringOrUndefined, UNSTABLE } from "@katrix/shared";
 import { MatrixError } from "#core/errors.ts";
 import { longPoll } from "#api/longpoll.ts";
 import { getState } from "#core/authrules.ts";
@@ -187,7 +187,7 @@ async function buildResponse(
     if (f.is_dm !== undefined) rooms = rooms.filter((r) => dmRooms.has(r.roomId) === f.is_dm);
     if (f.is_invite !== undefined) rooms = rooms.filter((r) => (r.membership === "invite") === f.is_invite);
     if (f.is_encrypted !== undefined) rooms = rooms.filter((r) => !!getState(r.state, M.ROOM.ENCRYPTION) === f.is_encrypted);
-    const roomType = (r: RoomInfo) => getState(r.state, M.ROOM.CREATE)?.content?.type ?? null;
+    const roomType = (r: RoomInfo) => stringOrUndefined(getState(r.state, M.ROOM.CREATE)?.content?.type) ?? null;
     if (f.room_types) rooms = rooms.filter((r) => f.room_types!.includes(roomType(r)));
     if (f.not_room_types) rooms = rooms.filter((r) => !f.not_room_types!.includes(roomType(r)));
     if (f.spaces) {

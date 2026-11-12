@@ -1,4 +1,4 @@
-import { isObject, isValidUserId, M } from "@katrix/shared";
+import { isObject, isValidUserId, M, stringOrUndefined } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
 import { assertNotSuspended, type Session } from "#core/auth.ts";
@@ -142,7 +142,7 @@ export function registerMembershipRoutes(r: Router): void {
           const pending = getState(await ctx.hs.rooms.currentState(roomId), M.ROOM.THIRD_PARTY_INVITE, signed.token);
           if (!pending || pending.sender !== sender) throw errors.forbidden("No such third-party invite");
           await ctx.hs.rooms.invite(roomId, sender, s.userId, {
-            thirdPartyInvite: { display_name: pending.content?.display_name ?? "", signed: proof },
+            thirdPartyInvite: { display_name: stringOrUndefined(pending.content?.display_name) ?? "", signed: proof },
           });
         } else {
           await ctx.hs.federation.client.request(

@@ -1,4 +1,4 @@
-import { isObject, isValidUserId, M } from "@katrix/shared";
+import { isObject, isValidUserId, M, stringOrUndefined } from "@katrix/shared";
 import type { Homeserver } from "#homeserver.ts";
 import { assertNotSuspended } from "#core/auth.ts";
 import { getState } from "#core/authrules.ts";
@@ -184,7 +184,11 @@ export function registerProfileRoutes(r: Router): void {
         const members = await ctx.hs.rooms.getPdus([...eventOf.values()]);
         for (const userId of remote) {
           const member = members.get(eventOf.get(userId) ?? "");
-          candidates.push({ user_id: userId, displayname: member?.content?.displayname, avatar_url: member?.content?.avatar_url });
+          candidates.push({
+            user_id: userId,
+            displayname: stringOrUndefined(member?.content?.displayname),
+            avatar_url: stringOrUndefined(member?.content?.avatar_url),
+          });
         }
         const results = candidates
           .filter(

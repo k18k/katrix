@@ -1,4 +1,4 @@
-import { isObject, isValidAlias, isValidRoomId, M, parseId } from "@katrix/shared";
+import { isObject, isStrings, isValidAlias, isValidRoomId, M, parseId } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { getState, membershipOf, powerLevels, userLevel } from "#core/authrules.ts";
 import { type Session } from "#core/auth.ts";
@@ -123,11 +123,12 @@ export function registerDirectoryRoutes(r: Router): void {
         if (canonical) {
           // https://github.com/k18k/katrix/issues/129: the alias was deleted from a mutable copy; the new content is built without it.
           const { alias, ...rest } = canonical.content;
-          const inAlt = Array.isArray(rest.alt_aliases) && rest.alt_aliases.includes(ctx.params.alias);
+          const alt = rest.alt_aliases;
+          const inAlt = isStrings(alt) && alt.includes(ctx.params.alias);
           const content = {
             ...rest,
             ...(alias !== ctx.params.alias && alias !== undefined && { alias }),
-            ...(inAlt && { alt_aliases: rest.alt_aliases.filter((a: string) => a !== ctx.params.alias) }),
+            ...(inAlt && { alt_aliases: alt.filter((a) => a !== ctx.params.alias) }),
           };
           if (alias === ctx.params.alias || inAlt) {
             // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or

@@ -1,4 +1,4 @@
-import { isObject, isValidUserId, M } from "@katrix/shared";
+import { isObject, isValidUserId, M, stringOrUndefined } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { roomVersionFeatures, stateKey, versionNum, type PDU } from "#core/events.ts";
 import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
@@ -23,13 +23,13 @@ export function getState(state: StateMap, type: string, key = ""): PDU | undefin
 }
 
 export function membershipOf(state: StateMap, userId: string): string {
-  return getState(state, M.ROOM.MEMBER, userId)?.content?.membership ?? "leave";
+  return stringOrUndefined(getState(state, M.ROOM.MEMBER, userId)?.content?.membership) ?? "leave";
 }
 
 export function roomCreator(state: StateMap, roomVersion: string): string | undefined {
   const create = getState(state, M.ROOM.CREATE);
   if (!create) return undefined;
-  return roomVersionFeatures(roomVersion).v11 ? create.sender : (create.content.creator ?? create.sender);
+  return roomVersionFeatures(roomVersion).v11 ? create.sender : (stringOrUndefined(create.content.creator) ?? create.sender);
 }
 
 const toInt = (v: unknown, fallback: number): number => {
@@ -330,7 +330,8 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
 }
 
 function checkThirdPartyInvite(event: PDU, state: StateMap): boolean {
-  const signed = event.content?.third_party_invite?.signed;
+  const thirdPartyInvite = event.content?.third_party_invite;
+  const signed = isObject(thirdPartyInvite) ? thirdPartyInvite.signed : undefined;
   if (!isObject(signed) || typeof signed.mxid !== "string" || typeof signed.token !== "string") return false;
   if (signed.mxid !== event.state_key) return false;
   const invite = getState(state, M.ROOM.THIRD_PARTY_INVITE, signed.token);
@@ -414,6 +415,6 @@ function checkPowerLevelChange(
   if (checkNotifications) {
     const oldNotif = { ...current.notifications };
     // `room` defaults to 50 when unset; only compare explicitly set values.
-    compareMap(oldNotif, { room: 50, ...c.notifications }, false);
+    compareMap(oldNotif, { room: 50, ...(isObject(c.notifications) ? c.notifications : {}) }, false);
   }
 }

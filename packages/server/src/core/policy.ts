@@ -1,4 +1,4 @@
-import { M } from "@katrix/shared";
+import { isObject, M } from "@katrix/shared";
 import type { KeyObject } from "node:crypto";
 import { getState } from "#core/authrules.ts";
 import { domainOf } from "#federation/index.ts";
@@ -30,7 +30,7 @@ export class PolicyServers {
     const state = await this.hs.rooms.currentState(roomId);
     const content = getState(state, M.ROOM.POLICY, "")?.content;
     const via = content?.via;
-    const ed25519 = content?.public_keys?.ed25519;
+    const ed25519 = isObject(content?.public_keys) ? content.public_keys.ed25519 : undefined;
     if (typeof via !== "string" || typeof ed25519 !== "string") return null;
     let key: KeyObject;
     try {

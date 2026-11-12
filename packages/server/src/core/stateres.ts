@@ -12,7 +12,7 @@ const isPowerEvent = (ev: PDU) =>
   (ev.type === M.ROOM.POWER_LEVELS && ev.state_key === "") ||
   (ev.type === M.ROOM.JOIN_RULES && ev.state_key === "") ||
   (ev.type === M.ROOM.CREATE && ev.state_key === "") ||
-  (ev.type === M.ROOM.MEMBER && ["leave", "ban"].includes(ev.content?.membership) && ev.sender !== ev.state_key);
+  (ev.type === M.ROOM.MEMBER && (ev.content?.membership === "leave" || ev.content?.membership === "ban") && ev.sender !== ev.state_key);
 
 const authIds = (ev: PDU) => (ev.auth_events ?? []).map(eventIdOf);
 
