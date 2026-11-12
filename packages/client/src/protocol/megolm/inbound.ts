@@ -1,6 +1,5 @@
 import type { CryptoPrimitives } from "../../crypto/primitives.ts";
-import { decodeBase64, encodeBase64 } from "../../util/base64.ts";
-import { bytesEqual, constantTimeEqual } from "../../util/bytes.ts";
+import { bytesEqual, constantTimeEqual, decodeBase64, encodeBase64 } from "@katrix/shared";
 import { b64, field, readPickle, writePickle } from "../pickle.ts";
 import { ProtocolError, type InboundGroupSession, type PickleKey, type SessionOrdering } from "../protocol.ts";
 import { decodeMessage } from "./message.ts";

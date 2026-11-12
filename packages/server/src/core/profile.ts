@@ -1,4 +1,4 @@
-import { canonicalJson } from "#core/json.ts";
+import { canonicalJson } from "@katrix/shared";
 import type { Homeserver } from "#homeserver.ts";
 
 // Extended profiles (spec v1.16): arbitrary JSON fields next to displayname/avatar_url.

@@ -4,6 +4,11 @@ import { abortError, clearTimer, isAbortError, newAbortController, setTimer, sle
 import type { HttpAdapter } from "./adapter.ts";
 import { ConnectionError, MatrixError } from "./errors.ts";
 import type { TokenProvider } from "../auth/types.ts";
+import { endpointPath, type ClientEndpoint, type EndpointParams, type EndpointRequest, type EndpointResponse } from "@katrix/shared";
+
+/** Options of an endpoint call: a body exactly when the endpoint takes one (ClientEndpoints in @katrix/shared). */
+export type EndpointOptions<K extends ClientEndpoint> = Omit<RequestOptions, "body"> &
+  (EndpointRequest<K> extends undefined ? { body?: undefined } : { body: EndpointRequest<K> });
 
 export interface RequestOptions {
   query?: Record<string, QueryValue>;
@@ -41,6 +46,19 @@ export class MatrixHttpApi {
 
   setTokenProvider(tokens: TokenProvider | undefined): void {
     this.tokens = tokens;
+  }
+
+  /**
+   * Call an endpoint of the shared endpoint map: the body and the response are typed by it, and
+   * path parameters are filled in from `params`, each percent-encoded as one segment.
+   */
+  endpoint<K extends ClientEndpoint>(key: K, params: EndpointParams<K>, opts: EndpointOptions<K>): Promise<EndpointResponse<K>> {
+    const space = key.indexOf(" ");
+    return this.request<EndpointResponse<K>>(
+      key.slice(0, space),
+      endpointPath(key.slice(space + 1), params as Record<string, string>),
+      opts,
+    );
   }
 
   async request<T = Record<string, any>>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {

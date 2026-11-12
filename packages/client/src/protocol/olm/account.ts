@@ -1,7 +1,5 @@
 import type { CryptoPrimitives, KeyPair } from "../../crypto/primitives.ts";
-import { encodeBase64 } from "../../util/base64.ts";
-import { bytesEqual, concatBytes, writeUint32BE } from "../../util/bytes.ts";
-import { encodeUtf8 } from "../../util/utf8.ts";
+import { bytesEqual, concatBytes, encodeBase64, encodeUtf8, writeUint32BE } from "@katrix/shared";
 import { b64, decodeKey, field, readPickle, writePickle, type Pickled } from "../pickle.ts";
 import { ProtocolError, type IdentityKeys, type OlmAccount, type OlmMessage, type OlmSession, type PickleKey } from "../protocol.ts";
 import { decodeNormal, decodePreKey } from "./message.ts";

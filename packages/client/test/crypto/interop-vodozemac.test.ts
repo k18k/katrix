@@ -4,8 +4,7 @@ import { DeviceId, DeviceLists, EncryptionSettings, OlmMachine, RoomId, UserId }
 import { nobleCryptoPrimitives } from "../../src/crypto/noble.ts";
 import { nativeE2EEProtocol } from "../../src/protocol/native.ts";
 import type { OlmAccount } from "../../src/protocol/protocol.ts";
-import { canonicalJson, signingJson } from "../../src/util/canonical-json.ts";
-import { decodeUtf8, encodeUtf8 } from "../../src/util/utf8.ts";
+import { canonicalJson, decodeUtf8, encodeUtf8, signingJson } from "@katrix/shared";
 
 // Interoperability of the built-in Olm and Megolm with vodozemac, the reference implementation
 // (through matrix-sdk-crypto, the crypto of the Element apps). Messages go both ways, so the wire

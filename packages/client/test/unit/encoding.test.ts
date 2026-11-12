@@ -1,9 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { nobleCryptoPrimitives } from "../../src/crypto/noble.ts";
-import { decodeBase64, encodeBase64 } from "../../src/util/base64.ts";
-import { canonicalJson, signingJson } from "../../src/util/canonical-json.ts";
-import { decodeUtf8, encodeUtf8 } from "../../src/util/utf8.ts";
+import { canonicalJson, decodeBase64, decodeUtf8, encodeBase64, encodeUtf8, signingJson } from "@katrix/shared";
 
 const ascii = (s: string) => encodeUtf8(s);
 

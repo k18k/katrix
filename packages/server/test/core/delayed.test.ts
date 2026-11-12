@@ -1,6 +1,6 @@
+import { UNSTABLE } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { UNSTABLE } from "#core/m.ts";
 import { testServer } from "../helpers.ts";
 
 test("a delayed event whose send fails once is sent on the retry, exactly once (#100)", async () => {

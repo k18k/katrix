@@ -1,13 +1,11 @@
+import { isObject, isValidAlias, isValidRoomId, M, parseId } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { getState, membershipOf, powerLevels, userLevel } from "#core/authrules.ts";
-import { isValidAlias, isValidRoomId, parseId } from "#core/ids.ts";
-import { isObject } from "#core/json.ts";
 import { type Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
-import { M } from "#core/m.ts";
 import { visibleState } from "#api/rooms.ts";
 
 // Room aliases and the room directory (also for application services), local and over federation.

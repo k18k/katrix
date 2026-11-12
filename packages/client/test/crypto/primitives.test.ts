@@ -2,8 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeCrypto from "node:crypto";
 import { nobleCryptoPrimitives } from "../../src/crypto/noble.ts";
-import { fromHex, toHex } from "../../src/util/bytes.ts";
-import { encodeUtf8 } from "../../src/util/utf8.ts";
+import { encodeUtf8, fromHex, toHex } from "@katrix/shared";
 
 // Every primitive against its standard's official test vectors, then against Node.js's OpenSSL
 // as an independent implementation on random inputs, then on inputs it must refuse.

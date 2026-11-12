@@ -16,7 +16,7 @@ function tracker(answer: () => Record<string, unknown>) {
   const store = new Store(new MemoryStorage());
   const queries: unknown[] = [];
   const api = {
-    async request(_m: string, _p: string, opts: { body: unknown }) {
+    async endpoint(_key: string, _params: unknown, opts: { body: unknown }) {
       queries.push(opts.body);
       return { device_keys: { [U]: answer() }, failures: {} };
     },
@@ -66,7 +66,7 @@ test("outdated users are queried again; a change during a query keeps them outda
   const store = new Store(new MemoryStorage());
   let calls = 0;
   const api = {
-    async request() {
+    async endpoint() {
       calls++;
       if (block) await new Promise<void>((r) => (release = r));
       return { device_keys: { [U]: { D: deviceKeysObject(acc, U, "D") } } };

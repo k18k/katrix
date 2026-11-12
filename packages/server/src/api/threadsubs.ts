@@ -1,9 +1,8 @@
+import { isObject, M } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
-import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
-import { M } from "#core/m.ts";
 
 // MSC4306: thread subscriptions. A subscription is either manual or "automatic" (made by a
 // client in reaction to an event in the thread). Unsubscribing records the stream position so

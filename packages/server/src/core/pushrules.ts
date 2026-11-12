@@ -1,7 +1,6 @@
+import { isObject, M, UNSTABLE } from "@katrix/shared";
 import { CLUSTER_RESYNC } from "#core/cluster.ts";
-import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { M, UNSTABLE } from "#core/m.ts";
 
 export type Rule = Record<string, any>;
 export type Ruleset = Record<string, Rule[]>;

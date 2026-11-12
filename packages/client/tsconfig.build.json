@@ -1,6 +1,0 @@
-{
-  // The sources the published package is built from: tsdown.config.ts emits the declarations
-  // from them (tsgo, TypeScript 7). Type checking stays with tsconfig.json.
-  "extends": "./tsconfig.json",
-  "include": ["src"]
-}

@@ -1,6 +1,6 @@
+import { canonicalJson } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canonicalJson } from "#core/json.ts";
 import { loadSigningKey, signJson, verifyJsonSignature, publicKeyFromBase64 } from "#core/crypto.ts";
 
 // Test vectors from the Matrix specification, appendix "Signing JSON".

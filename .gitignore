@@ -1,5 +1,8 @@
 node_modules
 /packages/server/src/**/*.js
+# Declarations belong in dist/; next to the sources they would shadow them in builds.
+/packages/*/src/**/*.d.ts
+/packages/*/src/**/*.d.ts.map
 *.db
 *.sqlite
 .media

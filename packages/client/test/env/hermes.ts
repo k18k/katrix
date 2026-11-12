@@ -9,7 +9,7 @@
  *
  * TextEncoder stays: Hermes has it natively since React Native 0.74, and @noble/curves needs it
  * when its ed25519 module is imported (it derives FROST domain tags at load time). The SDK itself
- * never uses it (src/util/utf8.ts); TextDecoder, which Hermes lacks, is removed.
+ * never uses it (packages/shared/src/utf8.ts); TextDecoder, which Hermes lacks, is removed.
  */
 const g = globalThis as Record<string, unknown>;
 const getRandomValues = (globalThis.crypto.getRandomValues as (a: Uint8Array) => Uint8Array).bind(globalThis.crypto);

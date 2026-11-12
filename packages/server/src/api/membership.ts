@@ -1,13 +1,11 @@
+import { isObject, isValidUserId, M } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
-import { isValidUserId } from "#core/ids.ts";
-import { isObject } from "#core/json.ts";
 import { assertNotSuspended, type Session } from "#core/auth.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure, type ProcedureContext } from "#http/procedure.ts";
 import { v } from "#core/vpm.ts";
 import { body, lenient } from "#http/input.ts";
-import { M } from "#core/m.ts";
 import { requireRoom } from "#api/rooms.ts";
 
 // Room membership: join, knock, invite (also by third-party identifier), leave, kick, ban, unban, forget.
@@ -62,7 +60,7 @@ async function inviteByThreepid(ctx: RequestContext, s: Session, body: Record<st
   return {};
 }
 
-const membershipBody = body({ user_id: lenient(v.string()), reason: lenient(v.string()) });
+export const membershipBody = body({ user_id: lenient(v.string()), reason: lenient(v.string()) });
 
 async function sendMembership(
   ctx: ProcedureContext<"user", v.output<typeof membershipBody>>,
@@ -167,7 +165,13 @@ export function registerMembershipRoutes(r: Router): void {
   r.client(
     "POST",
     "/join/:roomIdOrAlias",
-    procedure({ auth: "user", rateLimit: "join", input: joinBody, handler: (ctx) => join(ctx, ctx.params.roomIdOrAlias) }),
+    procedure({
+      endpoint: "POST /v3/join/:roomIdOrAlias",
+      auth: "user",
+      rateLimit: "join",
+      input: joinBody,
+      handler: (ctx) => join(ctx, ctx.params.roomIdOrAlias),
+    }),
   );
 
   r.client(

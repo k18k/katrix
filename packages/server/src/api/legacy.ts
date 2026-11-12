@@ -1,6 +1,6 @@
+import { isValidRoomId } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { toClientEvent } from "#core/events.ts";
-import { isValidRoomId } from "#core/ids.ts";
 import type { Session } from "#core/auth.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";

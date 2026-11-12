@@ -85,9 +85,9 @@ export class DeviceTracker {
 
   private async query(batch: Array<{ userId: string; outdated: number }>): Promise<void> {
     if (batch.length === 0) return;
-    const res = await this.api.request<{ device_keys?: Record<string, Record<string, any>>; failures?: Record<string, unknown> }>(
-      "POST",
-      "/v3/keys/query",
+    const res = await this.api.endpoint(
+      "POST /v3/keys/query",
+      {},
       {
         body: { device_keys: Object.fromEntries(batch.map((b) => [b.userId, []])), timeout: 10_000 },
       },

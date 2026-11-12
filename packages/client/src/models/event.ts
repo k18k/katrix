@@ -1,4 +1,4 @@
-import type { ContentOf, KnownEventType, RawEvent, UnsignedData } from "./types.ts";
+import type { ContentOf, KnownEventType, ClientEvent, UnsignedData } from "@katrix/shared";
 
 export type DecryptionStatus = "none" | "pending" | "decrypted" | "failed";
 
@@ -42,7 +42,7 @@ export type LocalEchoStatus = "sending" | "encrypting" | "sent" | "failed" | "ca
  * decrypted; `wire` keeps what the server sent.
  */
 export class MatrixEvent<T extends string = string> {
-  wire: RawEvent;
+  wire: ClientEvent;
   private clear?: { type: string; content: Record<string, unknown> };
   decryptionStatus: DecryptionStatus = "none";
   decryptionError?: DecryptionFailureCode;
@@ -53,7 +53,7 @@ export class MatrixEvent<T extends string = string> {
   /** Set when a redaction for this event arrived. */
   redactedBy?: string;
 
-  constructor(wire: RawEvent) {
+  constructor(wire: ClientEvent) {
     this.wire = wire;
     if (wire.type === "m.room.encrypted") this.decryptionStatus = "pending";
   }
@@ -121,7 +121,7 @@ export class MatrixEvent<T extends string = string> {
   }
 
   /** Apply a redaction: content is reduced as the redaction algorithm does for the event's keys. */
-  applyRedaction(redaction: RawEvent): void {
+  applyRedaction(redaction: ClientEvent): void {
     this.redactedBy = redaction.event_id;
     this.clear = undefined;
     this.wire = {
@@ -131,7 +131,7 @@ export class MatrixEvent<T extends string = string> {
     };
   }
 
-  toJSON(): RawEvent {
+  toJSON(): ClientEvent {
     return this.wire;
   }
 }

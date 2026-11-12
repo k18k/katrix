@@ -15,6 +15,9 @@ export class CanonicalJsonError extends Error {
  * Sort by code point, not by UTF-16 code unit as Array.prototype.sort does: the two differ when
  * one key has a character above U+FFFF (a surrogate pair, 0xD800…) and the other one in
  * U+E000…U+FFFF.
+ *
+ * Fix (https://github.com/k18k/katrix/issues/25): the server sorted keys by UTF-16 code unit, so
+ * for such keys its hashes and signatures did not match other servers'.
  */
 function compareCodePoints(a: string, b: string): number {
   const ia = a[Symbol.iterator]();
@@ -38,6 +41,9 @@ function write(value: unknown, out: string[]): void {
   } else if (typeof value === "boolean") {
     out.push(value ? "true" : "false");
   } else if (typeof value === "number") {
+    // Only integers, and only in the spec's range: beyond 2^53 a number does not survive a JSON
+    // round trip in JavaScript, and from 1e21 on String() writes it as "1e+21", which is not
+    // canonical JSON. (The server's own copy, before the two were merged, allowed any integer.)
     if (!Number.isInteger(value) || Math.abs(value) > MAX_SAFE) throw new CanonicalJsonError("Canonical JSON allows only safe integers");
     // -0 is written as 0 (the appendix's example).
     out.push(String(value === 0 ? 0 : value));

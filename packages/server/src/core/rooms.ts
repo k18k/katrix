@@ -1,3 +1,4 @@
+import { isObject, isValidUserId, M, parseId } from "@katrix/shared";
 import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { errors, MatrixError } from "#core/errors.ts";
 import {
@@ -24,13 +25,11 @@ import {
   type StateMap,
 } from "#core/authrules.ts";
 import { resolveState, type StateIds } from "#core/stateres.ts";
-import { generateRoomId, isValidUserId, parseId } from "#core/ids.ts";
-import { isObject } from "#core/json.ts";
+import { generateRoomId } from "#core/ids.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Row } from "#storage/types.ts";
 import { copyRoomPushRules } from "#core/pushrules.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
-import { M } from "#core/m.ts";
 
 const PARTIAL_REJECTION = "Partial state: ";
 

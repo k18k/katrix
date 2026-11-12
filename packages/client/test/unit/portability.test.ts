@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 // are @noble/*.
 
 const SRC = fileURLToPath(new URL("../../src/", import.meta.url));
+// @katrix/shared is built into the client, so the same rules hold for it.
+const SHARED = fileURLToPath(new URL("../../../shared/src/", import.meta.url));
 
 function files(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -31,12 +33,12 @@ const FORBIDDEN: Array<[RegExp, string]> = [
   [/\bprocess\./, "process (Node.js only)"],
   [/\brequire\s*\(/, "require (CommonJS)"],
   [/\bTextDecoder\b/, "TextDecoder (missing on Hermes)"],
-  [/\bTextEncoder\b/, "TextEncoder (use util/utf8.ts)"],
+  [/\bTextEncoder\b/, "TextEncoder (use encodeUtf8 from @katrix/shared)"],
   [/\bWebAssembly\b/, "WebAssembly (missing on Hermes)"],
   [/\bsubtle\b/, "crypto.subtle (missing on Hermes)"],
   [/\bstructuredClone\b/, "structuredClone"],
   [/\bnew URL\b|\bURLSearchParams\b/, "URL/URLSearchParams (incomplete on React Native)"],
-  [/\batob\b|\bbtoa\b/, "atob/btoa (use util/base64.ts)"],
+  [/\batob\b|\bbtoa\b/, "atob/btoa (use @katrix/shared base64)"],
   [/AbortSignal\.(timeout|any)\b/, "AbortSignal.timeout/any (missing on React Native)"],
   [/\b(window|document|localStorage|sessionStorage|navigator|indexedDB)\b/, "browser globals"],
   [/\bimport\s*\(/, "dynamic import (bundlers for React Native handle it poorly)"],
@@ -44,8 +46,8 @@ const FORBIDDEN: Array<[RegExp, string]> = [
 
 test("the sources use no platform-specific globals or modules", () => {
   const problems: string[] = [];
-  for (const file of files(SRC)) {
-    const rel = relative(SRC, file);
+  for (const file of [...files(SRC), ...files(SHARED)]) {
+    const rel = file.startsWith(SHARED) ? `shared/${relative(SHARED, file)}` : relative(SRC, file);
     const source = readFileSync(file, "utf8");
     const c = code(source);
     for (const [re, what] of FORBIDDEN) {
@@ -56,21 +58,22 @@ test("the sources use no platform-specific globals or modules", () => {
     for (const m of source.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+"([^"]+)"/gm)) {
       const spec = m[1];
       if (spec.startsWith(".")) continue;
-      if (!/^@noble\/(curves|hashes|ciphers)\//.test(spec)) problems.push(`${rel}: imports ${spec} (only @noble/* is allowed)`);
+      if (!/^@noble\/(curves|hashes|ciphers)\//.test(spec) && !/^@katrix\/shared(\/types)?$/.test(spec))
+        problems.push(`${rel}: imports ${spec} (only @noble/* and @katrix/shared are allowed)`);
     }
   }
   assert.deepEqual(problems, []);
 });
 
 test("no top-level await in the sources (Metro and Hermes do not support it)", () => {
-  for (const file of files(SRC)) {
+  for (const file of [...files(SRC), ...files(SHARED)]) {
     const c = code(readFileSync(file, "utf8"));
     // A top-level statement starting with await (indentation 0).
     assert.ok(!/^await\b/m.test(c), `${relative(SRC, file)} has top-level await`);
   }
 });
 
-test("package.json: the only runtime dependencies are @noble/*", () => {
+test("package.json: the only runtime dependencies are @noble/* (@katrix/shared is built in)", () => {
   const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
   assert.deepEqual(Object.keys(pkg.dependencies ?? {}).sort(), ["@noble/ciphers", "@noble/curves", "@noble/hashes"]);
   assert.equal(pkg.peerDependencies, undefined);

@@ -1,5 +1,5 @@
 import type { AbortSignalLike } from "../platform.ts";
-import type { RawEvent, ToDeviceEvent } from "../models/types.ts";
+import type { ClientEvent, ToDeviceEvent } from "@katrix/shared";
 
 /**
  * What one sync round delivers, independent of the protocol that fetched it. /sync v3 maps onto
@@ -22,12 +22,12 @@ export interface SyncResult {
   oneTimeKeyCounts?: Record<string, number>;
   /** undefined: the server does not report it (then fallback keys are not managed). */
   unusedFallbackKeyTypes?: string[];
-  accountData: RawEvent[];
-  presence: RawEvent[];
+  accountData: ClientEvent[];
+  presence: ClientEvent[];
 }
 
 export interface TimelineUpdate {
-  events: RawEvent[];
+  events: ClientEvent[];
   /** There is a gap before these events. */
   limited: boolean;
   prevBatch?: string;
@@ -38,11 +38,11 @@ export interface JoinedRoomUpdate {
    * State to apply before the timeline (v3 `state`). With `initial`, it is the complete state
    * (a first sync of this room, or sliding sync's `initial: true`): the old state is replaced.
    */
-  state: RawEvent[];
+  state: ClientEvent[];
   initial?: boolean;
   timeline: TimelineUpdate;
-  ephemeral: RawEvent[];
-  accountData: RawEvent[];
+  ephemeral: ClientEvent[];
+  accountData: ClientEvent[];
   summary?: { heroes?: string[]; joinedMemberCount?: number; invitedMemberCount?: number };
   unreadNotifications?: { highlight_count?: number; notification_count?: number };
 }
@@ -52,9 +52,9 @@ export interface InvitedRoomUpdate {
 }
 
 export interface LeftRoomUpdate {
-  state: RawEvent[];
+  state: ClientEvent[];
   timeline: TimelineUpdate;
-  accountData: RawEvent[];
+  accountData: ClientEvent[];
 }
 
 export interface SyncRequest {

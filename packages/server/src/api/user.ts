@@ -1,5 +1,5 @@
+import { canonicalJson, isObject, M } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
-import { canonicalJson, isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
@@ -7,10 +7,9 @@ import { jsonResponse } from "#http/handler.ts";
 import { requireUia } from "#api/uia.ts";
 import { v } from "#core/vpm.ts";
 import { body, fail } from "#http/input.ts";
-import { M } from "#core/m.ts";
 
 const deleteDevicesBody = body({ devices: v.array(v.unknown(), fail("M_BAD_JSON", "devices must be a list")) });
-const keysQueryBody = body({
+export const keysQueryBody = body({
   device_keys: v.record(
     v.string(),
     v.array(v.string(), fail("M_BAD_JSON", "device_keys values must be lists of device IDs")),
@@ -18,7 +17,9 @@ const keysQueryBody = body({
   ),
   timeout: v.unknown().optional(),
 });
-const keysClaimBody = body({ one_time_keys: v.record(v.string(), v.unknown(), fail("M_BAD_JSON", "one_time_keys must be an object")) });
+export const keysClaimBody = body({
+  one_time_keys: v.record(v.string(), v.unknown(), fail("M_BAD_JSON", "one_time_keys must be an object")),
+});
 
 const SERVER_MANAGED_TYPES: readonly string[] = [M.FULLY_READ, M.PUSH_RULES];
 
@@ -275,6 +276,7 @@ export function registerUserRoutes(r: Router): void {
     "POST",
     "/keys/upload",
     procedure({
+      endpoint: "POST /v3/keys/upload",
       auth: "user",
       input: body({}),
       handler: async (ctx) => {
@@ -287,6 +289,7 @@ export function registerUserRoutes(r: Router): void {
     "POST",
     "/keys/query",
     procedure({
+      endpoint: "POST /v3/keys/query",
       auth: "user",
       rateLimit: "keyQuery",
       input: keysQueryBody,
@@ -301,6 +304,7 @@ export function registerUserRoutes(r: Router): void {
     "POST",
     "/keys/claim",
     procedure({
+      endpoint: "POST /v3/keys/claim",
       auth: "user",
       input: keysClaimBody,
       handler: async (ctx) => {
@@ -380,6 +384,7 @@ export function registerUserRoutes(r: Router): void {
     "PUT",
     "/sendToDevice/:eventType/:txnId",
     procedure({
+      endpoint: "PUT /v3/sendToDevice/:eventType/:txnId",
       auth: "user",
       handler: async (ctx) => {
         const s = ctx.session;

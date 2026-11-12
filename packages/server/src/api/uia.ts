@@ -1,8 +1,7 @@
+import { isObject, M, UNSTABLE } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
-import { isObject } from "#core/json.ts";
 import type { Homeserver } from "#homeserver.ts";
-import { M, UNSTABLE } from "#core/m.ts";
 import type { Session } from "#core/auth.ts";
 import { crossSigningResetAllowed } from "#core/oauthserver.ts";
 

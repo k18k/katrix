@@ -1,5 +1,6 @@
+import type { KeyObject } from "@katrix/shared";
 import type { E2EEProtocol, OlmAccount } from "../protocol/protocol.ts";
-import { signingJson } from "../util/canonical-json.ts";
+import { signingJson } from "@katrix/shared";
 
 export const OLM_ALGORITHM = "m.olm.v1.curve25519-aes-sha2";
 export const MEGOLM_ALGORITHM = "m.megolm.v1.aes-sha2";
@@ -46,10 +47,10 @@ export function deviceKeysObject(account: OlmAccount, userId: string, deviceId: 
 
 /** The unpublished one-time and fallback keys, signed, as /keys/upload takes them. */
 export function oneTimeKeysObject(account: OlmAccount, userId: string, deviceId: string) {
-  const oneTime: Record<string, unknown> = {};
+  const oneTime: Record<string, KeyObject> = {};
   for (const [id, key] of Object.entries(account.oneTimeKeys()))
     oneTime[`signed_curve25519:${id}`] = signObject(account, userId, deviceId, { key });
-  const fallback: Record<string, unknown> = {};
+  const fallback: Record<string, KeyObject> = {};
   for (const [id, key] of Object.entries(account.fallbackKey()))
     fallback[`signed_curve25519:${id}`] = signObject(account, userId, deviceId, { key, fallback: true });
   return { oneTime, fallback };

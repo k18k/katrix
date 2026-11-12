@@ -1,9 +1,8 @@
+import { isValidUserId, LOCALPART_RE, M } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
-import { LOCALPART_RE, isValidUserId } from "#core/ids.ts";
 import type { Homeserver } from "#homeserver.ts";
 import { createUser } from "#api/account.ts";
-import { M } from "#core/m.ts";
 import { getState, membershipOf, powerLevels, userLevel } from "#core/authrules.ts";
 
 export interface ServerNoticesOptions {

@@ -6,6 +6,15 @@ import type { Logger } from "../util/logger.ts";
 import { Mutex } from "../util/mutex.ts";
 import { refreshOAuthToken } from "./oauth.ts";
 import type { Credentials, CredentialsStore, TokenProvider } from "./types.ts";
+import type {
+  LoginRequest,
+  LoginResponse,
+  RefreshResponse,
+  RegisterRequest,
+  RegisterResponse,
+  UserIdentifier,
+  WellKnownClient,
+} from "@katrix/shared";
 
 export interface LoginOptions {
   deviceId?: string;
@@ -14,12 +23,7 @@ export interface LoginOptions {
   refreshToken?: boolean;
 }
 
-export type UserIdentifier =
-  | { type: "m.id.user"; user: string }
-  | { type: "m.id.thirdparty"; medium: string; address: string }
-  | { type: "m.id.phone"; country: string; phone: string };
-
-function credentialsFrom(res: Record<string, any>): Credentials {
+function credentialsFrom(res: LoginResponse | RegisterResponse): Credentials {
   if (typeof res.user_id !== "string" || typeof res.access_token !== "string" || typeof res.device_id !== "string") {
     throw new Error("Login response is missing user_id, device_id or access_token");
   }
@@ -43,13 +47,13 @@ export class Auth {
 
   /** The login types the server offers (GET /v3/login). */
   async loginFlows(): Promise<Array<{ type: string; [k: string]: unknown }>> {
-    const res = await this.api.request<{ flows?: Array<{ type: string }> }>("GET", "/v3/login", { auth: false });
+    const res = await this.api.endpoint("GET /v3/login", {}, { auth: false });
     return res.flows ?? [];
   }
 
   /** `user` is a localpart or a full user ID, or a full identifier for a third-party ID. */
   loginWithPassword(user: string | UserIdentifier, password: string, opts: LoginOptions = {}): Promise<Credentials> {
-    const identifier = typeof user === "string" ? { type: "m.id.user", user } : user;
+    const identifier: UserIdentifier = typeof user === "string" ? { type: "m.id.user", user } : user;
     return this.login({ type: "m.login.password", identifier, password }, opts);
   }
 
@@ -65,7 +69,7 @@ export class Auth {
    * thrown as the server's 401 MatrixError, whose `data` holds the flows and session.
    */
   async register(username: string, password: string, opts: LoginOptions = {}): Promise<Credentials> {
-    const body = {
+    const body: RegisterRequest = {
       username,
       password,
       device_id: opts.deviceId,
@@ -73,14 +77,14 @@ export class Auth {
       refresh_token: opts.refreshToken ?? true,
     };
     try {
-      return credentialsFrom(await this.api.request("POST", "/v3/register", { auth: false, retryRateLimited: false, body }));
+      return credentialsFrom(await this.api.endpoint("POST /v3/register", {}, { auth: false, retryRateLimited: false, body }));
     } catch (e) {
       if (!(e instanceof MatrixError) || e.status !== 401 || !Array.isArray(e.data.flows)) throw e;
       const flows = e.data.flows as Array<{ stages?: string[] }>;
       if (!flows.some((f) => (f.stages ?? []).every((s) => s === "m.login.dummy"))) throw e;
-      const auth = { type: "m.login.dummy", session: e.data.session };
+      const auth = { type: "m.login.dummy", session: typeof e.data.session === "string" ? e.data.session : undefined };
       return credentialsFrom(
-        await this.api.request("POST", "/v3/register", { auth: false, retryRateLimited: false, body: { ...body, auth } }),
+        await this.api.endpoint("POST /v3/register", {}, { auth: false, retryRateLimited: false, body: { ...body, auth } }),
       );
     }
   }
@@ -91,18 +95,25 @@ export class Auth {
     return `${base}${idpId ? `/${encodeURIComponent(idpId)}` : ""}?${encodeQuery({ redirectUrl })}`;
   }
 
-  private async login(body: Record<string, unknown>, opts: LoginOptions): Promise<Credentials> {
-    const res = await this.api.request("POST", "/v3/login", {
-      auth: false,
-      // Not retried on its own: a password login is not idempotent for rate-limit accounting.
-      retryRateLimited: false,
-      body: {
-        ...body,
-        device_id: opts.deviceId,
-        initial_device_display_name: opts.initialDeviceDisplayName,
-        refresh_token: opts.refreshToken ?? true,
+  private async login(
+    body: { type: "m.login.password"; identifier: UserIdentifier; password: string } | { type: "m.login.token"; token: string },
+    opts: LoginOptions,
+  ): Promise<Credentials> {
+    const res = await this.api.endpoint(
+      "POST /v3/login",
+      {},
+      {
+        auth: false,
+        // Not retried on its own: a password login is not idempotent for rate-limit accounting.
+        retryRateLimited: false,
+        body: {
+          ...body,
+          device_id: opts.deviceId,
+          initial_device_display_name: opts.initialDeviceDisplayName,
+          refresh_token: opts.refreshToken ?? true,
+        } satisfies LoginRequest,
       },
-    });
+    );
     return credentialsFrom(res);
   }
 
@@ -111,7 +122,7 @@ export class Auth {
     const wellKnown = new MatrixHttpApi({ baseUrl: `https://${serverName}`, http });
     let baseUrl = `https://${serverName}`;
     try {
-      const res = await wellKnown.request<{ "m.homeserver"?: { base_url?: string } }>("GET", "/.well-known/matrix/client", {
+      const res = await wellKnown.request<Partial<WellKnownClient>>("GET", "/.well-known/matrix/client", {
         auth: false,
         prefix: "",
       });
@@ -122,7 +133,7 @@ export class Auth {
       // A missing well-known (404) means: try the server name itself. Anything else is FAIL_PROMPT.
       if (!(e instanceof MatrixError && e.status === 404)) throw e;
     }
-    const versions = await new MatrixHttpApi({ baseUrl, http }).request<{ versions?: string[] }>("GET", "/versions", { auth: false });
+    const versions = await new MatrixHttpApi({ baseUrl, http }).endpoint("GET /versions", {}, { auth: false });
     if (!Array.isArray(versions.versions)) throw new Error("FAIL_ERROR: not a Matrix homeserver");
     return baseUrl;
   }
@@ -162,12 +173,15 @@ export class CredentialsTokenProvider implements TokenProvider {
       const c = this.credentials;
       if (!c.refreshToken || !c.refresh) return false;
       try {
-        let res: Record<string, any>;
         if (c.refresh.kind === "matrix") {
-          res = await new MatrixHttpApi({ baseUrl: this.baseUrl, http: this.http }).request("POST", "/v3/refresh", {
-            auth: false,
-            body: { refresh_token: c.refreshToken },
-          });
+          const res: RefreshResponse = await new MatrixHttpApi({ baseUrl: this.baseUrl, http: this.http }).endpoint(
+            "POST /v3/refresh",
+            {},
+            {
+              auth: false,
+              body: { refresh_token: c.refreshToken },
+            },
+          );
           this.credentials = {
             ...c,
             accessToken: res.access_token,

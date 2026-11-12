@@ -1,7 +1,5 @@
 import type { CryptoPrimitives } from "../crypto/primitives.ts";
-import { decodeBase64, encodeBase64 } from "../util/base64.ts";
-import { concatBytes, constantTimeEqual } from "../util/bytes.ts";
-import { decodeUtf8, encodeUtf8 } from "../util/utf8.ts";
+import { concatBytes, constantTimeEqual, decodeBase64, decodeUtf8, encodeBase64, encodeUtf8 } from "@katrix/shared";
 import { ProtocolError, type PickleKey } from "./protocol.ts";
 
 /**

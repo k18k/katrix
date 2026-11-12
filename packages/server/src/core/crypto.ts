@@ -1,3 +1,4 @@
+import { canonicalJson } from "@katrix/shared";
 import {
   createHash,
   verify,
@@ -12,7 +13,6 @@ import {
   type KeyObject,
 } from "node:crypto";
 import { promisify } from "node:util";
-import { canonicalJson } from "#core/json.ts";
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 

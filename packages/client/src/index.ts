@@ -2,7 +2,7 @@
 export { MatrixClient, type ClientEvents, type ClientOptions, type SyncState, type TimelineEventInfo } from "./client.ts";
 
 // Authentication
-export { Auth, CredentialsTokenProvider, type LoginOptions, type UserIdentifier } from "./auth/login.ts";
+export { Auth, CredentialsTokenProvider, type LoginOptions } from "./auth/login.ts";
 export type { Credentials, CredentialsStore, TokenProvider } from "./auth/types.ts";
 export {
   completeAuthorization,
@@ -10,7 +10,6 @@ export {
   getAuthMetadata,
   refreshOAuthToken,
   registerClient,
-  type AuthMetadata,
   type AuthorizationRequest,
   type OAuthTokens,
 } from "./auth/oauth.ts";
@@ -27,7 +26,7 @@ export {
 export { Room, type Receipt, type RoomSummary } from "./models/room.ts";
 export { RoomState, type RoomMember } from "./models/room-state.ts";
 export { Timeline } from "./models/timeline.ts";
-export type * from "./models/types.ts";
+export type * from "@katrix/shared/types";
 
 // Sync
 export { SyncV3Transport, parseV3, type V3SyncOptions } from "./sync/v3.ts";
@@ -72,7 +71,6 @@ export type { DecryptedToDevice } from "./e2ee/olm.ts";
 export type { RoomEncryptionInfo } from "./e2ee/megolm.ts";
 
 // Utilities
-export { canonicalJson, signingJson } from "./util/canonical-json.ts";
-export { decodeBase64, encodeBase64 } from "./util/base64.ts";
+export { canonicalJson, decodeBase64, encodeBase64, signingJson } from "@katrix/shared";
 export { TypedEmitter } from "./util/emitter.ts";
 export { consoleLogger, noopLogger, type Logger } from "./util/logger.ts";

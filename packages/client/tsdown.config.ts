@@ -21,11 +21,19 @@ export default defineConfig({
   clean: true,
   fixedExtension: false,
   sourcemap: true,
-  // Declarations through tsgo (TypeScript 7), from the sources only.
-  tsconfig: "tsconfig.build.json",
+  // Declarations through tsgo (TypeScript 7); see ../tsconfig.dts.json for why it lives there.
+  tsconfig: "../tsconfig.dts.json",
   dts: { sourcemap: true },
-  // The output may import nothing but @noble/* (the package's only dependencies).
-  deps: { onlyImport: [/^@noble\//] },
+  deps: {
+    // @katrix/shared is not published: its code and types are built into dist/shared/.
+    alwaysBundle: [/^@katrix\/shared(\/|$)/],
+    // The output may import nothing but @noble/* (the package's only dependencies).
+    onlyImport: [/^@noble\//],
+  },
+  outputOptions: {
+    // dist/shared/… rather than dist/shared/src/… for the bundled @katrix/shared modules.
+    entryFileNames: (chunk) => `${chunk.name.replace(/^shared\/src\//, "shared/")}${chunk.name.endsWith(".d") ? ".ts" : ".js"}`,
+  },
   // The package must work for its consumers: exports and types resolve, ESM only.
   publint: { level: "error" },
   attw: { profile: "esm-only", level: "error" },

@@ -7,8 +7,7 @@ import { Auth } from "../../src/auth/login.ts";
 import { MatrixClient } from "../../src/client.ts";
 import { fetchHttpAdapter } from "../../src/http/adapter.ts";
 import type { FetchLike } from "../../src/platform.ts";
-import { concatBytes } from "../../src/util/bytes.ts";
-import { decodeUtf8, encodeUtf8 } from "../../src/util/utf8.ts";
+import { concatBytes, decodeUtf8, encodeUtf8 } from "@katrix/shared";
 
 // The whole client — login, sync, an encrypted room, Olm and Megolm — in the simulated Hermes
 // environment, over real HTTP, against packages/server in another (ordinary Node.js) process.

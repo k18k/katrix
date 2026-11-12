@@ -1,3 +1,4 @@
+import { M, UNSTABLE } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
 import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "#core/events.ts";
@@ -17,7 +18,6 @@ import { matchesFilter, roomAllowed, validateSyncFilter, type SyncFilter } from 
 import { readOnlyRules } from "#core/pushrules.ts";
 import { fullProfile } from "#core/profile.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
-import { M, UNSTABLE } from "#core/m.ts";
 
 interface SyncToken {
   pos: number;
@@ -781,6 +781,8 @@ async function touchPresence(hs: Homeserver, userId: string, presence: string): 
 }
 
 export function registerSyncRoutes(r: Router): void {
+  // Not bound to the shared endpoint map ("GET /v3/sync") yet: the response is assembled field by
+  // field as Record<string, any>.
   r.client("GET", "/sync", procedure({ handler: sync }));
 
   // Filters are checked by validateSyncFilter, shared with filters given inline to /sync.

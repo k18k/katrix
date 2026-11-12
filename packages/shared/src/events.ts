@@ -5,6 +5,8 @@
  *   declare module "@katrix/client" {
  *     interface EventContentMap { "com.example.poll": { question: string } }
  *   }
+ *
+ * Shared by the server and the client (packages/shared); both packages re-export it.
  */
 
 export type Membership = "join" | "invite" | "leave" | "ban" | "knock";
@@ -149,15 +151,15 @@ export type ContentOf<T extends string> = T extends KnownEventType ? EventConten
 export interface UnsignedData {
   age?: number;
   transaction_id?: string;
-  redacted_because?: RawEvent;
+  redacted_because?: ClientEvent;
   prev_content?: Record<string, unknown>;
   membership?: Membership;
   "m.relations"?: Record<string, unknown>;
   [k: string]: unknown;
 }
 
-/** An event as the server sends it. */
-export interface RawEvent<T extends string = string> {
+/** An event as the server sends it to clients (https://spec.matrix.org/v1.16/client-server-api/#room-event-format). */
+export interface ClientEvent<T extends string = string> {
   type: T;
   content: ContentOf<T>;
   event_id?: string;
@@ -167,6 +169,14 @@ export interface RawEvent<T extends string = string> {
   state_key?: string;
   redacts?: string;
   unsigned?: UnsignedData;
+}
+
+/** State in an invite or knock (https://spec.matrix.org/v1.16/client-server-api/#stripped-state). */
+export interface StrippedStateEvent {
+  type: string;
+  state_key: string;
+  content: Record<string, unknown>;
+  sender: string;
 }
 
 /** A to-device event (https://spec.matrix.org/v1.16/client-server-api/#send-to-device-messaging). */

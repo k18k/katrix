@@ -1,9 +1,8 @@
 import type { MatrixHttpApi } from "../http/api.ts";
-import type { ToDeviceEvent } from "../models/types.ts";
+import { decodeUtf8, encodeUtf8, type ToDeviceEvent } from "@katrix/shared";
 import { ProtocolError, type OlmMessage } from "../protocol/protocol.ts";
 import type { Store, Transaction } from "../storage/store.ts";
 import { describeError, type Logger } from "../util/logger.ts";
-import { decodeUtf8, encodeUtf8 } from "../util/utf8.ts";
 import { loadAccount, olmSessionKey, saveAccount, type DeviceInfo, type OlmSessionRecord, type Pickler } from "./crypto-store.ts";
 import type { DeviceTracker } from "./devices.ts";
 import { OLM_ALGORITHM, verifyObject } from "./keys.ts";
@@ -102,20 +101,29 @@ export class OlmService {
     if (missing.length === 0) return [];
     const request: Record<string, Record<string, string>> = {};
     for (const d of missing) (request[d.userId] ??= {})[d.deviceId] = "signed_curve25519";
-    const res = await this.api.request<{ one_time_keys?: Record<string, Record<string, Record<string, any>>> }>("POST", "/v3/keys/claim", {
-      body: { one_time_keys: request, timeout: 10_000 },
-    });
+    const res = await this.api.endpoint(
+      "POST /v3/keys/claim",
+      {},
+      {
+        body: { one_time_keys: request, timeout: 10_000 },
+      },
+    );
     const failed: DeviceInfo[] = [];
     await this.store.transaction(async (tx) => {
       const { record, account } = await loadAccount(tx, this.pickler);
       for (const d of missing) {
         const keys = res.one_time_keys?.[d.userId]?.[d.deviceId];
         const entry = keys && Object.entries(keys).find(([id]) => id.startsWith("signed_curve25519:"));
-        const otk = entry?.[1];
+        // An unsigned key (a bare string) is not acceptable: it could be anyone's.
+        const otk = entry && typeof entry[1] === "object" && entry[1] !== null ? entry[1] : undefined;
         // A one-time key must be signed by the device it is for, or the server could make us
         // encrypt to a key of its own.
-        if (!otk || typeof otk.key !== "string" || !verifyObject(this.pickler.protocol, otk, d.userId, d.deviceId, d.ed25519)) {
-          if (otk) this.logger.warn("claimed one-time key has no valid signature", { userId: d.userId, deviceId: d.deviceId });
+        if (
+          !otk ||
+          typeof otk.key !== "string" ||
+          !verifyObject(this.pickler.protocol, otk as unknown as Record<string, unknown>, d.userId, d.deviceId, d.ed25519)
+        ) {
+          if (entry) this.logger.warn("claimed one-time key has no valid signature", { userId: d.userId, deviceId: d.deviceId });
           failed.push(d);
           continue;
         }
@@ -275,11 +283,15 @@ export class OlmService {
     txnId: () => string,
   ): Promise<void> {
     for (let i = 0; i < messages.length; i += 250) {
-      const body: Record<string, Record<string, unknown>> = {};
+      const body: Record<string, Record<string, Record<string, unknown>>> = {};
       for (const { device, content } of messages.slice(i, i + 250)) (body[device.userId] ??= {})[device.deviceId] = content;
-      await this.api.request("PUT", `/v3/sendToDevice/${encodeURIComponent(type)}/${encodeURIComponent(txnId())}`, {
-        body: { messages: body },
-      });
+      await this.api.endpoint(
+        "PUT /v3/sendToDevice/:eventType/:txnId",
+        { eventType: type, txnId: txnId() },
+        {
+          body: { messages: body },
+        },
+      );
     }
   }
 }

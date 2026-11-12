@@ -6,14 +6,17 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/server/package.json ./packages/server/
 COPY packages/client/package.json ./packages/client/
+COPY packages/shared/package.json ./packages/shared/
 COPY apps/public/package.json ./apps/public/
 COPY apps/dev-idp/package.json ./apps/dev-idp/
 # --include-workspace-root: the build needs the shared tools of the root (typescript, @types/node).
 RUN npm ci --ignore-scripts --no-audit --no-fund -w @katrix/server --include-workspace-root
 # Fix (https://github.com/k18k/katrix/issues/113): copy what the build reads (tsdown again since
 # 0.4.1); a config file that no longer existed made the image fail to build.
-COPY packages/server/tsconfig.json packages/server/tsconfig.build.json packages/server/tsdown.config.ts ./packages/server/
+COPY packages/tsconfig.dts.json ./packages/
+COPY packages/server/tsconfig.json packages/server/tsdown.config.ts ./packages/server/
 COPY packages/server/src ./packages/server/src
+COPY packages/shared/src ./packages/shared/src
 RUN npm run build -w @katrix/server
 
 FROM node:26.12.0-slim
@@ -22,6 +25,7 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 COPY packages/server/package.json ./packages/server/
 COPY packages/client/package.json ./packages/client/
+COPY packages/shared/package.json ./packages/shared/
 COPY apps/public/package.json ./apps/public/
 COPY apps/dev-idp/package.json ./apps/dev-idp/
 # Runtime dependencies only (pg); the library itself has none.

@@ -1,3 +1,4 @@
+import { M, UNSTABLE } from "@katrix/shared";
 import { readFileSync } from "node:fs";
 import { errors } from "#core/errors.ts";
 import { signJson } from "#core/crypto.ts";
@@ -6,7 +7,6 @@ import type { Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { canonicalJsonResponse } from "#http/handler.ts";
 import { wellKnown } from "#api/account.ts";
-import { M, UNSTABLE } from "#core/m.ts";
 
 // https://github.com/k18k/katrix/issues/16: the federation version endpoint
 // reported a hardcoded "0.1.0" whatever release was installed. The version now comes from the

@@ -1,0 +1,20 @@
+{
+  // Shared by the server and the client, and bundled into the client: so plain ECMAScript only,
+  // no DOM and no Node.js typings, under the same rules as packages/client/src.
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2022"],
+    "types": [],
+    "strict": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "customConditions": ["matrix-src"]
+  },
+  "include": ["src"]
+}

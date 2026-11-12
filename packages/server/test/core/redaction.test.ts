@@ -1,7 +1,7 @@
+import { M } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redact } from "#core/events.ts";
-import { M } from "#core/m.ts";
 
 const base = {
   room_id: "!r:x",

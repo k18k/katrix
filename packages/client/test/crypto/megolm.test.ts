@@ -4,9 +4,7 @@ import { nobleCryptoPrimitives } from "../../src/crypto/noble.ts";
 import { advance, advanceTo, copyRatchet, ratchetBytes, ratchetFromBytes } from "../../src/protocol/megolm/ratchet.ts";
 import { nativeE2EEProtocol } from "../../src/protocol/native.ts";
 import { ProtocolError } from "../../src/protocol/protocol.ts";
-import { decodeBase64, encodeBase64 } from "../../src/util/base64.ts";
-import { concatBytes, toHex } from "../../src/util/bytes.ts";
-import { decodeUtf8, encodeUtf8 } from "../../src/util/utf8.ts";
+import { concatBytes, decodeBase64, decodeUtf8, encodeBase64, encodeUtf8, toHex } from "@katrix/shared";
 
 const p = nobleCryptoPrimitives();
 const protocol = nativeE2EEProtocol(p);

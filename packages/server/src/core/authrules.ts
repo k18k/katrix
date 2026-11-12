@@ -1,9 +1,7 @@
+import { isObject, isValidUserId, M } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { roomVersionFeatures, stateKey, versionNum, type PDU } from "#core/events.ts";
-import { isObject } from "#core/json.ts";
 import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
-import { isValidUserId } from "#core/ids.ts";
-import { M } from "#core/m.ts";
 
 export type StateMap = Map<string, PDU>;
 

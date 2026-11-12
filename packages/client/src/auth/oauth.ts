@@ -1,10 +1,10 @@
 import type { CryptoPrimitives } from "../crypto/primitives.ts";
+import type { AuthMetadata } from "@katrix/shared";
 import type { HttpAdapter } from "../http/adapter.ts";
 import { MatrixHttpApi } from "../http/api.ts";
 import { MatrixError } from "../http/errors.ts";
-import { encodeBase64 } from "../util/base64.ts";
+import { encodeBase64, encodeUtf8 } from "@katrix/shared";
 import { encodeQuery, parseQuery } from "../util/query.ts";
-import { encodeUtf8 } from "../util/utf8.ts";
 
 /**
  * OAuth 2.0 login, the "next-generation auth" of the Matrix spec
@@ -14,19 +14,8 @@ import { encodeUtf8 } from "../util/utf8.ts";
  * into CredentialsTokenProvider as Credentials with `refresh.kind = "oauth"`.
  */
 
-export interface AuthMetadata {
-  issuer: string;
-  authorization_endpoint: string;
-  token_endpoint: string;
-  registration_endpoint?: string;
-  revocation_endpoint?: string;
-  response_modes_supported?: string[];
-  code_challenge_methods_supported?: string[];
-  [k: string]: unknown;
-}
-
 export async function getAuthMetadata(api: MatrixHttpApi): Promise<AuthMetadata> {
-  return api.request<AuthMetadata>("GET", "/v1/auth_metadata", { auth: false });
+  return api.endpoint("GET /v1/auth_metadata", {}, { auth: false });
 }
 
 export interface OAuthTokens {

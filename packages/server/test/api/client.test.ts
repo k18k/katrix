@@ -1,6 +1,6 @@
+import { M } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { M } from "#core/m.ts";
 import { testServer } from "../helpers.ts";
 
 test("register, create a room, send a message and see it in /sync", async () => {

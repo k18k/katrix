@@ -1,7 +1,7 @@
 import type { MatrixEvent } from "./event.ts";
 import { RoomState } from "./room-state.ts";
 import { Timeline } from "./timeline.ts";
-import type { Membership } from "./types.ts";
+import type { Membership } from "@katrix/shared";
 
 export interface RoomSummary {
   heroes?: string[];

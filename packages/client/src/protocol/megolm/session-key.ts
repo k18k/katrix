@@ -1,6 +1,5 @@
 import type { CryptoPrimitives } from "../../crypto/primitives.ts";
-import { decodeBase64, encodeBase64 } from "../../util/base64.ts";
-import { concatBytes, readUint32BE, writeUint32BE } from "../../util/bytes.ts";
+import { concatBytes, decodeBase64, encodeBase64, readUint32BE, writeUint32BE } from "@katrix/shared";
 import { ProtocolError } from "../protocol.ts";
 import { ratchetBytes, ratchetFromBytes, RATCHET_LENGTH, type MegolmRatchet } from "./ratchet.ts";
 

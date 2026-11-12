@@ -1,15 +1,13 @@
+import { isObject, isValidUserId, M } from "@katrix/shared";
 import type { Homeserver } from "#homeserver.ts";
 import { assertNotSuspended } from "#core/auth.ts";
 import { getState } from "#core/authrules.ts";
 import { MatrixError, errors } from "#core/errors.ts";
-import { isValidUserId } from "#core/ids.ts";
-import { isObject } from "#core/json.ts";
 import { BUILTIN_FIELDS, MAX_KEY_BYTES, MAX_PROFILE_BYTES, fullProfile, profileSize, setProfileField } from "#core/profile.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
-import { M } from "#core/m.ts";
 
 async function remoteProfile(ctx: RequestContext, field?: string): Promise<Record<string, any>> {
   if (!isValidUserId(ctx.params.userId)) throw errors.invalidParam("Invalid user ID");
@@ -82,6 +80,7 @@ export function registerProfileRoutes(r: Router): void {
     "GET",
     "/profile/:userId",
     procedure({
+      endpoint: "GET /v3/profile/:userId",
       handler: async (ctx) => {
         if (!ctx.hs.isLocalUser(ctx.params.userId)) return remoteProfile(ctx);
         return localProfile(ctx);

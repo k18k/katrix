@@ -1,5 +1,5 @@
 import { MatrixEvent } from "./event.ts";
-import type { EventContentMap, Membership, PowerLevelsContent, RawEvent } from "./types.ts";
+import type { EventContentMap, Membership, PowerLevelsContent, ClientEvent } from "@katrix/shared";
 
 export interface RoomMember {
   userId: string;
@@ -45,7 +45,7 @@ export class RoomState {
     return previous;
   }
 
-  setRaw(raw: RawEvent): MatrixEvent | undefined {
+  setRaw(raw: ClientEvent): MatrixEvent | undefined {
     return this.set(new MatrixEvent(raw));
   }
 
