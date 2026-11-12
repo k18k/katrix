@@ -15,7 +15,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "changeset": "changeset",
-    "version-packages": "changeset version && oxfmt packages/*/package.json",
+    "version-packages": "changeset version && oxfmt packages/*/package.json && npm install --package-lock-only --ignore-scripts",
     "release": "node scripts/release-github.ts"
   },
   "devDependencies": {
