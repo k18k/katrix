@@ -49,7 +49,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --conditions=matrix-src --test \"test/**/*.test.ts\"",
+    "test": "node --conditions=matrix-src --test --test-timeout=120000 \"test/**/*.test.ts\"",
     "smoke": "node --conditions=matrix-src --test test/smoke.test.ts",
     "build": "tsdown",
     "prepare": "node -e \"process.exit(process.env.KATRIX_TSDOWN ? 0 : 1)\" || npm run build",

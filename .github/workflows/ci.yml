@@ -43,6 +43,8 @@ jobs:
   tests:
     name: Tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    # A hung test file ends the job instead of holding the runner for six hours (#116).
+    timeout-minutes: 30
     strategy:
       matrix:
         node: [22, 24, 26]

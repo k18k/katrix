@@ -112,13 +112,22 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
       client.release(true);
       throw err;
     }
+    // https://github.com/k18k/katrix/issues/116: close() during a reconnect found no listener to
+    // release, and the connection opened here afterwards was never given back, so the pool's end()
+    // waited for it forever and the process could not exit.
+    if (closed) {
+      client.release(true);
+      return;
+    }
     listener = client;
   };
   const reconnect = (delay: number) => {
     const timer = setTimeout(() => {
       if (closed) return;
       listen().then(
-        () => [...(handlers.get(CLUSTER_RESYNC) ?? [])].forEach((h) => h(undefined)),
+        () => {
+          if (!closed) [...(handlers.get(CLUSTER_RESYNC) ?? [])].forEach((h) => h(undefined));
+        },
         () => reconnect(Math.min(delay * 2, 30_000)),
       );
     }, delay);
