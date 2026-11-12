@@ -1,5 +1,18 @@
 # matrix-nodejs-homeserver
 
+## 0.4.1
+
+### Patch Changes
+
+- 249b6cf: `postgresCluster`: closing the homeserver while the cluster was reconnecting to Postgres (after a restart or a dropped connection) left one connection checked out of the pool, so `pool.end()` never finished and the process could not shut down. The connection is now released (#116).
+- 618791c: The Fastify plugin streams in both directions, like the Node adapter. Responses are no longer copied into memory first, so a media download does not hold the whole file, and it stops when the client disconnects. Request bodies are no longer read by Fastify before the request is routed and authenticated: a handler reads the body only when it needs it, under the server's upload limit (`maxUploadSize`, 50 MiB by default) rather than Fastify's own 1 MiB default, which refused larger uploads (#109).
+- 5749aca: Sending push notifications for a message in a large room is cheaper: the pushers are grouped by user once instead of being searched for every notified user, and unread counts read the events of a user's read receipts in one query instead of one per receipt (#108).
+- 90ef214: Push rules that match message text (mentions of your name, keyword rules) now find words the way the spec defines them: any character outside `A–Z`, `a–z`, `0–9` and `_` separates words. Names and keywords in Japanese or Chinese text, or next to accented letters, now notify; before, they did not (#118).
+- ba395e2: Both packages now export the spec's types for the Client-Server API endpoints they use: request and response types (`LoginRequest`, `LoginResponse`, `SyncResponse`, `KeysQueryResponse`, …) and the map of endpoints, `ClientEndpoints`. `@katrix/client` builds its requests from that map (`MatrixHttpApi.endpoint()`), and `@katrix/server` checks its responses against it. The client's `RawEvent` type is now `ClientEvent`, and `UserIdentifier` and `AuthMetadata` come from the shared types; **code that imports `RawEvent` must use `ClientEvent`.**
+  
+  `@katrix/server`'s canonical JSON now refuses integers outside the spec's range (±(2^53 − 1)), as the client's did: such numbers do not survive a JSON round trip in JavaScript, and from 1e21 on they were written in exponent notation, which is not canonical JSON.
+- e62fde5: The packages are built with tsdown again (unbundled: one module per source file, as before). They now ship source maps and declaration maps, so stack traces and "go to definition" lead to the TypeScript sources, and `@katrix/server`'s declarations no longer contain `#` imports, which some TypeScript setups could not resolve. No API changes.
+
 ## 0.4.0
 
 ### Minor Changes
