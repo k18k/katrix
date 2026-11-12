@@ -1,6 +1,6 @@
 import type { SyncResponse } from "@katrix/shared";
 import type { MatrixHttpApi } from "../http/api.ts";
-import type { ClientEvent } from "@katrix/shared";
+import { isObject, type ClientEvent } from "@katrix/shared";
 import type { JoinedRoomUpdate, LeftRoomUpdate, SyncRequest, SyncResult, SyncTransport, TimelineUpdate } from "./types.ts";
 
 /** Options for the /sync filter (https://spec.matrix.org/v1.16/client-server-api/#filtering). */
@@ -20,8 +20,13 @@ export interface V3SyncOptions {
 }
 
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
-const obj = (v: unknown): Record<string, any> =>
-  typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, any>) : {};
+const obj = (v: unknown) => (isObject(v) ? v : {});
+// https://github.com/k18k/katrix/issues/128: the counts were passed on unchecked (the response was any).
+const numberOrUndefined = (v: unknown) => (typeof v === "number" ? v : undefined);
+const counts = (v: Record<string, unknown>) => ({
+  highlight_count: numberOrUndefined(v.highlight_count),
+  notification_count: numberOrUndefined(v.notification_count),
+});
 const events = (v: unknown): ClientEvent[] =>
   arr<ClientEvent>(obj(v).events).filter((e) => typeof e === "object" && e !== null && typeof e.type === "string");
 
@@ -80,7 +85,7 @@ export class SyncV3Transport implements SyncTransport {
  * every field is checked, and anything malformed is skipped rather than trusted.
  */
 export function parseV3(response: SyncResponse | Record<string, unknown>, initial: boolean): SyncResult {
-  const res = response as Record<string, any>;
+  const res: Record<string, unknown> = { ...response };
   if (typeof res.next_batch !== "string") throw new Error("Sync response has no next_batch");
   const rooms = obj(res.rooms);
   const join: Record<string, JoinedRoomUpdate> = {};
@@ -99,12 +104,14 @@ export function parseV3(response: SyncResponse | Record<string, unknown>, initia
       summary: room.summary
         ? {
             heroes: arr<string>(summary["m.heroes"]),
-            joinedMemberCount: summary["m.joined_member_count"],
-            invitedMemberCount: summary["m.invited_member_count"],
+            joinedMemberCount: numberOrUndefined(summary["m.joined_member_count"]),
+            invitedMemberCount: numberOrUndefined(summary["m.invited_member_count"]),
           }
         : undefined,
-      unreadNotifications: room.unread_notifications,
-      unreadThreadNotifications: room.unread_thread_notifications ? obj(room.unread_thread_notifications) : undefined,
+      unreadNotifications: isObject(room.unread_notifications) ? counts(room.unread_notifications) : undefined,
+      unreadThreadNotifications: isObject(room.unread_thread_notifications)
+        ? Object.fromEntries(Object.entries(room.unread_thread_notifications).map(([thread, c]) => [thread, counts(obj(c))]))
+        : undefined,
     };
   }
   const invited = (section: unknown) => {
@@ -133,7 +140,9 @@ export function parseV3(response: SyncResponse | Record<string, unknown>, initia
     rooms: { join, invite: invited(rooms.invite), leave, knock },
     toDevice: arr(obj(res.to_device).events),
     deviceLists: { changed: arr<string>(deviceLists.changed), left: arr<string>(deviceLists.left) },
-    oneTimeKeyCounts: res.device_one_time_keys_count,
+    oneTimeKeyCounts: isObject(res.device_one_time_keys_count)
+      ? Object.fromEntries(Object.entries(res.device_one_time_keys_count).filter((e): e is [string, number] => typeof e[1] === "number"))
+      : undefined,
     unusedFallbackKeyTypes: Array.isArray(res.device_unused_fallback_key_types) ? res.device_unused_fallback_key_types : undefined,
     accountData: events(res.account_data),
     presence: events(res.presence),

@@ -150,34 +150,32 @@ export class KeySharing {
       this.logger.warn("ignoring a forwarded room key from a device that is not ours and verified", { sender: decrypted.sender });
       return undefined;
     }
-    if (
-      c.algorithm !== MEGOLM_ALGORITHM ||
-      typeof c.room_id !== "string" ||
-      typeof c.session_id !== "string" ||
-      typeof c.session_key !== "string"
-    )
+    // https://github.com/k18k/katrix/issues/128: the fields are copied before they are checked, so the checks hold
+    // inside the store transaction below too (the content is unknown, not any).
+    const { room_id: roomId, session_id: sessionId, session_key: sessionKey } = c;
+    if (c.algorithm !== MEGOLM_ALGORITHM || typeof roomId !== "string" || typeof sessionId !== "string" || typeof sessionKey !== "string")
       return undefined;
-    const requested = await this.store.get("client", `keyreq|${c.room_id}|${c.session_id}`);
+    const requested = await this.store.get("client", `keyreq|${roomId}|${sessionId}`);
     if (!requested) {
-      this.logger.warn("ignoring a forwarded room key nobody asked for", { roomId: c.room_id });
+      this.logger.warn("ignoring a forwarded room key nobody asked for", { roomId: roomId });
       return undefined;
     }
     let session;
     try {
-      session = this.protocol.inboundGroupSessionFromExport(c.session_key);
+      session = this.protocol.inboundGroupSessionFromExport(sessionKey);
     } catch (e) {
       this.logger.warn("ignoring a malformed forwarded room key", describeError(e));
       return undefined;
     }
-    if (session.sessionId() !== c.session_id) return undefined;
+    if (session.sessionId() !== sessionId) return undefined;
     const stored = await this.store.transaction(async (tx) => {
-      const key = inboundKey(c.room_id, c.session_id);
+      const key = inboundKey(roomId, sessionId);
       const existing = await tx.get<InboundGroupSessionRecord>("inbound_group_sessions", key);
       if (existing && session.compare(this.pickler.inbound(existing)) !== "better") return false;
       tx.put("inbound_group_sessions", key, {
         pickle: this.pickler.pickle(session),
-        roomId: c.room_id,
-        sessionId: c.session_id,
+        roomId: roomId,
+        sessionId: sessionId,
         senderKey: typeof c.sender_key === "string" ? c.sender_key : "",
         senderUserId: existing?.senderUserId ?? "",
         claimedEd25519Key: typeof c.sender_claimed_ed25519_key === "string" ? c.sender_claimed_ed25519_key : undefined,
@@ -188,7 +186,7 @@ export class KeySharing {
           decrypted.senderKey,
         ],
       } satisfies InboundGroupSessionRecord);
-      tx.delete("client", `keyreq|${c.room_id}|${c.session_id}`);
+      tx.delete("client", `keyreq|${roomId}|${sessionId}`);
       return true;
     });
     if (!stored) return undefined;
@@ -197,7 +195,7 @@ export class KeySharing {
     await this.sendPlain("m.room_key_request", {
       [this.userId]: { "*": { action: "request_cancellation", request_id: req.requestId, requesting_device_id: this.deviceId } },
     }).catch((e) => this.logger.warn("could not cancel a room key request", describeError(e)));
-    return { roomId: c.room_id, sessionId: c.session_id };
+    return { roomId: roomId, sessionId: sessionId };
   }
 
   /** m.room_key.withheld: the sender will not share the key, and says why (shown on the undecryptable events). */

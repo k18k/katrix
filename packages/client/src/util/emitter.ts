@@ -3,7 +3,7 @@
 export type Listener<A extends unknown[]> = (...args: A) => void;
 
 export class TypedEmitter<Events extends { [K in keyof Events]: unknown[] }> {
-  private listeners = new Map<keyof Events, Set<Listener<any>>>();
+  private listeners = new Map<keyof Events, Set<Listener<any>>>(); // ts-pro-exception: one map holds the listeners of every event; on() and emit() keep them typed per event
   /** Called when a listener throws; the emitter itself never throws to the code that emits. */
   protected onListenerError: (event: keyof Events, error: unknown) => void = () => {};
 

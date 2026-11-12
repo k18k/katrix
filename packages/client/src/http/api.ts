@@ -105,7 +105,7 @@ export class MatrixHttpApi {
     return `${this.baseUrl}${path}${q ? `?${q}` : ""}`;
   }
 
-  async request<T = Record<string, any>>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+  async request<T = Record<string, unknown>>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
     const prefix = opts.prefix ?? "/_matrix/client";
     let refreshed = false;
     for (let attempt = 0; ; attempt++) {
