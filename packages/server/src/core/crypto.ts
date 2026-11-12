@@ -81,13 +81,16 @@ export function loadSigningKey(keyId: string, seed?: string): SigningKey {
 }
 
 /** Sign a JSON object in place according to the Matrix signing algorithm. */
-export function signJson<T extends Record<string, any>>(obj: T, serverName: string, key: SigningKey): T {
+export function signJson<T extends Record<string, any>>(
+  obj: T,
+  serverName: string,
+  key: SigningKey,
+): T & { signatures: Record<string, Record<string, string>> } {
   const { signatures, unsigned, ...rest } = obj;
   const sig = unpaddedBase64(sign(null, Buffer.from(canonicalJson(rest)), key.privateKey));
   const merged = { ...signatures };
   merged[serverName] = { ...merged[serverName], [`ed25519:${key.keyId}`]: sig };
-  (obj as any).signatures = merged;
-  return obj;
+  return Object.assign(obj, { signatures: merged });
 }
 
 const SPKI_ED25519_PREFIX = Buffer.from("302a300506032b6570032100", "hex");

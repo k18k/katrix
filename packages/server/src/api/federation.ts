@@ -4,7 +4,7 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { fullProfile } from "#core/profile.ts";
 import { relationshipsForServer } from "#api/relationships.ts";
 import { authEventKeys, checkAuth, getState, membershipOf, powerLevels, userLevel, type StateMap } from "#core/authrules.ts";
-import { SUPPORTED_ROOM_VERSIONS, eventIdOf, redact, roomVersionFeatures, splitStateKey, stateKey, type PDU } from "#core/events.ts";
+import { SUPPORTED_ROOM_VERSIONS, eventIdOf, isPdu, redact, roomVersionFeatures, splitStateKey, stateKey, type PDU } from "#core/events.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
 import { randomToken, signJson, verifyJsonSignature } from "#core/crypto.ts";
 import type { StoredEvent } from "#core/rooms.ts";
@@ -446,7 +446,9 @@ export function registerFederationRoutes(r: Router): void {
     if (!SUPPORTED_ROOM_VERSIONS.includes(version)) {
       throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Unsupported room version", { room_version: version });
     }
-    if (!isObject(raw) || raw.type !== M.ROOM.MEMBER || raw.content?.membership !== "invite" || typeof raw.state_key !== "string") {
+    // https://github.com/k18k/katrix/issues/128: the event was read as any after isObject; isPdu checks the sender
+    // and room ID that the checks below use.
+    if (!isPdu(raw) || raw.type !== M.ROOM.MEMBER || raw.content.membership !== "invite" || typeof raw.state_key !== "string") {
       throw errors.badJson("Expected an invite event");
     }
     if (raw.room_id !== ctx.params.roomId) throw errors.badJson("Room ID mismatch");

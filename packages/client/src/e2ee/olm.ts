@@ -1,5 +1,5 @@
 import type { MatrixHttpApi } from "../http/api.ts";
-import { decodeUtf8, encodeUtf8, type ToDeviceEvent } from "@katrix/shared";
+import { decodeUtf8, encodeUtf8, isObject, type ToDeviceEvent } from "@katrix/shared";
 import { ProtocolError, type OlmMessage } from "../protocol/protocol.ts";
 import type { Store, Transaction } from "../storage/store.ts";
 import { describeError, type Logger } from "../util/logger.ts";
@@ -233,7 +233,7 @@ export class OlmService {
       }
     }
 
-    let payload: any;
+    let payload: unknown;
     try {
       payload = JSON.parse(decodeUtf8(plaintext));
     } catch {
@@ -241,20 +241,14 @@ export class OlmService {
     }
     // https://spec.matrix.org/v1.16/client-server-api/#molmv1curve25519-aes-sha2: the payload must
     // name the event's sender, us as the recipient and our Ed25519 key, or it was redirected.
-    if (
-      typeof payload !== "object" ||
-      payload === null ||
-      typeof payload.type !== "string" ||
-      typeof payload.content !== "object" ||
-      payload.content === null
-    ) {
+    if (!isObject(payload) || typeof payload.type !== "string" || !isObject(payload.content)) {
       throw new OlmDecryptionError("BAD_FORMAT", "Olm payload has no type or content");
     }
     if (payload.sender !== event.sender) throw new OlmDecryptionError("PAYLOAD_MISMATCH", "Olm payload sender differs from the event's");
     if (payload.recipient !== this.userId) throw new OlmDecryptionError("PAYLOAD_MISMATCH", "Olm payload is for another user");
-    if (payload.recipient_keys?.ed25519 !== this.identityKeys.ed25519)
+    if (!isObject(payload.recipient_keys) || payload.recipient_keys.ed25519 !== this.identityKeys.ed25519)
       throw new OlmDecryptionError("PAYLOAD_MISMATCH", "Olm payload is for another device");
-    const claimed = payload.keys?.ed25519;
+    const claimed = isObject(payload.keys) ? payload.keys.ed25519 : undefined;
     if (typeof claimed !== "string") throw new OlmDecryptionError("BAD_FORMAT", "Olm payload has no sender keys");
 
     // If we know the device with this Curve25519 key, its Ed25519 key must be the claimed one,

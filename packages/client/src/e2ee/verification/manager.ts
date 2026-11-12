@@ -2,7 +2,7 @@ import type { MatrixHttpApi } from "../../http/api.ts";
 import type { MatrixEvent } from "../../models/event.ts";
 import { TypedEmitter } from "../../util/emitter.ts";
 import { describeError } from "../../util/logger.ts";
-import type { ToDeviceEvent } from "@katrix/shared";
+import { isObject, type ToDeviceEvent } from "@katrix/shared";
 import { ALL_METHODS, VerificationRequest, type VerificationChannel, type VerificationContext } from "./request.ts";
 
 /** Requests older than this are not shown (spec: 10 minutes after their timestamp). */
@@ -148,7 +148,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
   /** A to-device event from /sync (plaintext or decrypted). */
   async handleToDevice(event: ToDeviceEvent): Promise<void> {
     if (!VERIFICATION_TYPES.has(event.type)) return;
-    const c = event.content as Record<string, any>;
+    const c = event.content as Record<string, unknown>;
     const txn = c.transaction_id;
     if (typeof txn !== "string") return;
     let request = this.byTxn.get(txn);
@@ -174,7 +174,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
           otherDeviceId: c.from_device,
         });
         request.phase = "ready";
-        request.theirMethods = [c.method];
+        request.theirMethods = typeof c.method === "string" ? [c.method] : [];
         this.byTxn.set(txn, request);
         this.emit("request", request);
       } else {
@@ -190,7 +190,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
 
   /** A room event (decrypted if it was encrypted) that may belong to a verification. */
   async handleRoomEvent(event: MatrixEvent): Promise<void> {
-    const c = event.content as Record<string, any>;
+    const c = event.content as Record<string, unknown>;
     if (!event.sender || !event.roomId) return;
     if (event.type === "m.room.message" && c.msgtype === "m.key.verification.request") {
       if (!event.eventId || this.byEvent.has(event.eventId) || c.to !== this.ctx.userId || event.sender === this.ctx.userId) return;
@@ -207,7 +207,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
       return;
     }
     if (!VERIFICATION_TYPES.has(event.type)) return;
-    const rel = c["m.relates_to"];
+    const rel = isObject(c["m.relates_to"]) ? c["m.relates_to"] : undefined;
     const request = rel?.rel_type === "m.reference" && typeof rel.event_id === "string" ? this.byEvent.get(rel.event_id) : undefined;
     if (!request) return;
     // Our own messages come back through /sync: only those from our other devices matter.

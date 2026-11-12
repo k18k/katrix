@@ -165,7 +165,8 @@ async function fetchRemote(hs: Homeserver, roomId: string, req: WalkRequest, rem
       const pdu = id ? await hs.rooms.getPdu(id) : null;
       if (!pdu) continue;
       await recordEdge(hs, pdu);
-      if (typeof raw.unsigned?.children_hash === "string") remoteHashes.set(pdu.event_id!, raw.unsigned.children_hash);
+      if (isObject(raw.unsigned) && typeof raw.unsigned.children_hash === "string")
+        remoteHashes.set(pdu.event_id!, raw.unsigned.children_hash);
     }
     return true;
   }

@@ -1,7 +1,7 @@
 import type { CryptoPrimitives, KeyPair } from "../../crypto/primitives.ts";
 import { TypedEmitter } from "../../util/emitter.ts";
 import { describeError, type Logger } from "../../util/logger.ts";
-import { bytesEqual, constantTimeEqual, decodeBase64, encodeBase64 } from "@katrix/shared";
+import { bytesEqual, constantTimeEqual, decodeBase64, encodeBase64, isStringRecord } from "@katrix/shared";
 import type { CrossSigning } from "../cross-signing.ts";
 import type { DeviceTracker } from "../devices.ts";
 import { decodeQr, encodeQr, QR_SCAN, QR_SHOW, RECIPROCATE, type QrMode } from "./qr.ts";
@@ -169,7 +169,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   // ─── Incoming messages ────────────────────────────────────────────────────
 
   /** A message of this verification from the other side (`fromDevice` from its content). */
-  async handle(type: string, content: Record<string, any>, sender: string): Promise<void> {
+  async handle(type: string, content: Record<string, unknown>, sender: string): Promise<void> {
     if (this.phase === "done" || this.phase === "cancelled") return;
     try {
       // A message from another device of ours: it took the request over (in-room requests).
@@ -218,7 +218,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     }
   }
 
-  private async onReady(content: Record<string, any>): Promise<void> {
+  private async onReady(content: Record<string, unknown>): Promise<void> {
     if (!this.initiatedByMe || this.phase !== "requested") return this.unexpected();
     if (typeof content.from_device !== "string") return this.unexpected();
     this.otherDeviceId = content.from_device;
@@ -262,7 +262,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     return this.ctx.deviceId < (this.otherDeviceId ?? "");
   }
 
-  private async onStart(content: Record<string, any>): Promise<void> {
+  private async onStart(content: Record<string, unknown>): Promise<void> {
     if (typeof content.from_device === "string") this.otherDeviceId ??= content.from_device;
     if (content.method === RECIPROCATE) return this.onReciprocate(content);
     if (content.method !== SAS_METHOD) return void (await this.cancel("m.unknown_method", "Unsupported verification method"));
@@ -292,7 +292,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     });
   }
 
-  private async onAccept(content: Record<string, any>): Promise<void> {
+  private async onAccept(content: Record<string, unknown>): Promise<void> {
     const sas = this.sas;
     if (!sas?.weStarted || sas.commitment !== undefined) return this.unexpected();
     if (content.key_agreement_protocol !== KEY_AGREEMENT || content.hash !== HASH || content.message_authentication_code !== MAC_METHOD)
@@ -305,7 +305,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     await this.channel.send("m.key.verification.key", { key: encodeBase64(sas.keyPair.publicKey) });
   }
 
-  private async onKey(content: Record<string, any>): Promise<void> {
+  private async onKey(content: Record<string, unknown>): Promise<void> {
     const sas = this.sas;
     if (!sas || sas.theirKey !== undefined || typeof content.key !== "string") return this.unexpected();
     if (sas.weStarted) {
@@ -368,10 +368,9 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     return this.cancel("m.mismatched_sas", "The short authentication strings did not match");
   }
 
-  private async onMac(content: Record<string, any>): Promise<void> {
+  private async onMac(content: Record<string, unknown>): Promise<void> {
     const sas = this.sas;
-    if (!sas?.shared || sas.theirMac || typeof content.mac !== "object" || content.mac === null || typeof content.keys !== "string")
-      return this.unexpected();
+    if (!sas?.shared || sas.theirMac || !isStringRecord(content.mac) || typeof content.keys !== "string") return this.unexpected();
     sas.theirMac = { mac: content.mac, keys: content.keys };
     if (sas.confirmed) await this.checkTheirMac();
   }
@@ -489,7 +488,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     if (this.theirDone) await this.sendDone();
   }
 
-  private async onReciprocate(content: Record<string, any>): Promise<void> {
+  private async onReciprocate(content: Record<string, unknown>): Promise<void> {
     if (!this.qr || this.phase !== "ready" || typeof content.secret !== "string") return this.unexpected();
     if (!bytesEqual(decodeBase64(content.secret), this.qr.secret))
       return void (await this.cancel("m.key_mismatch", "The QR code secret does not match"));

@@ -1,3 +1,4 @@
+import { isObject } from "@katrix/shared";
 import { clearTimer, setTimer } from "../platform.ts";
 import { TypedEmitter } from "../util/emitter.ts";
 import { describeError, type Logger } from "../util/logger.ts";
@@ -60,6 +61,34 @@ export type StreamMetadata = Record<
   string,
   { purpose: "m.usermedia" | "m.screenshare" | string; audio_muted?: boolean; video_muted?: boolean }
 >;
+
+// https://github.com/k18k/katrix/issues/128: call content was read as any, so a party_id, candidate or stream metadata of any shape was adopted
+// as is. These guards check what the call keeps.
+export function isStreamMetadata(value: unknown): value is StreamMetadata {
+  return (
+    isObject(value) &&
+    Object.values(value).every(
+      (m) =>
+        isObject(m) &&
+        typeof m.purpose === "string" &&
+        (m.audio_muted === undefined || typeof m.audio_muted === "boolean") &&
+        (m.video_muted === undefined || typeof m.video_muted === "boolean"),
+    )
+  );
+}
+
+function isIceCandidate(value: unknown): value is IceCandidateLike {
+  return (
+    isObject(value) &&
+    typeof value.candidate === "string" &&
+    (value.sdpMid === undefined || value.sdpMid === null || typeof value.sdpMid === "string") &&
+    (value.sdpMLineIndex === undefined || value.sdpMLineIndex === null || typeof value.sdpMLineIndex === "number")
+  );
+}
+
+export function sdpOf(value: unknown) {
+  return isObject(value) && typeof value.sdp === "string" ? value.sdp : undefined;
+}
 
 export interface CallEvents {
   state: [state: CallState, previous: CallState];
@@ -320,11 +349,11 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
   // ─── Incoming signalling ──────────────────────────────────────────────────
 
   /** An m.call.* event of this call from someone else (or from another device of ours). */
-  async handle(type: string, content: Record<string, any>, sender: string): Promise<void> {
+  async handle(type: string, content: Record<string, unknown>, sender: string): Promise<void> {
     if (this.state === "ended") return;
     const fromUs = sender === this.myUserId && content.party_id === this.partyId;
     if (fromUs) return;
-    if (content.sdp_stream_metadata && typeof content.sdp_stream_metadata === "object") {
+    if (isStreamMetadata(content.sdp_stream_metadata)) {
       this.remoteStreamMetadata = content.sdp_stream_metadata;
       this.emit("streamMetadata", content.sdp_stream_metadata);
     }
@@ -336,11 +365,12 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
           if (sender === this.myUserId && this.state === "ringing") this.end("answered_elsewhere");
           return;
         }
-        if (this.opponent || this.state !== "inviting" || typeof content.answer?.sdp !== "string") return;
+        const answerSdp = sdpOf(content.answer);
+        if (this.opponent || this.state !== "inviting" || answerSdp === undefined || typeof content.party_id !== "string") return;
         this.opponent = { userId: sender, partyId: content.party_id };
         if (this.inviteTimer !== undefined) clearTimer(this.inviteTimer);
         this.setState("connecting");
-        await this.peerConnection!.setRemoteDescription({ type: "answer", sdp: content.answer.sdp });
+        await this.peerConnection!.setRemoteDescription({ type: "answer", sdp: answerSdp });
         this.remoteDescriptionSet = true;
         await this.flushRemoteCandidates();
         await this.signalling.send("m.call.select_answer", { ...this.common(), selected_party_id: content.party_id });
@@ -353,7 +383,7 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
         // Before an answer is picked, candidates of the caller (inbound) are the only ones that count.
         if (this.opponent && !fromOpponent) return;
         for (const c of content.candidates) {
-          if (typeof c?.candidate !== "string") continue;
+          if (!isIceCandidate(c)) continue;
           if (this.remoteDescriptionSet) await this.addRemoteCandidate(c);
           else this.queuedRemoteCandidates.push(c);
         }
@@ -361,12 +391,14 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
       }
       case "m.call.negotiate": {
         const d = content.description;
-        if (!fromOpponent || !this.peerConnection || typeof d?.sdp !== "string") return;
+        const sdp = sdpOf(d);
+        if (!fromOpponent || !this.peerConnection || !isObject(d) || sdp === undefined || (d.type !== "offer" && d.type !== "answer"))
+          return;
         const pc = this.peerConnection;
         const polite = this.direction === "inbound";
         const collision = d.type === "offer" && (this.makingOffer || pc.signalingState !== "stable");
         if (collision && !polite) return;
-        await pc.setRemoteDescription({ type: d.type, sdp: d.sdp });
+        await pc.setRemoteDescription({ type: d.type, sdp });
         if (d.type === "offer") {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);

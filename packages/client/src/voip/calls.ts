@@ -3,7 +3,15 @@ import type { MatrixEvent } from "../models/event.ts";
 import type { Room } from "../models/room.ts";
 import { TypedEmitter } from "../util/emitter.ts";
 import { describeError, type Logger } from "../util/logger.ts";
-import { MatrixCall, type IceServer, type PeerConnectionFactory, type PeerConnectionLike, type StreamMetadata } from "./call.ts";
+import {
+  isStreamMetadata,
+  MatrixCall,
+  sdpOf,
+  type IceServer,
+  type PeerConnectionFactory,
+  type PeerConnectionLike,
+  type StreamMetadata,
+} from "./call.ts";
 
 export interface CallsEvents {
   /**
@@ -135,14 +143,15 @@ export class CallsApi extends TypedEmitter<CallsEvents> {
 
   /** One m.call.* event; returns a new ringing call (to signal once the sync is done). */
   private async handleEvent(event: MatrixEvent, room: Room): Promise<MatrixCall | undefined> {
-    const c = event.content as Record<string, any>;
+    const c = event.content as Record<string, unknown>;
     if (!event.type.startsWith("m.call.") || typeof c.call_id !== "string" || !event.sender) return undefined;
     const existing = this.calls.get(c.call_id);
     if (event.type !== "m.call.invite") {
       await existing?.handle(event.type, c, event.sender);
       return undefined;
     }
-    if (existing || typeof c.party_id !== "string" || typeof c.offer?.sdp !== "string") return undefined;
+    const offerSdp = sdpOf(c.offer);
+    if (existing || typeof c.party_id !== "string" || offerSdp === undefined) return undefined;
     // Our own invite, from another device or coming back through /sync.
     if (event.sender === this.userId) return undefined;
     if (typeof c.invitee === "string" && c.invitee !== this.userId) return undefined;
@@ -160,8 +169,8 @@ export class CallsApi extends TypedEmitter<CallsEvents> {
       direction: "inbound",
       partyId: this.makeId(),
       opponent: { userId: event.sender, partyId: c.party_id },
-      offer: { type: "offer", sdp: c.offer.sdp },
-      remoteStreamMetadata: c.sdp_stream_metadata,
+      offer: { type: "offer", sdp: offerSdp },
+      remoteStreamMetadata: isStreamMetadata(c.sdp_stream_metadata) ? c.sdp_stream_metadata : undefined,
     });
     // Glare: our own outbound call to this room, still unanswered. The call with the lesser ID
     // wins; if it is the incoming one, our outbound call gives way and the app answers this one.

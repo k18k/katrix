@@ -1,5 +1,5 @@
 import type { MatrixEvent, DecryptionFailureCode, DecryptionInfo } from "../models/event.ts";
-import { decodeUtf8, encodeUtf8, type MegolmEncryptedContent } from "@katrix/shared";
+import { decodeUtf8, encodeUtf8, isObject, type MegolmEncryptedContent } from "@katrix/shared";
 import { ProtocolError } from "../protocol/protocol.ts";
 import type { Store, Transaction } from "../storage/store.ts";
 import { describeError, type Logger } from "../util/logger.ts";
@@ -384,19 +384,13 @@ export class MegolmService {
       }
       if (!seen) tx.put("megolm_indices", indexKey, { eventId: event.eventId, ts: event.originServerTs });
 
-      let payload: any;
+      let payload: unknown;
       try {
         payload = JSON.parse(decodeUtf8(result.plaintext));
       } catch {
         throw new MegolmDecryptionError("BAD_ENCRYPTED_MESSAGE", "The plaintext is not JSON");
       }
-      if (
-        typeof payload !== "object" ||
-        payload === null ||
-        typeof payload.type !== "string" ||
-        typeof payload.content !== "object" ||
-        payload.content === null
-      ) {
+      if (!isObject(payload) || typeof payload.type !== "string" || !isObject(payload.content)) {
         throw new MegolmDecryptionError("BAD_ENCRYPTED_MESSAGE", "The plaintext has no type or content");
       }
       // The room ID in the plaintext stops a server from moving an event into another room.

@@ -1436,7 +1436,14 @@ export class RoomService {
       if (!initialKeys.has(stateKey(type, ""))) await send({ type, state_key: "", content });
     }
     for (const ev of initialState) {
-      if (!isObject(ev) || typeof ev.type !== "string" || !isObject(ev.content)) throw errors.badJson("Invalid initial_state event");
+      // https://github.com/k18k/katrix/issues/128: state_key was read as any, so a non-string one was stored as is.
+      if (
+        !isObject(ev) ||
+        typeof ev.type !== "string" ||
+        !isObject(ev.content) ||
+        (ev.state_key !== undefined && typeof ev.state_key !== "string")
+      )
+        throw errors.badJson("Invalid initial_state event");
       if (ev.type === M.ROOM.POWER_LEVELS || ev.type === M.ROOM.CREATE || ev.type === M.ROOM.MEMBER) continue;
       await send({ type: ev.type, state_key: ev.state_key ?? "", content: ev.content });
     }

@@ -231,7 +231,7 @@ export class KeyService {
     await this.hs.db.delete("remote_devices", [{ field: "user_id", value: userId }]);
     for (const [deviceId, keys] of Object.entries(devices)) {
       if (!isObject(keys)) continue;
-      const name = keys.unsigned?.device_display_name;
+      const name = isObject(keys.unsigned) ? keys.unsigned.device_display_name : undefined;
       await this.hs.db.upsert("remote_devices", {
         user_id: userId,
         device_id: deviceId,

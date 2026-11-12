@@ -8,6 +8,7 @@ import {
   computeReferenceHash,
   eventIdOf,
   finalisePdu,
+  isPdu,
   redact,
   roomVersionFeatures,
   splitStateKey,
@@ -115,12 +116,8 @@ export class FederationService {
    * Verify an incoming PDU: event ID, signatures and content hash. Events with a bad
    * content hash are redacted (as the spec requires) rather than rejected.
    */
-  async verifyPdu(
-    raw: Record<string, any>,
-    version: string,
-    roomId: string,
-  ): Promise<{ pdu: PDU; joinAuthorisedSignatureValid?: boolean }> {
-    if (!isObject(raw) || typeof raw.type !== "string" || typeof raw.sender !== "string" || !isObject(raw.content)) {
+  async verifyPdu(raw: unknown, version: string, roomId: string): Promise<{ pdu: PDU; joinAuthorisedSignatureValid?: boolean }> {
+    if (!isPdu(raw)) {
       throw errors.badJson("Malformed PDU");
     }
     const f = roomVersionFeatures(version);
@@ -131,7 +128,13 @@ export class FederationService {
     if (typeof eventId !== "string") throw errors.badJson("Missing event ID");
     const redacted = redact(raw, version);
     const senderDomain = domainOf(raw.sender);
-    if (!(await this.keyring.verifySignedBy(redacted, senderDomain, raw.origin_server_ts))) {
+    if (
+      !(await this.keyring.verifySignedBy(
+        redacted,
+        senderDomain,
+        typeof raw.origin_server_ts === "number" ? raw.origin_server_ts : undefined,
+      ))
+    ) {
       throw errors.forbidden(`Event ${eventId} is not signed by ${senderDomain}`);
     }
     if (f.legacyEventIds && domainOf(eventId) !== senderDomain && !(await this.keyring.verifySignedBy(redacted, domainOf(eventId)))) {
@@ -142,9 +145,9 @@ export class FederationService {
     if (f.restricted && raw.type === M.ROOM.MEMBER && raw.content?.membership === "join" && typeof via === "string" && via.includes(":")) {
       joinAuthorisedSignatureValid = await this.keyring.verifySignedBy(redacted, domainOf(via));
     }
-    let pdu: PDU = { ...(raw as PDU), event_id: eventId };
+    let pdu: PDU = { ...raw, event_id: eventId };
     if (raw.hashes?.sha256 !== computeContentHash(raw)) {
-      pdu = { ...(redact(raw, version) as PDU), event_id: eventId };
+      pdu = { ...redact(raw, version), event_id: eventId };
     }
     if (f.v12 && pdu.type === M.ROOM.CREATE) pdu.room_id = roomId;
     return { pdu, joinAuthorisedSignatureValid };
@@ -752,9 +755,9 @@ export class FederationService {
                   room_id: roomId,
                   user_id: userId,
                   receipt_type: receiptType,
-                  thread_id: typeof r.data?.thread_id === "string" ? r.data.thread_id : "",
+                  thread_id: isObject(r.data) && typeof r.data.thread_id === "string" ? r.data.thread_id : "",
                   event_id: eventId,
-                  ts: Number(r.data?.ts) || Date.now(),
+                  ts: (isObject(r.data) && Number(r.data.ts)) || Date.now(),
                   stream,
                 }),
               );
@@ -767,7 +770,7 @@ export class FederationService {
       case M.PRESENCE: {
         for (const p of Array.isArray(content.push) ? content.push : []) {
           if (!isObject(p) || typeof p.user_id !== "string" || domainOf(p.user_id) !== origin) continue;
-          if (!["online", "offline", "unavailable"].includes(p.presence)) continue;
+          if (p.presence !== "online" && p.presence !== "offline" && p.presence !== "unavailable") continue;
           await this.hs.streams.write((stream) =>
             this.hs.db.upsert("presence", {
               user_id: p.user_id,

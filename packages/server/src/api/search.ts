@@ -96,8 +96,18 @@ export function registerSearchRoutes(r: Router): void {
           if (ec) {
             const roomId = hit.ev.pdu.room_id;
             const here = { depth: hit.ev.pdu.depth, stream: hit.ev.stream };
-            const before = await paginate(hs, s.userId, roomId, { from: here, to: null, dir: "b", limit: ec.before_limit ?? 5 });
-            const after = await paginate(hs, s.userId, roomId, { from: here, to: null, dir: "f", limit: ec.after_limit ?? 5 });
+            const before = await paginate(hs, s.userId, roomId, {
+              from: here,
+              to: null,
+              dir: "b",
+              limit: typeof ec.before_limit === "number" ? ec.before_limit : 5,
+            });
+            const after = await paginate(hs, s.userId, roomId, {
+              from: here,
+              to: null,
+              dir: "f",
+              limit: typeof ec.after_limit === "number" ? ec.after_limit : 5,
+            });
             const context: Record<string, any> = {
               events_before: before.events.map((e) => hs.rooms.formatEvent(e, viewer)),
               events_after: after.events.map((e) => hs.rooms.formatEvent(e, viewer)),

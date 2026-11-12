@@ -12,6 +12,7 @@ import {
   encodeBase64,
   encodeUtf8,
   isObject,
+  isStringRecord,
   signingJson,
   type BackupAuthData,
   type BackupVersionResponse,
@@ -84,14 +85,13 @@ export function decryptBackupSession(
 // backup with a malformed key chain or claimed keys failed later, far from its cause. Every field is checked here.
 function assertBackedUpSession(value: unknown): asserts value is BackedUpSession {
   const isStrings = (v: unknown) => Array.isArray(v) && v.every((x) => typeof x === "string");
-  const isStringMap = (v: unknown) => isObject(v) && Object.values(v).every((x) => typeof x === "string");
   const ok =
     isObject(value) &&
     typeof value.algorithm === "string" &&
     typeof value.session_key === "string" &&
     typeof value.sender_key === "string" &&
     isStrings(value.forwarding_curve25519_key_chain ?? []) &&
-    isStringMap(value.sender_claimed_keys ?? {}) &&
+    isStringRecord(value.sender_claimed_keys ?? {}) &&
     (value.shared_history === undefined || typeof value.shared_history === "boolean");
   if (!ok) throw new Error("The backed-up session is malformed");
 }

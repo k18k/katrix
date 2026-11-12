@@ -3,7 +3,8 @@ import type { E2EEProtocol } from "../protocol/protocol.ts";
 import type { Store, Transaction } from "../storage/store.ts";
 import type { Logger } from "../util/logger.ts";
 import { Mutex } from "../util/mutex.ts";
-import type { CrossSigningKey, KeysQueryResponse } from "@katrix/shared";
+import type { CrossSigningKey, DeviceKeys, KeysQueryResponse } from "@katrix/shared";
+import { isObject } from "@katrix/shared";
 import { deviceKey, type CrossSigningKeys, type DeviceInfo, type UserDevicesRecord, type UserTrustRecord } from "./crypto-store.ts";
 import { verifyObject } from "./keys.ts";
 
@@ -178,22 +179,23 @@ export class DeviceTracker {
     });
   }
 
-  private validate(userId: string, deviceId: string, keys: any): DeviceInfo | undefined {
-    if (typeof keys !== "object" || keys === null || keys.user_id !== userId || keys.device_id !== deviceId) {
+  private validate(userId: string, deviceId: string, keys: unknown): DeviceInfo | undefined {
+    if (!isObject(keys) || keys.user_id !== userId || keys.device_id !== deviceId) {
       this.logger.warn("device keys name another user or device", { userId, deviceId });
       return undefined;
     }
-    const ed25519 = keys.keys?.[`ed25519:${deviceId}`];
-    const curve25519 = keys.keys?.[`curve25519:${deviceId}`];
+    const keyMap = isObject(keys.keys) ? keys.keys : {};
+    const ed25519 = keyMap[`ed25519:${deviceId}`];
+    const curve25519 = keyMap[`curve25519:${deviceId}`];
     if (typeof ed25519 !== "string" || typeof curve25519 !== "string") return undefined;
     if (!verifyObject(this.protocol, keys, userId, deviceId, ed25519)) {
       this.logger.warn("device keys have no valid self-signature", { userId, deviceId });
       return undefined;
     }
-    const displayName = keys.unsigned?.device_display_name;
+    const displayName = isObject(keys.unsigned) ? keys.unsigned.device_display_name : undefined;
     const { unsigned: _unsigned, ...signed } = keys;
     return {
-      signed,
+      signed: signed as Omit<DeviceKeys, "unsigned">, // ts-pro-exception: checked above: user, device, keys and a valid self-signature
       userId,
       deviceId,
       curve25519,

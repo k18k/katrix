@@ -1,4 +1,4 @@
-import { isObject, M, UNSTABLE } from "@katrix/shared";
+import { isObject, isStrings, M, UNSTABLE } from "@katrix/shared";
 import { globMatch as matchGlob } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import type { PDU } from "#core/events.ts";
@@ -89,17 +89,22 @@ function validateEventFilter(f: unknown, name: string): void {
   if (f === undefined) return;
   if (!isObject(f)) throw errors.badJson(`${name} must be an object`);
   for (const key of ["types", "not_types", "senders", "not_senders", "rooms", "not_rooms"]) {
-    if (f[key] !== undefined && (!Array.isArray(f[key]) || !f[key].every((x: unknown) => typeof x === "string"))) {
+    if (f[key] !== undefined && !isStrings(f[key])) {
       throw errors.badJson(`${name}.${key} must be a list of strings`);
     }
   }
-  if (f.rooms?.some((r: string) => !r.startsWith("!")) || f.not_rooms?.some((r: string) => !r.startsWith("!"))) {
+  // https://github.com/k18k/katrix/issues/128: the lists were read as any; they are checked string lists here.
+  const allStartWith = (key: string, prefix: string) => {
+    const list = f[key];
+    return !isStrings(list) || list.every((x) => x.startsWith(prefix));
+  };
+  if (!allStartWith("rooms", "!") || !allStartWith("not_rooms", "!")) {
     throw errors.badJson(`${name}: rooms must be room IDs`);
   }
-  if (f.senders?.some((u: string) => !u.startsWith("@")) || f.not_senders?.some((u: string) => !u.startsWith("@"))) {
+  if (!allStartWith("senders", "@") || !allStartWith("not_senders", "@")) {
     throw errors.badJson(`${name}: senders must be user IDs`);
   }
-  if (f.limit !== undefined && (!Number.isInteger(f.limit) || f.limit < 0))
+  if (f.limit !== undefined && (typeof f.limit !== "number" || !Number.isInteger(f.limit) || f.limit < 0))
     throw errors.badJson(`${name}.limit must be a non-negative integer`);
 }
 
@@ -111,7 +116,8 @@ export function validateSyncFilter(f: unknown): SyncFilter {
     for (const k of ["timeline", "state", "ephemeral", "account_data"]) validateEventFilter(f.room[k], `room.${k}`);
     validateEventFilter({ rooms: f.room.rooms, not_rooms: f.room.not_rooms }, "room");
   }
-  if (f.event_format !== undefined && !["client", "federation"].includes(f.event_format)) throw errors.badJson("Invalid event_format");
+  if (f.event_format !== undefined && f.event_format !== "client" && f.event_format !== "federation")
+    throw errors.badJson("Invalid event_format");
   return f as SyncFilter;
 }
 

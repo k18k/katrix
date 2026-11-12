@@ -163,6 +163,18 @@ export function computeReferenceHash(pdu: Record<string, any>, roomVersion: stri
 }
 
 /** Finalise a PDU: compute hashes, signatures and the event ID. */
+// https://github.com/k18k/katrix/issues/128: incoming PDUs were checked with isObject, which typed every field as any, then cast to PDU.
+// This guard is the one check; fields beyond it (hashes, signatures, depth) are read with their own checks.
+export function isPdu(value: unknown): value is PDU {
+  return (
+    isObject(value) &&
+    typeof value.type === "string" &&
+    typeof value.sender === "string" &&
+    isObject(value.content) &&
+    (value.room_id === undefined || typeof value.room_id === "string")
+  ); // ts-pro-exception: a v12 create PDU has no room_id, which the PDU type requires (see core/rooms.ts)
+}
+
 export function finalisePdu(pdu: PDU, roomVersion: string, serverName: string, key: SigningKey): PDU {
   const features = roomVersionFeatures(roomVersion);
   if (features.legacyEventIds) {

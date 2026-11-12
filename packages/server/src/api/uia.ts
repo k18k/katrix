@@ -149,7 +149,7 @@ export async function requireUia(
           throw challenge({ errcode: "M_FORBIDDEN", error: "This address does not belong to your account" });
         }
         session.threepids = [...session.threepids.filter((t) => t.medium !== medium), validated];
-        session.completed.add(auth.type);
+        session.completed.add(auth.type === M.LOGIN.MSISDN ? M.LOGIN.MSISDN : M.LOGIN.EMAIL.IDENTITY);
         break;
       }
       default:
