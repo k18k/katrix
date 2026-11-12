@@ -11,7 +11,7 @@ import { wellKnown } from "#api/account.ts";
 // https://github.com/k18k/katrix/issues/16: the federation version endpoint
 // reported a hardcoded "0.1.0" whatever release was installed. The version now comes from the
 // package's own package.json, which sits two levels up from both src/api/ and dist/api/.
-const PACKAGE = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { name: string; version: string };
+const PACKAGE = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { name: string; version: string }; // ts-pro-exception: the package's own package.json, read once at load
 
 export const SPEC_VERSIONS = [
   "r0.0.1",

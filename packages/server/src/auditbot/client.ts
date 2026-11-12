@@ -25,7 +25,7 @@ const Req = { KeysUpload: 0, KeysQuery: 1, KeysClaim: 2, ToDevice: 3, SignatureU
  * signatures itself as the body.
  */
 function signatureUploadBody(body: string): string {
-  const parsed = JSON.parse(body) as Record<string, unknown>;
+  const parsed = JSON.parse(body) as Record<string, unknown>; // ts-pro-exception: the body comes from matrix-sdk-crypto, not the network
   return Object.keys(parsed).length === 1 && parsed.signed_keys ? JSON.stringify(parsed.signed_keys) : body;
 }
 
@@ -84,7 +84,7 @@ export class CryptoClient {
     const text = await res.text();
     const json = text ? JSON.parse(text) : {};
     if (!res.ok) throw new MatrixError(res.status, json);
-    return json as T;
+    return json as T; // ts-pro-exception: the bot talks only to its own homeserver, in-process
   }
 
   /** Feed a /sync response to the crypto machine, then send what it needs sent. */

@@ -3,7 +3,7 @@ import type { AuthMetadata } from "@katrix/shared";
 import type { HttpAdapter } from "../http/adapter.ts";
 import { MatrixHttpApi } from "../http/api.ts";
 import { MatrixError } from "../http/errors.ts";
-import { encodeBase64, encodeUtf8 } from "@katrix/shared";
+import { encodeBase64, encodeUtf8, isObject } from "@katrix/shared";
 import { encodeQuery, parseQuery } from "../util/query.ts";
 
 /**
@@ -24,6 +24,19 @@ export interface OAuthTokens {
   expiresAt?: number;
 }
 
+// https://github.com/k18k/katrix/issues/127: the two endpoints parsed their bodies differently, and registerClient threw a
+// SyntaxError instead of a MatrixError when the server answered with a page that is not JSON. Both read the body here:
+// a JSON object, or an empty object for anything else, so the status and field checks below decide.
+async function responseObject(res: { text(): Promise<string> }) {
+  const text = await res.text();
+  try {
+    const value: unknown = JSON.parse(text);
+    return isObject(value) ? value : {};
+  } catch {
+    return {}; // ts-pro-exception: a body that is not JSON is an error response; the caller reports its status
+  }
+}
+
 async function tokenRequest(http: HttpAdapter, endpoint: string, form: Record<string, string>): Promise<OAuthTokens> {
   const res = await http.request({
     method: "POST",
@@ -31,13 +44,7 @@ async function tokenRequest(http: HttpAdapter, endpoint: string, form: Record<st
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: encodeQuery(form),
   });
-  const text = await res.text();
-  let json: Record<string, any> = {};
-  try {
-    json = text ? JSON.parse(text) : {};
-  } catch {
-    /* not JSON */
-  }
+  const json = await responseObject(res);
   if (res.status < 200 || res.status >= 300 || typeof json.access_token !== "string") {
     // OAuth errors ("invalid_grant") as MatrixError, without echoing the request (it holds codes).
     throw new MatrixError(
@@ -66,11 +73,11 @@ export async function registerClient(http: HttpAdapter, metadata: AuthMetadata, 
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(client),
   });
-  const json = JSON.parse((await res.text()) || "{}");
+  const json = await responseObject(res);
   if (res.status < 200 || res.status >= 300 || typeof json.client_id !== "string") {
     throw new MatrixError(
       res.status,
-      { errcode: json.error ?? "M_UNKNOWN", error: json.error_description },
+      { errcode: typeof json.error === "string" ? json.error : "M_UNKNOWN", error: json.error_description },
       { method: "POST", path: "registration endpoint" },
     );
   }

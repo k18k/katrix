@@ -80,11 +80,13 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
   const onNotification = (msg: { channel: string; payload?: string }) => {
     if (msg.channel !== PG_CHANNEL || !msg.payload) return;
     void (async () => {
-      let parsed = JSON.parse(msg.payload!);
+      // https://github.com/k18k/katrix/issues/127: these rows and notifications are written only by instances of this
+      // deployment through this adapter, so they are trusted as the shapes it wrote.
+      let parsed = JSON.parse(msg.payload!); // ts-pro-exception: written by this adapter on another instance
       if (parsed.ref) {
         const res = await pool.query(`SELECT value FROM ${kv} WHERE key = $1`, [parsed.ref]);
         if (!res.rows[0]) return;
-        parsed = JSON.parse(res.rows[0].value);
+        parsed = JSON.parse(res.rows[0].value); // ts-pro-exception: written by this adapter on another instance
       }
       for (const h of handlers.get(parsed.channel) ?? []) h(parsed.message);
     })().catch(() => {}); // ts-pro-exception: the adapter has no logger; a lost notification is recovered by the resync after reconnect (#92)
@@ -261,7 +263,7 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
     },
     async get(key) {
       const res = await q(`SELECT value FROM ${kv} WHERE key = $1 AND (expires_at IS NULL OR expires_at > $2)`, [key, Date.now()]);
-      return res.rows[0] ? JSON.parse(res.rows[0].value) : null;
+      return res.rows[0] ? JSON.parse(res.rows[0].value) : null; // ts-pro-exception: written by this adapter
     },
     async set(key, value, ttlMs) {
       await q(
@@ -288,7 +290,7 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
         `${escaped}%`,
         Date.now(),
       ]);
-      return res.rows.map((r: any) => [r.key, JSON.parse(r.value)] as [string, any]);
+      return res.rows.map((r: any) => [r.key, JSON.parse(r.value)] as [string, any]); // ts-pro-exception: written by this adapter
     },
     async close() {
       closed = true;

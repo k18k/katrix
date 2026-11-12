@@ -172,7 +172,7 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
     if (ev.type !== "m.room.encrypted") return toRecord(roomId, ev);
     try {
       const decrypted = await client.decrypt(ev, roomId);
-      const clear = JSON.parse(decrypted.event) as Record<string, any>;
+      const clear = JSON.parse(decrypted.event) as Record<string, any>; // ts-pro-exception: matrix-sdk-crypto checked the decrypted event
       return toRecord(
         roomId,
         { ...ev, type: clear.type, content: clear.content },

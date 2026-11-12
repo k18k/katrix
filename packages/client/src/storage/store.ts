@@ -11,6 +11,13 @@ import type { StorageAdapter, StoreName, WriteOp } from "./adapter.ts";
  * the end), which lets one /sync response, its to-device messages and the new sync token be
  * committed together.
  */
+
+// https://github.com/k18k/katrix/issues/127: every read cast JSON.parse on its own; this is the one place now. The values are ones this
+// store wrote with JSON.stringify, typed by the caller that wrote them.
+function readJson<T>(raw: string) {
+  return JSON.parse(raw) as T; // ts-pro-exception: the store holds only what its callers wrote, typed per store name
+}
+
 export class Store {
   private readonly adapter: StorageAdapter;
   private readonly mutex = new Mutex();
@@ -22,11 +29,11 @@ export class Store {
   /** Read committed state, outside any unit of work. */
   async get<T>(store: StoreName, key: string): Promise<T | undefined> {
     const raw = await this.adapter.get(store, key);
-    return raw === undefined ? undefined : (JSON.parse(raw) as T);
+    return raw === undefined ? undefined : readJson<T>(raw);
   }
 
   async list<T>(store: StoreName, prefix = ""): Promise<Array<[string, T]>> {
-    return (await this.adapter.list(store, prefix)).map(([k, v]) => [k, JSON.parse(v) as T]);
+    return (await this.adapter.list(store, prefix)).map(([k, v]) => [k, readJson<T>(v)]);
   }
 
   /** Run `task` as one unit of work. Its writes are applied atomically after it returns. */
@@ -63,9 +70,9 @@ export class Transaction {
 
   async get<T>(store: StoreName, key: string): Promise<T | undefined> {
     const op = this.pending.get(Transaction.id(store, key));
-    if (op) return op.type === "put" ? (JSON.parse(op.value) as T) : undefined;
+    if (op) return op.type === "put" ? readJson<T>(op.value) : undefined;
     const raw = await this.adapter.get(store, key);
-    return raw === undefined ? undefined : (JSON.parse(raw) as T);
+    return raw === undefined ? undefined : readJson<T>(raw);
   }
 
   async list<T>(store: StoreName, prefix = ""): Promise<Array<[string, T]>> {
@@ -75,7 +82,7 @@ export class Transaction {
       if (op.type === "put") merged.set(op.key, op.value);
       else merged.delete(op.key);
     }
-    return [...merged.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(([k, v]) => [k, JSON.parse(v) as T]);
+    return [...merged.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(([k, v]) => [k, readJson<T>(v)]);
   }
 
   put(store: StoreName, key: string, value: unknown): void {

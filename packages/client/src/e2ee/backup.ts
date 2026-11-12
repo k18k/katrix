@@ -11,6 +11,7 @@ import {
   decodeUtf8,
   encodeBase64,
   encodeUtf8,
+  isObject,
   signingJson,
   type BackupAuthData,
   type BackupVersionResponse,
@@ -28,9 +29,11 @@ export const BACKUP_ALGORITHM = "m.megolm_backup.v1.curve25519-aes-sha2";
 /** The plaintext of a backed-up session (BackedUpSessionData). */
 export interface BackedUpSession {
   algorithm: string;
-  forwarding_curve25519_key_chain: string[];
+  /** Optional: backups made by other clients may leave it out. */
+  forwarding_curve25519_key_chain?: string[];
   sender_key: string;
-  sender_claimed_keys: Record<string, string>;
+  /** Optional: backups made by other clients may leave it out. */
+  sender_claimed_keys?: Record<string, string>;
   session_key: string;
   shared_history?: boolean;
 }
@@ -72,10 +75,25 @@ export function decryptBackupSession(
   const k = backupKeys(primitives, primitives.x25519SharedSecret(backupPrivateKey, decodeBase64(data.ephemeral)));
   if (!constantTimeEqual(primitives.hmacSha256(k.mac, EMPTY).subarray(0, 8), decodeBase64(data.mac)))
     throw new Error("The backed-up session does not decrypt with this key");
-  const session = JSON.parse(decodeUtf8(primitives.aes256CbcDecrypt(k.aes, k.iv, decodeBase64(data.ciphertext)))) as BackedUpSession;
-  if (typeof session?.session_key !== "string" || typeof session.sender_key !== "string")
-    throw new Error("The backed-up session is malformed");
+  const session: unknown = JSON.parse(decodeUtf8(primitives.aes256CbcDecrypt(k.aes, k.iv, decodeBase64(data.ciphertext))));
+  assertBackedUpSession(session);
   return session;
+}
+
+// https://github.com/k18k/katrix/issues/127: the decrypted session was cast to BackedUpSession after checking two of its fields, so a
+// backup with a malformed key chain or claimed keys failed later, far from its cause. Every field is checked here.
+function assertBackedUpSession(value: unknown): asserts value is BackedUpSession {
+  const isStrings = (v: unknown) => Array.isArray(v) && v.every((x) => typeof x === "string");
+  const isStringMap = (v: unknown) => isObject(v) && Object.values(v).every((x) => typeof x === "string");
+  const ok =
+    isObject(value) &&
+    typeof value.algorithm === "string" &&
+    typeof value.session_key === "string" &&
+    typeof value.sender_key === "string" &&
+    isStrings(value.forwarding_curve25519_key_chain ?? []) &&
+    isStringMap(value.sender_claimed_keys ?? {}) &&
+    (value.shared_history === undefined || typeof value.shared_history === "boolean");
+  if (!ok) throw new Error("The backed-up session is malformed");
 }
 
 interface StoredBackup {
