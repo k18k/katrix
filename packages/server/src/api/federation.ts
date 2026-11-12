@@ -139,8 +139,8 @@ async function makeMembership(
   version: string,
   userId: string,
   membership: string,
-  content: Record<string, any> = {},
-): Promise<Record<string, any>> {
+  content: Record<string, unknown> = {},
+) {
   const state = await hs.rooms.currentState(roomId);
   const extremities = await hs.rooms.extremities(roomId);
   const prevs = [...(await hs.rooms.getPdus(extremities)).values()].sort((a, b) => b.depth - a.depth).slice(0, 10);
@@ -151,7 +151,7 @@ async function makeMembership(
     .filter((x): x is string => !!x);
   const ref = (id: string, pdu?: PDU) => (f.legacyEventIds ? [id, pdu?.hashes ?? {}] : id);
   const authPdus = await hs.rooms.getPdus(authIds);
-  const event: Record<string, any> = {
+  const event: PDU = {
     type: M.ROOM.MEMBER,
     room_id: roomId,
     sender: userId,
@@ -166,7 +166,7 @@ async function makeMembership(
   // The template must be allowed by the current state.
   const authState = new Map(state);
   try {
-    checkAuth(event as PDU, authState, version, { joinAuthorisedSignatureValid: true });
+    checkAuth(event, authState, version, { joinAuthorisedSignatureValid: true });
   } catch (err) {
     throw err instanceof MatrixError ? err : errors.forbidden(String(err));
   }
@@ -215,7 +215,7 @@ async function exchangeThirdPartyInvite(
   roomId: string,
   sender: string,
   invitee: string,
-  signed: Record<string, any>,
+  signed: Record<string, unknown>,
 ): Promise<void> {
   const token = signed.token;
   if (typeof token !== "string") throw errors.badJson("signed.token is required");
@@ -282,14 +282,14 @@ export function registerFederationRoutes(r: Router): void {
       procedure({
         input: def.input,
         guard: async (ctx) => ({ origin: await authenticate(ctx) }),
-        handler: (ctx) => def.handler(ctx as any, ctx.origin) as any,
+        handler: (ctx) => def.handler(ctx as any, ctx.origin) as any, // ts-pro-exception: S cannot be threaded through procedure()'s conditional types here
       }),
     );
   };
 
   // --- Keys -------------------------------------------------------------------
   const notary = async (ctx: RequestContext, servers: string[]) => {
-    const out: Record<string, any>[] = [];
+    const out: Record<string, unknown>[] = [];
     for (const server of servers) {
       if (server === ctx.hs.serverName) {
         const key = ctx.hs.signingKey;
@@ -477,7 +477,7 @@ export function registerFederationRoutes(r: Router): void {
         ? raw.unsigned.invite_room_state
         : [];
     // MSC4311: the stripped state must carry the room's create event (enforced from room version 12).
-    const createInState = inviteState.find((e: any) => e?.type === M.ROOM.CREATE);
+    const createInState = inviteState.find((e: unknown) => isObject(e) && e.type === M.ROOM.CREATE);
     if (v2 && !createInState && roomVersionFeatures(version).v12)
       throw errors.missingParam("invite_room_state must include the m.room.create event");
     if (createInState && roomVersionFeatures(version).v12 && createInState.event_id === undefined) {
@@ -566,7 +566,7 @@ export function registerFederationRoutes(r: Router): void {
           const ev = await hs.rooms.getEvent(id);
           if (!ev || ev.pdu.room_id !== roomId) continue;
           // Events the server may not see are returned redacted (so the DAG stays complete).
-          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : (redact(ev.pdu as Record<string, any>, version) as PDU));
+          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : redact(ev.pdu, version));
           next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
         }
         frontier = next;
@@ -604,7 +604,7 @@ export function registerFederationRoutes(r: Router): void {
           seen.add(id);
           const ev = await eventInRoom(hs, roomId, id);
           if (!ev || ev.pdu.depth < minDepth) continue;
-          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : (redact(ev.pdu as Record<string, any>, version) as PDU));
+          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : redact(ev.pdu, version));
           next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
         }
         frontier = next;
@@ -696,7 +696,7 @@ export function registerFederationRoutes(r: Router): void {
       const devices = await hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
       const keys = await hs.keys.query("", { [userId]: [] });
       const stream = (await hs.db.findOne("device_list_changes", [{ field: "user_id", value: userId }]))?.stream ?? 0;
-      const out: Record<string, any> = {
+      const out: Record<string, unknown> = {
         user_id: userId,
         stream_id: stream,
         devices: devices.map((d) => ({
@@ -726,7 +726,7 @@ export function registerFederationRoutes(r: Router): void {
     chunk.sort((a, b) => b.num_joined_members - a.num_joined_members);
     const since = Number.parseInt(String(body.since ?? ctx.query.get("since") ?? "0").replace(/^o/, ""), 10) || 0;
     const page = limit ? chunk.slice(since, since + limit) : chunk.slice(since);
-    const out: Record<string, any> = { chunk: page, total_room_count_estimate: chunk.length };
+    const out: Record<string, unknown> = { chunk: page, total_room_count_estimate: chunk.length };
     if (limit && since + limit < chunk.length) out.next_batch = `o${since + limit}`;
     return out;
   };
@@ -744,9 +744,9 @@ export function registerFederationRoutes(r: Router): void {
         const details = await roomDetails(hs, id);
         const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
         if (jr?.join_rule === "restricted" || jr?.join_rule === "knock_restricted") {
-          details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : [])
-            .filter((a: any) => a?.type === M.ROOM_MEMBERSHIP)
-            .map((a: any) => a.room_id);
+          details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : []).flatMap((a: unknown) =>
+            isObject(a) && a.type === M.ROOM_MEMBERSHIP && typeof a.room_id === "string" ? [a.room_id] : [],
+          );
         }
         return details;
       };
@@ -769,8 +769,8 @@ export function registerFederationRoutes(r: Router): void {
         return false;
       };
       if (!(await accessible(state))) throw errors.notFound("Room is not accessible");
-      const children: Record<string, any>[] = [];
-      const childrenState: Record<string, any>[] = [];
+      const children: Record<string, unknown>[] = [];
+      const childrenState: Record<string, unknown>[] = [];
       const inaccessible: string[] = [];
       for (const [key, ev] of state) {
         const [type, childId] = splitStateKey(key);
@@ -868,9 +868,10 @@ export function registerFederationRoutes(r: Router): void {
       handler: async (ctx) => {
         const hs = ctx.hs;
         const body = await ctx.json();
-        const invites: any[] = Array.isArray(body.invites) ? body.invites : [];
+        const invites: unknown[] = Array.isArray(body.invites) ? body.invites : [];
         for (const invite of invites) {
-          const signed = invite?.signed;
+          if (!isObject(invite)) continue;
+          const signed = invite.signed;
           if (!isObject(signed) || typeof signed.mxid !== "string" || !hs.isLocalUser(signed.mxid)) continue;
           if (typeof invite.room_id !== "string" || typeof invite.sender !== "string") continue;
           const event = {
