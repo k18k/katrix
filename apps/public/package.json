@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@katrix/dev-idp": "*",
-    "@msecrets/ui": "4.0.1",
+    "@msecrets/cli": "github:k18k/msecrets#cli-v4.1.0",
     "@types/pg": "8.23.1"
   }
 }
