@@ -1,5 +1,13 @@
 # @katrix/client
 
+## 0.4.2
+
+### Patch Changes
+
+- 283df2e: Fields of incoming JSON are now checked before use. The server rejects a `createRoom` `initial_state` event whose `state_key` is not a string (it was stored as is). The client ignores call signalling with a malformed `party_id`, ICE candidate, stream metadata or negotiate description instead of adopting it, and reads verification MACs only when they are a map of strings. ([#128](https://github.com/k18k/katrix/issues/128))
+- 53d1fb8: Restoring from key backup checks every field of each decrypted session and rejects a malformed one with a clear error. `BackedUpSession` now marks `forwarding_curve25519_key_chain` and `sender_claimed_keys` optional, as backups from other clients may leave them out; code that reads them must handle `undefined`. OAuth client registration reports a non-JSON error response as a `MatrixError` instead of throwing a `SyntaxError`. ([#127](https://github.com/k18k/katrix/issues/127))
+- 75428cf: The client no longer passes unchecked sync fields on: room member counts, unread counts and one-time key counts that are not numbers are dropped. Breaking for TypeScript users: `MatrixHttpApi.request()` now returns `Record<string, unknown>` when no type argument is given, and decrypted to-device content is `Record<string, unknown>`; narrow the fields you read. ([#128](https://github.com/k18k/katrix/issues/128))
+
 ## 0.4.1
 
 ### Patch Changes
