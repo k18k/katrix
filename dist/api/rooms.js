@@ -174,12 +174,12 @@ async function upgradeRoom(hs, s, roomId, newVersion, additionalCreators) {
 			type: M.ROOM.CANONICAL_ALIAS,
 			state_key: "",
 			content: {}
-		}).catch(() => {});
+		}).catch((err) => hs.logger.warn("Room upgrade: removing the old room's canonical alias failed", err));
 		await hs.rooms.sendEvent(newRoomId, s.userId, {
 			type: M.ROOM.CANONICAL_ALIAS,
 			state_key: "",
 			content: canonical.content
-		}).catch(() => {});
+		}).catch((err) => hs.logger.warn("Room upgrade: setting the new room's canonical alias failed", err));
 	}
 	if (isPublic) await hs.db.update("rooms", [{
 		field: "room_id",
@@ -202,7 +202,7 @@ async function upgradeRoom(hs, s, roomId, newVersion, additionalCreators) {
 		type: M.ROOM.POWER_LEVELS,
 		state_key: "",
 		content: restricted
-	}).catch(() => {});
+	}).catch((err) => hs.logger.warn("Room upgrade: restricting the old room's power levels failed", err));
 	return newRoomId;
 }
 function registerRoomRoutes(r) {
@@ -457,7 +457,7 @@ function registerRoomRoutes(r) {
 			stream
 		}));
 		hs.notifier.notify(type === M.READ.PRIVATE ? [s.userId] : await hs.rooms.joinedMembers(roomId));
-		await hs.federation.onReceipt(roomId, s.userId, type, eventId, Date.now(), threadId ?? "").catch(() => {});
+		await hs.federation.onReceipt(roomId, s.userId, type, eventId, Date.now(), threadId ?? "").catch((err) => hs.logger.warn("Receipt update to federation failed", err));
 	};
 	const receiptBody = body({ thread_id: v.string(fail("M_INVALID_PARAM", "Invalid thread_id")).min(1, "M_INVALID_PARAM: Invalid thread_id").optional() });
 	r.client("POST", "/rooms/:roomId/receipt/:receiptType/:eventId", procedure({
@@ -533,7 +533,7 @@ function registerRoomRoutes(r) {
 				report_id: id
 			}
 		});
-		if (hs.adminRoom) hs.adminRoom.say(`New report #${id} from ${s.userId} about ${ctx.params.eventId ?? "room"} in ${roomId}: ${body.reason ?? "(no reason)"}`).catch(() => {});
+		if (hs.adminRoom) hs.adminRoom.say(`New report #${id} from ${s.userId} about ${ctx.params.eventId ?? "room"} in ${roomId}: ${body.reason ?? "(no reason)"}`).catch((err) => hs.logger.warn("Posting the report to the admin room failed", err));
 		return {};
 	};
 	r.client("POST", "/users/:userId/report", procedure({
@@ -564,7 +564,7 @@ function registerRoomRoutes(r) {
 				target: userId,
 				details: { report_id: id }
 			});
-			if (hs.adminRoom) hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch(() => {});
+			if (hs.adminRoom) hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch((err) => hs.logger.warn("Posting the report to the admin room failed", err));
 			return {};
 		}
 	}));

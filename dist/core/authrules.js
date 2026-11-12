@@ -1,5 +1,5 @@
 import { isValidUserId } from "../shared/ids.js";
-import { isObject } from "../shared/json.js";
+import { isObject, stringOrUndefined } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { publicKeyFromBase64, verifyJsonSignature } from "./crypto.js";
 import { roomVersionFeatures, stateKey, versionNum } from "./events.js";
@@ -21,12 +21,12 @@ function getState(state, type, key = "") {
 	return state.get(stateKey(type, key));
 }
 function membershipOf(state, userId) {
-	return getState(state, M.ROOM.MEMBER, userId)?.content?.membership ?? "leave";
+	return stringOrUndefined(getState(state, M.ROOM.MEMBER, userId)?.content?.membership) ?? "leave";
 }
 function roomCreator(state, roomVersion) {
 	const create = getState(state, M.ROOM.CREATE);
 	if (!create) return void 0;
-	return roomVersionFeatures(roomVersion).v11 ? create.sender : create.content.creator ?? create.sender;
+	return roomVersionFeatures(roomVersion).v11 ? create.sender : stringOrUndefined(create.content.creator) ?? create.sender;
 }
 const toInt = (v, fallback) => {
 	if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
@@ -256,7 +256,8 @@ function checkAuth(event, state, roomVersion, opts = {}) {
 	}
 }
 function checkThirdPartyInvite(event, state) {
-	const signed = event.content?.third_party_invite?.signed;
+	const thirdPartyInvite = event.content?.third_party_invite;
+	const signed = isObject(thirdPartyInvite) ? thirdPartyInvite.signed : void 0;
 	if (!isObject(signed) || typeof signed.mxid !== "string" || typeof signed.token !== "string") return false;
 	if (signed.mxid !== event.state_key) return false;
 	const invite = getState(state, M.ROOM.THIRD_PARTY_INVITE, signed.token);
@@ -341,7 +342,7 @@ function checkPowerLevelChange(event, current, senderLevel, integerOnly, checkNo
 	compareMap(current.events, c.events ?? {}, false);
 	if (checkNotifications) compareMap({ ...current.notifications }, {
 		room: 50,
-		...c.notifications
+		...isObject(c.notifications) ? c.notifications : {}
 	}, false);
 }
 export { authEventKeys, authStateFromAuthEvents, checkAuth, getState, membershipOf, ownerOfStateKey, powerLevels, requiredLevel, roomCreator, roomCreators, userLevel };

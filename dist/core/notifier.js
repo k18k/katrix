@@ -21,6 +21,8 @@ var Notifier = class {
 	instanceId;
 	lastAllocated;
 	position;
+	/** Reports a wake-up that could not be published to other instances; the homeserver sets it to its logger. */
+	warn = () => {};
 	/** Wake-ups whose change is beyond the position known to be visible. */
 	held = [];
 	/** The highest position known to be visible. */
@@ -52,7 +54,7 @@ var Notifier = class {
 			from: this.instanceId,
 			users,
 			pos: at
-		}).catch(() => {});
+		}).catch((err) => this.warn("Wake-up publish to other instances failed", err));
 	}
 	/** The position may have moved (a write of this instance completed): release what it covers. */
 	advanced() {

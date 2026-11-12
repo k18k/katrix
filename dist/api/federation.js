@@ -1,8 +1,8 @@
 import { isValidUserId } from "../shared/ids.js";
-import { isObject } from "../shared/json.js";
+import { isObject, stringOrUndefined } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { randomToken, signJson, verifyJsonSignature } from "../core/crypto.js";
-import { SUPPORTED_ROOM_VERSIONS, eventIdOf, redact, roomVersionFeatures, splitStateKey, stateKey } from "../core/events.js";
+import { SUPPORTED_ROOM_VERSIONS, eventIdOf, isPdu, redact, roomVersionFeatures, splitStateKey, stateKey } from "../core/events.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { authEventKeys, checkAuth, getState, membershipOf, powerLevels, userLevel } from "../core/authrules.js";
 import { inviteDecision } from "../core/invitefilter.js";
@@ -199,7 +199,7 @@ async function exchangeThirdPartyInvite(hs, roomId, sender, invitee, signed) {
 	if (!pending) throw errors.forbidden("No such third-party invite");
 	if (pending.sender !== sender) throw errors.forbidden("The third-party invite was sent by someone else");
 	await hs.rooms.invite(roomId, sender, invitee, { thirdPartyInvite: {
-		display_name: pending.content?.display_name ?? "",
+		display_name: stringOrUndefined(pending.content?.display_name) ?? "",
 		signed
 	} });
 }
@@ -209,7 +209,7 @@ async function sendMembership(ctx, origin, membership) {
 	const version = await roomOr404(hs, roomId);
 	await checkAcl(hs, roomId, origin);
 	const raw = await ctx.json();
-	if (raw.type !== M.ROOM.MEMBER || raw.content?.membership !== membership || raw.state_key !== raw.sender) throw errors.badJson(`Expected a ${membership} event`);
+	if (!isPdu(raw) || raw.type !== M.ROOM.MEMBER || raw.content.membership !== membership || raw.state_key !== raw.sender) throw errors.badJson(`Expected a ${membership} event`);
 	if (domainOf(raw.sender) !== origin) throw errors.forbidden("Sender does not belong to the origin server");
 	let { pdu, joinAuthorisedSignatureValid } = await hs.federation.verifyPdu(raw, version, roomId);
 	if (pdu.event_id !== ctx.params.eventId) throw errors.badJson("Event ID mismatch");
@@ -370,7 +370,7 @@ function registerFederationRoutes(r) {
 		const raw = v2 ? body.event : body;
 		const version = v2 ? String(body.room_version ?? "1") : "1";
 		if (!SUPPORTED_ROOM_VERSIONS.includes(version)) throw new MatrixError(400, "M_INCOMPATIBLE_ROOM_VERSION", "Unsupported room version", { room_version: version });
-		if (!isObject(raw) || raw.type !== M.ROOM.MEMBER || raw.content?.membership !== "invite" || typeof raw.state_key !== "string") throw errors.badJson("Expected an invite event");
+		if (!isPdu(raw) || raw.type !== M.ROOM.MEMBER || raw.content.membership !== "invite" || typeof raw.state_key !== "string") throw errors.badJson("Expected an invite event");
 		if (raw.room_id !== ctx.params.roomId) throw errors.badJson("Room ID mismatch");
 		if (domainOf(raw.sender) !== origin) throw errors.forbidden("Sender does not belong to the origin server");
 		const target = raw.state_key;
@@ -404,7 +404,7 @@ function registerFederationRoutes(r) {
 			[hs.serverName]: signedRedacted.signatures[hs.serverName]
 		};
 		const inviteState = Array.isArray(body.invite_room_state) ? body.invite_room_state : Array.isArray(raw.unsigned?.invite_room_state) ? raw.unsigned.invite_room_state : [];
-		const createInState = inviteState.find((e) => e?.type === M.ROOM.CREATE);
+		const createInState = inviteState.find((e) => isObject(e) && e.type === M.ROOM.CREATE);
 		if (v2 && !createInState && roomVersionFeatures(version).v12) throw errors.missingParam("invite_room_state must include the m.room.create event");
 		if (createInState && roomVersionFeatures(version).v12 && createInState.event_id === void 0) try {
 			if (hs.federation.computeEventId(createInState, version) !== `$${raw.room_id.slice(1)}`) throw new Error("mismatch");
@@ -665,12 +665,12 @@ function registerFederationRoutes(r) {
 		const summary = async (id, s) => {
 			const details = await roomDetails(hs, id);
 			const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
-			if (["restricted", "knock_restricted"].includes(jr?.join_rule)) details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr.allow : []).filter((a) => a?.type === M.ROOM_MEMBERSHIP).map((a) => a.room_id);
+			if (jr?.join_rule === "restricted" || jr?.join_rule === "knock_restricted") details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr.allow : []).flatMap((a) => isObject(a) && a.type === M.ROOM_MEMBERSHIP && typeof a.room_id === "string" ? [a.room_id] : []);
 			return details;
 		};
 		const accessible = async (s) => {
 			const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
-			const rule = jr?.join_rule ?? "invite";
+			const rule = stringOrUndefined(jr?.join_rule) ?? "invite";
 			const hv = getState(s, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility;
 			if ([
 				"public",
@@ -765,8 +765,9 @@ function registerFederationRoutes(r) {
 		const hs = ctx.hs;
 		const roomId = ctx.params.roomId;
 		const event = await ctx.json();
-		const signed = event.content?.third_party_invite?.signed;
-		if (event.type !== M.ROOM.MEMBER || event.room_id !== roomId || event.content?.membership !== "invite" || !isObject(signed)) throw errors.badJson("Expected an m.room.member invite with third_party_invite");
+		const invite = isObject(event.content) ? event.content.third_party_invite : void 0;
+		const signed = isObject(invite) ? invite.signed : void 0;
+		if (!isPdu(event) || event.type !== M.ROOM.MEMBER || event.room_id !== roomId || event.content.membership !== "invite" || !isObject(signed)) throw errors.badJson("Expected an m.room.member invite with third_party_invite");
 		if (typeof event.sender !== "string" || !hs.isLocalUser(event.sender)) throw errors.forbidden("The sender is not a user of this server");
 		if (typeof event.state_key !== "string" || domainOf(event.state_key) !== origin || signed.mxid !== event.state_key) throw errors.forbidden("The invitee does not belong to the requesting server");
 		await roomOr404(hs, roomId);
@@ -779,7 +780,8 @@ function registerFederationRoutes(r) {
 		const body = await ctx.json();
 		const invites = Array.isArray(body.invites) ? body.invites : [];
 		for (const invite of invites) {
-			const signed = invite?.signed;
+			if (!isObject(invite)) continue;
+			const signed = invite.signed;
 			if (!isObject(signed) || typeof signed.mxid !== "string" || !hs.isLocalUser(signed.mxid)) continue;
 			if (typeof invite.room_id !== "string" || typeof invite.sender !== "string") continue;
 			const event = {

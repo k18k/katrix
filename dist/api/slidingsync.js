@@ -1,4 +1,4 @@
-import { isObject } from "../shared/json.js";
+import { isObject, stringOrUndefined } from "../shared/json.js";
 import { M, UNSTABLE } from "../shared/m.js";
 import { splitStateKey, toClientEvent } from "../core/events.js";
 import { MatrixError } from "../core/errors.js";
@@ -183,7 +183,7 @@ async function buildResponse(hs, s, body, conn, since, to) {
 		if (f.is_dm !== void 0) rooms = rooms.filter((r) => dmRooms.has(r.roomId) === f.is_dm);
 		if (f.is_invite !== void 0) rooms = rooms.filter((r) => r.membership === "invite" === f.is_invite);
 		if (f.is_encrypted !== void 0) rooms = rooms.filter((r) => !!getState(r.state, M.ROOM.ENCRYPTION) === f.is_encrypted);
-		const roomType = (r) => getState(r.state, M.ROOM.CREATE)?.content?.type ?? null;
+		const roomType = (r) => stringOrUndefined(getState(r.state, M.ROOM.CREATE)?.content?.type) ?? null;
 		if (f.room_types) rooms = rooms.filter((r) => f.room_types.includes(roomType(r)));
 		if (f.not_room_types) rooms = rooms.filter((r) => !f.not_room_types.includes(roomType(r)));
 		if (f.spaces) {
@@ -235,8 +235,6 @@ async function buildResponse(hs, s, body, conn, since, to) {
 		]);
 		if (!initial && room.timeline.length === 0 && room.required_state.length === 0 && known.counts === counts) continue;
 		if (initial) room.initial = true;
-		if (since !== null && !initial) room.num_live = room.timeline.filter((e) => e.__stream > since).length;
-		for (const e of room.timeline) delete e.__stream;
 		rooms[roomId] = room;
 		next.rooms[roomId] = {
 			config: configKey,
@@ -307,11 +305,11 @@ async function buildRoom(hs, s, info, config, since, to, isDm) {
 	}]))?.stream ?? to);
 	if ((config.timeline_limit ?? 0) > 0) {
 		const { timeline, timelineEvents } = await roomTimeline(hs, p, roomId, since, upTo);
-		room.timeline = timeline.events.map((e, i) => ({
+		room.timeline = timeline.events.map((e) => ({
 			...e,
-			room_id: void 0,
-			__stream: timelineEvents[i].stream
+			room_id: void 0
 		}));
+		if (since !== null) room.num_live = timelineEvents.filter((e) => e.stream > since).length;
 		room.limited = timeline.limited;
 		room.prev_batch = timeline.prev_batch;
 	}

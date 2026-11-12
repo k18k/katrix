@@ -1,5 +1,5 @@
 import { isValidUserId } from "../shared/ids.js";
-import { isObject } from "../shared/json.js";
+import { isObject, stringOrUndefined } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { getState } from "../core/authrules.js";
@@ -157,8 +157,8 @@ function registerProfileRoutes(r) {
 				const member = members.get(eventOf.get(userId) ?? "");
 				candidates.push({
 					user_id: userId,
-					displayname: member?.content?.displayname,
-					avatar_url: member?.content?.avatar_url
+					displayname: stringOrUndefined(member?.content?.displayname),
+					avatar_url: stringOrUndefined(member?.content?.avatar_url)
 				});
 			}
 			const results = candidates.filter((u) => u.user_id.toLowerCase().includes(term) || typeof u.displayname === "string" && u.displayname.toLowerCase().includes(term)).map((u) => ({
@@ -201,11 +201,7 @@ function registerProfileRoutes(r) {
 			const s = ctx.session;
 			if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot set another user's presence");
 			const body = await ctx.json();
-			if (![
-				"online",
-				"offline",
-				"unavailable"
-			].includes(body.presence)) throw errors.invalidParam("Invalid presence");
+			if (body.presence !== "online" && body.presence !== "offline" && body.presence !== "unavailable") throw errors.invalidParam("Invalid presence");
 			await ctx.hs.streams.write((stream) => ctx.hs.db.upsert("presence", {
 				user_id: s.userId,
 				presence: body.presence,
@@ -213,7 +209,7 @@ function registerProfileRoutes(r) {
 				last_active_ts: Date.now(),
 				stream
 			}));
-			await ctx.hs.federation.onPresence(s.userId, body.presence, typeof body.status_msg === "string" ? body.status_msg : null).catch(() => {});
+			await ctx.hs.federation.onPresence(s.userId, body.presence, typeof body.status_msg === "string" ? body.status_msg : null).catch((err) => ctx.hs.logger.warn("Presence update to federation failed", err));
 			ctx.hs.notifier.notify(await ctx.hs.rooms.usersSharingRooms(s.userId));
 			return {};
 		}

@@ -333,7 +333,8 @@ function registerUserRoutes(r) {
 				recipients.add(userId);
 			}
 			hs.notifier.notify(recipients);
-			await hs.federation.sendToDevice(s.userId, ctx.params.eventType, body.messages, `${s.deviceId}-${ctx.params.txnId}`);
+			const messages = Object.fromEntries(Object.entries(body.messages).filter((e) => isObject(e[1])));
+			await hs.federation.sendToDevice(s.userId, ctx.params.eventType, messages, `${s.deviceId}-${ctx.params.txnId}`);
 			return {};
 		}
 	}));

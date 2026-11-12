@@ -116,7 +116,7 @@ async function requireUia(hs, body, flows, userId, opts = {}) {
 				error: "This address does not belong to your account"
 			});
 			session.threepids = [...session.threepids.filter((t) => t.medium !== medium), validated];
-			session.completed.add(auth.type);
+			session.completed.add(auth.type === M.LOGIN.MSISDN ? M.LOGIN.MSISDN : M.LOGIN.EMAIL.IDENTITY);
 			break;
 		}
 		default: throw challenge({

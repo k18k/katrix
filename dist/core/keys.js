@@ -274,7 +274,7 @@ var KeyService = class {
 		}]);
 		for (const [deviceId, keys] of Object.entries(devices)) {
 			if (!isObject(keys)) continue;
-			const name = keys.unsigned?.device_display_name;
+			const name = isObject(keys.unsigned) ? keys.unsigned.device_display_name : void 0;
 			await this.hs.db.upsert("remote_devices", {
 				user_id: userId,
 				device_id: deviceId,
@@ -384,7 +384,7 @@ var KeyService = class {
 			}));
 		}
 		await this.markDeviceListChanged(userId);
-		await this.hs.federation.onSigningKeyUpdate(userId).catch(() => {});
+		await this.hs.federation.onSigningKeyUpdate(userId).catch((err) => this.hs.logger.warn("Signing key update to federation failed", err));
 	}
 	async uploadSignatures(signer, body) {
 		const failures = {};
@@ -415,7 +415,7 @@ var KeyService = class {
 		}
 		for (const u of changed) if (this.hs.isLocalUser(u)) await this.deviceChanged(u);
 		else await this.markDeviceListChanged(u);
-		if (changed.has(signer)) await this.hs.federation.onSigningKeyUpdate(signer).catch(() => {});
+		if (changed.has(signer)) await this.hs.federation.onSigningKeyUpdate(signer).catch((err) => this.hs.logger.warn("Signing key update to federation failed", err));
 		return { failures };
 	}
 	/** Users (sharing a room with `userId`) whose device lists changed after `since`. */

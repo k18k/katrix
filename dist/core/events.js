@@ -132,6 +132,9 @@ function computeReferenceHash(pdu, roomVersion) {
 	return sha256(canonicalJson(rest));
 }
 /** Finalise a PDU: compute hashes, signatures and the event ID. */
+function isPdu(value) {
+	return isObject(value) && typeof value.type === "string" && typeof value.sender === "string" && isObject(value.content) && (value.room_id === void 0 || typeof value.room_id === "string");
+}
 function finalisePdu(pdu, roomVersion, serverName, key) {
 	const features = roomVersionFeatures(roomVersion);
 	if (features.legacyEventIds) {
@@ -183,6 +186,6 @@ const splitStateKey = (k) => {
 	const i = k.indexOf("\0");
 	return [k.slice(0, i), k.slice(i + 1)];
 };
-export { STABLE_ROOM_VERSIONS, SUPPORTED_ROOM_VERSIONS, UNSTABLE_ROOM_VERSIONS, computeContentHash, computeReferenceHash, eventIdOf, finalisePdu, redact, roomVersionFeatures, splitStateKey, stateKey, stripState, toClientEvent, versionNum };
+export { STABLE_ROOM_VERSIONS, SUPPORTED_ROOM_VERSIONS, UNSTABLE_ROOM_VERSIONS, computeContentHash, computeReferenceHash, eventIdOf, finalisePdu, isPdu, redact, roomVersionFeatures, splitStateKey, stateKey, stripState, toClientEvent, versionNum };
 
 //# sourceMappingURL=events.js.map

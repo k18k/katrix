@@ -1,9 +1,9 @@
 import { parseId } from "../shared/ids.js";
-import { isObject } from "../shared/json.js";
+import { isObject, isStrings } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { globMatch } from "../shared/glob.js";
 import { unpaddedBase64, urlSafeBase64 } from "../core/crypto.js";
-import { SUPPORTED_ROOM_VERSIONS, computeContentHash, computeReferenceHash, eventIdOf, finalisePdu, redact, roomVersionFeatures, splitStateKey, stateKey, stripState } from "../core/events.js";
+import { SUPPORTED_ROOM_VERSIONS, computeContentHash, computeReferenceHash, eventIdOf, finalisePdu, isPdu, redact, roomVersionFeatures, splitStateKey, stateKey, stripState } from "../core/events.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { authStateFromAuthEvents, checkAuth, getState, membershipOf } from "../core/authrules.js";
 import { resolveState } from "../core/stateres.js";
@@ -55,16 +55,20 @@ var FederationService = class {
 	}
 	/** Convert a stored event into its federation (wire) format. */
 	toFederationPdu(pdu, version) {
-		const { unsigned, ...rest } = pdu;
-		const out = { ...rest };
+		const { unsigned: _unsigned, event_id, room_id, ...rest } = pdu;
 		const f = roomVersionFeatures(version);
-		if (!f.legacyEventIds) delete out.event_id;
-		if (f.v12 && out.type === M.ROOM.CREATE) delete out.room_id;
-		return out;
+		return {
+			...rest,
+			...f.legacyEventIds && { event_id },
+			...!(f.v12 && pdu.type === M.ROOM.CREATE) && { room_id }
+		};
 	}
 	computeEventId(raw, version) {
 		const f = roomVersionFeatures(version);
-		if (f.legacyEventIds) return raw.event_id;
+		if (f.legacyEventIds) {
+			if (typeof raw.event_id !== "string") throw errors.badJson("Missing event ID");
+			return raw.event_id;
+		}
 		const hash = computeReferenceHash(raw, version);
 		return `$${f.urlSafeEventIds ? urlSafeBase64(hash) : unpaddedBase64(hash)}`;
 	}
@@ -73,16 +77,15 @@ var FederationService = class {
 	* content hash are redacted (as the spec requires) rather than rejected.
 	*/
 	async verifyPdu(raw, version, roomId) {
-		if (!isObject(raw) || typeof raw.type !== "string" || typeof raw.sender !== "string" || !isObject(raw.content)) throw errors.badJson("Malformed PDU");
+		if (!isPdu(raw)) throw errors.badJson("Malformed PDU");
 		const f = roomVersionFeatures(version);
 		if (!f.v12 || raw.type !== M.ROOM.CREATE) {
 			if (raw.room_id !== roomId) throw errors.badJson("PDU room_id mismatch");
 		}
 		const eventId = this.computeEventId(raw, version);
-		if (typeof eventId !== "string") throw errors.badJson("Missing event ID");
 		const redacted = redact(raw, version);
 		const senderDomain = domainOf(raw.sender);
-		if (!await this.keyring.verifySignedBy(redacted, senderDomain, raw.origin_server_ts)) throw errors.forbidden(`Event ${eventId} is not signed by ${senderDomain}`);
+		if (!await this.keyring.verifySignedBy(redacted, senderDomain, typeof raw.origin_server_ts === "number" ? raw.origin_server_ts : void 0)) throw errors.forbidden(`Event ${eventId} is not signed by ${senderDomain}`);
 		if (f.legacyEventIds && domainOf(eventId) !== senderDomain && !await this.keyring.verifySignedBy(redacted, domainOf(eventId))) throw errors.forbidden(`Event ${eventId} is not signed by its origin`);
 		let joinAuthorisedSignatureValid;
 		const via = raw.content?.join_authorised_via_users_server;
@@ -313,7 +316,7 @@ var FederationService = class {
 		}]);
 		if (!row) throw errors.notFound("Unknown room");
 		const previous = await this.hs.rooms.getPdu(row.event_id);
-		const strippedCreate = (p) => (p?.unsigned?.invite_room_state ?? p?.unsigned?.knock_room_state ?? []).find((e) => e?.type === M.ROOM.CREATE);
+		const strippedCreate = (p) => (p?.unsigned?.invite_room_state ?? p?.unsigned?.knock_room_state ?? []).find((e) => isObject(e) && e.type === M.ROOM.CREATE);
 		let create = strippedCreate(previous);
 		if (!create) {
 			for (const o of await this.hs.db.findMany("outliers", { where: [{
@@ -449,7 +452,7 @@ var FederationService = class {
 					const raw = await this.fetchRawEvent(origin, id).catch(() => null);
 					if (!raw) continue;
 					raws.push(raw);
-					for (const a of (raw.auth_events ?? []).map(eventIdOf)) next.push(a);
+					for (const a of (Array.isArray(raw.auth_events) ? raw.auth_events : []).map(eventIdOf)) if (typeof a === "string") next.push(a);
 				}
 				queue = next;
 			}
@@ -470,13 +473,14 @@ var FederationService = class {
 		} catch {
 			return true;
 		}
-		const events = (Array.isArray(res.events) ? res.events : []).filter(isObject);
+		const events = (isObject(res) && Array.isArray(res.events) ? res.events : []).filter(isObject);
 		for (const ev of events) try {
 			this.computeEventId(ev, version);
 		} catch {
 			return false;
 		}
-		events.sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0));
+		const depthOf = (e) => typeof e.depth === "number" ? e.depth : 0;
+		events.sort((a, b) => depthOf(a) - depthOf(b));
 		const failed = /* @__PURE__ */ new Set();
 		for (const ev of events) try {
 			await this.handlePdu(origin, roomId, version, ev, 3);
@@ -511,9 +515,10 @@ var FederationService = class {
 		} catch (err) {
 			this.hs.logger.debug("/state_ids failed, falling back to /state", origin, err);
 		}
-		if (res && (!Array.isArray(res.pdu_ids) || !res.pdu_ids.length)) throw errors.notFound("Remote server returned no state");
-		if (res) {
-			stateIds = res.pdu_ids;
+		const stateIdList = isObject(res) && isStrings(res.pdu_ids) ? res.pdu_ids : void 0;
+		if (res && !stateIdList?.length) throw errors.notFound("Remote server returned no state");
+		if (isObject(res) && stateIdList) {
+			stateIds = stateIdList;
 			const wanted = [...Array.isArray(res.auth_chain_ids) ? res.auth_chain_ids : [], ...stateIds];
 			const missing = [];
 			for (const id of wanted) if (typeof id === "string" && !await this.hs.rooms.knowsEvent(id)) missing.push(id);
@@ -625,9 +630,9 @@ var FederationService = class {
 								room_id: roomId,
 								user_id: userId,
 								receipt_type: receiptType,
-								thread_id: typeof r.data?.thread_id === "string" ? r.data.thread_id : "",
+								thread_id: isObject(r.data) && typeof r.data.thread_id === "string" ? r.data.thread_id : "",
 								event_id: eventId,
-								ts: Number(r.data?.ts) || Date.now(),
+								ts: isObject(r.data) && Number(r.data.ts) || Date.now(),
 								stream
 							}));
 						}
@@ -638,11 +643,7 @@ var FederationService = class {
 			case M.PRESENCE:
 				for (const p of Array.isArray(content.push) ? content.push : []) {
 					if (!isObject(p) || typeof p.user_id !== "string" || domainOf(p.user_id) !== origin) continue;
-					if (![
-						"online",
-						"offline",
-						"unavailable"
-					].includes(p.presence)) continue;
+					if (p.presence !== "online" && p.presence !== "offline" && p.presence !== "unavailable") continue;
 					await this.hs.streams.write((stream) => this.hs.db.upsert("presence", {
 						user_id: p.user_id,
 						presence: p.presence,
@@ -714,11 +715,12 @@ var FederationService = class {
 		const pdu = {
 			...rest,
 			content: {
-				...rest.content,
+				...isObject(rest.content) ? rest.content : {},
 				...extraContent
 			},
 			origin_server_ts: Date.now()
 		};
+		if (!isPdu(pdu)) throw errors.badJson("Malformed event template");
 		if (roomVersionFeatures(version).legacyEventIds) pdu.origin = this.hs.serverName;
 		return finalisePdu(pdu, version, this.hs.serverName, this.hs.signingKey);
 	}

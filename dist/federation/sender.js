@@ -24,9 +24,9 @@ var TransactionSender = class {
 	/** Start background sweeping for destinations with pending items (e.g. after a restart). */
 	start() {
 		if (this.sweepTimer) return;
-		this.sweepTimer = setInterval(() => void this.sweep().catch(() => {}), SWEEP_INTERVAL_MS);
+		this.sweepTimer = setInterval(() => void this.sweep().catch((err) => this.hs.logger.warn("Federation outbox sweep failed", err)), SWEEP_INTERVAL_MS);
 		this.sweepTimer.unref?.();
-		this.sweep().catch(() => {});
+		this.sweep().catch((err) => this.hs.logger.warn("Federation outbox sweep failed", err));
 	}
 	async sweep() {
 		const rows = await this.hs.db.findMany("federation_outbox", {

@@ -70,8 +70,7 @@ function signJson(obj, serverName, key) {
 		...merged[serverName],
 		[`ed25519:${key.keyId}`]: sig
 	};
-	obj.signatures = merged;
-	return obj;
+	return Object.assign(obj, { signatures: merged });
 }
 const SPKI_ED25519_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 /** Decode unpadded (standard or URL-safe) base64. */

@@ -32,6 +32,8 @@ export declare class Notifier {
   private instanceId;
   private lastAllocated;
   private position;
+  /** Reports a wake-up that could not be published to other instances; the homeserver sets it to its logger. */
+  warn: (...args: unknown[]) => void;
   /** Wake-ups whose change is beyond the position known to be visible. */
   private held;
   /** The highest position known to be visible. */

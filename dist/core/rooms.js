@@ -1,5 +1,5 @@
 import { isValidUserId, parseId } from "../shared/ids.js";
-import { isObject } from "../shared/json.js";
+import { isObject, stringOrUndefined } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { CLUSTER_RESYNC } from "./cluster.js";
 import { SUPPORTED_ROOM_VERSIONS, eventIdOf, finalisePdu, redact, roomVersionFeatures, splitStateKey, stateKey, toClientEvent } from "./events.js";
@@ -12,6 +12,10 @@ import { inviteDecision } from "./invitefilter.js";
 // src/core/rooms.ts
 const PARTIAL_REJECTION = "Partial state: ";
 /** Thrown when the state before an event cannot be computed because predecessors are unknown. */
+/** The room ID of the room a create event's content says this room replaces. */
+function predecessorOf(content) {
+	return isObject(content?.predecessor) ? stringOrUndefined(content.predecessor.room_id) : void 0;
+}
 var MissingStateError = class extends Error {
 	eventIds;
 	constructor(eventIds) {
@@ -111,7 +115,7 @@ var RoomService = class {
 		this.hs.cluster.publish("invalidate", {
 			...msg,
 			from: this.hs.instanceId
-		}).catch(() => {});
+		}).catch((err) => this.hs.logger.warn("Cluster cache invalidation failed; other instances may serve stale state", err));
 	}
 	forgetEventCache(eventId) {
 		this.eventCache.delete(eventId);
@@ -805,7 +809,7 @@ var RoomService = class {
 				unsigned.prev_sender = prevState.sender;
 				unsigned.replaces_state = prevState.event_id;
 			}
-			if (pdu.type === M.ROOM.MEMBER && ["invite", "knock"].includes(pdu.content.membership) && opts.local) unsigned[pdu.content.membership === "invite" ? "invite_room_state" : "knock_room_state"] = this.strippedState(beforeMap);
+			if (pdu.type === M.ROOM.MEMBER && (pdu.content.membership === "invite" || pdu.content.membership === "knock") && opts.local) unsigned[pdu.content.membership === "invite" ? "invite_room_state" : "knock_room_state"] = this.strippedState(beforeMap);
 			const stored = Object.keys(unsigned).length ? {
 				...pdu,
 				unsigned
@@ -1000,7 +1004,7 @@ var RoomService = class {
 					const wasJoined = c.eventId === eventId && prevState?.content?.membership === "join";
 					if (this.hs.isLocalUser(userId) && joinedNow && !wasJoined) {
 						const to = this.hs.federation.serversInRoom(newState);
-						if (to.size) this.hs.federation.onDeviceListChange(userId, void 0, to).catch(() => {});
+						if (to.size) this.hs.federation.onDeviceListChange(userId, void 0, to).catch((err) => this.hs.logger.warn("Device list update to federation failed", err));
 					}
 				}
 			}
@@ -1013,7 +1017,7 @@ var RoomService = class {
 				}
 				if (opts.local && !opts.noFederate) this.hs.federation.onLocalEvent(view, newState);
 				if (this.hs.appservices.registrations.length) await this.hs.appservices.onEvent(view, newState).catch((err) => this.hs.logger.warn("Appservice push failed", err));
-				if (isState) await this.hs.delayedEvents.onStateEvent(roomId, pdu.type, pdu.state_key, sender).catch(() => {});
+				if (isState) await this.hs.delayedEvents.onStateEvent(roomId, pdu.type, pdu.state_key, sender).catch((err) => this.hs.logger.warn("Delayed events state update failed", err));
 				if (key === stateKey(M.ROOM.GUEST_ACCESS, "") && pdu.content?.guest_access !== "can_join") this.removeGuests(roomId).catch((err) => this.hs.logger.warn("Could not remove guests from", roomId, err));
 				wake = async () => {
 					this.hs.notifier.notify(await this.interestedUsers(roomId), backfill ? void 0 : stream);
@@ -1163,18 +1167,10 @@ var RoomService = class {
 		];
 		const create = getState(state, M.ROOM.CREATE);
 		const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
-		const f = roomVersionFeatures(version);
-		const out = [];
-		for (const t of types) {
+		return types.flatMap((t) => {
 			const ev = getState(state, t);
-			if (!ev) continue;
-			const { unsigned, ...full } = ev;
-			const wire = { ...full };
-			if (!f.legacyEventIds) delete wire.event_id;
-			if (f.v12 && t === M.ROOM.CREATE) delete wire.room_id;
-			out.push(wire);
-		}
-		return out;
+			return ev ? [this.hs.federation.toFederationPdu(ev, version)] : [];
+		});
 	}
 	/** Filter events down to those `userId` may see according to history visibility. */
 	async filterVisible(userId, roomId, events) {
@@ -1208,7 +1204,7 @@ var RoomService = class {
 			let membership = "leave";
 			if (userId) {
 				const memId = ids[stateKey(M.ROOM.MEMBER, userId)];
-				membership = memId ? (await this.getEvent(memId))?.pdu.content?.membership ?? "leave" : "leave";
+				membership = memId ? stringOrUndefined((await this.getEvent(memId))?.pdu.content?.membership) ?? "leave" : "leave";
 			}
 			const ev = userId ? {
 				...raw,
@@ -1323,7 +1319,7 @@ var RoomService = class {
 		let roomId;
 		let prebuiltCreate;
 		if (features.v12) {
-			prebuiltCreate = finalisePdu({
+			const create = {
 				sender,
 				type: M.ROOM.CREATE,
 				state_key: "",
@@ -1332,7 +1328,8 @@ var RoomService = class {
 				depth: 1,
 				prev_events: [],
 				auth_events: []
-			}, version, this.hs.serverName, this.hs.signingKey);
+			};
+			prebuiltCreate = finalisePdu(create, version, this.hs.serverName, this.hs.signingKey);
 			roomId = `!${prebuiltCreate.event_id.slice(1)}`;
 		} else roomId = generateRoomId(this.hs.serverName);
 		await this.hs.db.create("rooms", {
@@ -1421,7 +1418,7 @@ var RoomService = class {
 			content
 		});
 		for (const ev of initialState) {
-			if (!isObject(ev) || typeof ev.type !== "string" || !isObject(ev.content)) throw errors.badJson("Invalid initial_state event");
+			if (!isObject(ev) || typeof ev.type !== "string" || !isObject(ev.content) || ev.state_key !== void 0 && typeof ev.state_key !== "string") throw errors.badJson("Invalid initial_state event");
 			if (ev.type === M.ROOM.POWER_LEVELS || ev.type === M.ROOM.CREATE || ev.type === M.ROOM.MEMBER) continue;
 			await send({
 				type: ev.type,
@@ -1577,7 +1574,7 @@ var RoomService = class {
 			if (extra.reason) content.reason = extra.reason;
 			this.hs.logger.debug("Remote join", userId, roomId, "via", servers);
 			await this.hs.federation.joinRemoteRoom(userId, roomId, servers, content);
-			const predecessor = (await this.createEventOf(roomId))?.content?.predecessor?.room_id;
+			const predecessor = predecessorOf((await this.createEventOf(roomId))?.content);
 			if (typeof predecessor === "string") await copyRoomPushRules(this.hs, userId, predecessor, roomId);
 			return roomId;
 		}
@@ -1617,7 +1614,7 @@ var RoomService = class {
 			state_key: userId,
 			content
 		});
-		const predecessor = getState(state, M.ROOM.CREATE)?.content?.predecessor?.room_id;
+		const predecessor = predecessorOf(getState(state, M.ROOM.CREATE)?.content);
 		if (typeof predecessor === "string") await copyRoomPushRules(this.hs, userId, predecessor, roomId);
 		return roomId;
 	}
@@ -1773,13 +1770,12 @@ var RoomService = class {
 		for (const roomId of await this.roomsForUser(userId)) {
 			const prev = getState(await this.currentState(roomId), M.ROOM.MEMBER, userId);
 			if (!prev) continue;
+			const { displayname: _d, avatar_url: _a, ...rest } = prev.content;
 			const content = {
-				...prev.content,
+				...rest,
 				membership: "join",
 				...profile
 			};
-			if (profile.displayname === void 0) delete content.displayname;
-			if (profile.avatar_url === void 0) delete content.avatar_url;
 			try {
 				await this.sendEvent(roomId, userId, {
 					type: M.ROOM.MEMBER,

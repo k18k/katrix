@@ -1,4 +1,4 @@
-import { DeviceId, DeviceLists, OlmMachine, RoomId, UserId } from "@matrix-org/matrix-sdk-crypto-nodejs";
+import { DeviceId, DeviceLists, OlmMachine, RoomId, RoomMessageRequest, ToDeviceRequest, UserId } from "@matrix-org/matrix-sdk-crypto-nodejs";
 // src/auditbot/client.ts
 /** The request types of matrix-sdk-crypto (a const enum in its typings). */
 const Req = {
@@ -91,16 +91,14 @@ var CryptoClient = class {
 					case Req.SignatureUpload:
 						response = await this.request("POST", "/_matrix/client/v3/keys/signatures/upload", signatureUploadBody(r.body));
 						break;
-					case Req.ToDevice: {
-						const t = r;
-						response = await this.request("PUT", `/_matrix/client/v3/sendToDevice/${encodeURIComponent(t.eventType)}/${encodeURIComponent(t.txnId)}`, t.body);
+					case Req.ToDevice:
+						if (!(r instanceof ToDeviceRequest)) continue;
+						response = await this.request("PUT", `/_matrix/client/v3/sendToDevice/${encodeURIComponent(r.eventType)}/${encodeURIComponent(r.txnId)}`, r.body);
 						break;
-					}
-					case Req.RoomMessage: {
-						const m = r;
-						response = await this.request("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(m.roomId)}/send/${encodeURIComponent(m.eventType)}/${encodeURIComponent(m.txnId)}`, m.body);
+					case Req.RoomMessage:
+						if (!(r instanceof RoomMessageRequest)) continue;
+						response = await this.request("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(r.roomId)}/send/${encodeURIComponent(r.eventType)}/${encodeURIComponent(r.txnId)}`, r.body);
 						break;
-					}
 					default: continue;
 				}
 				await this.machine.markRequestAsSent(r.id, r.type, JSON.stringify(response));

@@ -852,7 +852,7 @@ async function touchPresence(hs, userId, presence) {
 		return stream;
 	});
 	hs.notifier.notify([userId, ...await hs.rooms.usersSharingRooms(userId)], stream);
-	await hs.federation.onPresence(userId, state, row?.status_msg ?? null).catch(() => {});
+	await hs.federation.onPresence(userId, state, row?.status_msg ?? null).catch((err) => hs.logger.warn("Presence update to federation failed", err));
 }
 function registerSyncRoutes(r) {
 	r.client("GET", "/sync", procedure({ handler: sync }));

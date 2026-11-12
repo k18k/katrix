@@ -92,13 +92,13 @@ function registerSearchRoutes(r) {
 						from: here,
 						to: null,
 						dir: "b",
-						limit: ec.before_limit ?? 5
+						limit: typeof ec.before_limit === "number" ? ec.before_limit : 5
 					});
 					const after = await paginate(hs, s.userId, roomId, {
 						from: here,
 						to: null,
 						dir: "f",
-						limit: ec.after_limit ?? 5
+						limit: typeof ec.after_limit === "number" ? ec.after_limit : 5
 					});
 					const context = {
 						events_before: before.events.map((e) => hs.rooms.formatEvent(e, viewer)),

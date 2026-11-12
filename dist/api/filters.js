@@ -1,4 +1,4 @@
-import { isObject } from "../shared/json.js";
+import { isObject, isStrings } from "../shared/json.js";
 import { M, UNSTABLE } from "../shared/m.js";
 import { globMatch as globMatch$1 } from "../shared/glob.js";
 import { errors } from "../core/errors.js";
@@ -47,10 +47,14 @@ function validateEventFilter(f, name) {
 		"not_senders",
 		"rooms",
 		"not_rooms"
-	]) if (f[key] !== void 0 && (!Array.isArray(f[key]) || !f[key].every((x) => typeof x === "string"))) throw errors.badJson(`${name}.${key} must be a list of strings`);
-	if (f.rooms?.some((r) => !r.startsWith("!")) || f.not_rooms?.some((r) => !r.startsWith("!"))) throw errors.badJson(`${name}: rooms must be room IDs`);
-	if (f.senders?.some((u) => !u.startsWith("@")) || f.not_senders?.some((u) => !u.startsWith("@"))) throw errors.badJson(`${name}: senders must be user IDs`);
-	if (f.limit !== void 0 && (!Number.isInteger(f.limit) || f.limit < 0)) throw errors.badJson(`${name}.limit must be a non-negative integer`);
+	]) if (f[key] !== void 0 && !isStrings(f[key])) throw errors.badJson(`${name}.${key} must be a list of strings`);
+	const allStartWith = (key, prefix) => {
+		const list = f[key];
+		return !isStrings(list) || list.every((x) => x.startsWith(prefix));
+	};
+	if (!allStartWith("rooms", "!") || !allStartWith("not_rooms", "!")) throw errors.badJson(`${name}: rooms must be room IDs`);
+	if (!allStartWith("senders", "@") || !allStartWith("not_senders", "@")) throw errors.badJson(`${name}: senders must be user IDs`);
+	if (f.limit !== void 0 && (typeof f.limit !== "number" || !Number.isInteger(f.limit) || f.limit < 0)) throw errors.badJson(`${name}.limit must be a non-negative integer`);
 }
 function validateSyncFilter(f) {
 	if (!isObject(f)) throw errors.badJson("Filter must be an object");
@@ -68,7 +72,7 @@ function validateSyncFilter(f) {
 			not_rooms: f.room.not_rooms
 		}, "room");
 	}
-	if (f.event_format !== void 0 && !["client", "federation"].includes(f.event_format)) throw errors.badJson("Invalid event_format");
+	if (f.event_format !== void 0 && f.event_format !== "client" && f.event_format !== "federation") throw errors.badJson("Invalid event_format");
 	return f;
 }
 /** Parse the `filter` query param of /messages and /context (a JSON RoomEventFilter). */

@@ -1,3 +1,4 @@
+import { isObject } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { publicKeyFromBase64, verifyJsonSignature } from "./crypto.js";
 import { redact } from "./events.js";
@@ -16,7 +17,7 @@ var PolicyServers = class {
 		const state = await this.hs.rooms.currentState(roomId);
 		const content = getState(state, M.ROOM.POLICY, "")?.content;
 		const via = content?.via;
-		const ed25519 = content?.public_keys?.ed25519;
+		const ed25519 = isObject(content?.public_keys) ? content.public_keys.ed25519 : void 0;
 		if (typeof via !== "string" || typeof ed25519 !== "string") return null;
 		let key;
 		try {

@@ -130,7 +130,7 @@ var StreamManager = class {
 		this.cluster = cluster;
 		this.instanceId = instanceId;
 		this.warn = warn;
-		this.heartbeat = setInterval(() => void this.flush().catch(() => {}), WRITER_TTL_MS / 3);
+		this.heartbeat = setInterval(() => void this.flush().catch((err) => this.warn("Writer heartbeat failed", err)), WRITER_TTL_MS / 3);
 		this.heartbeat.unref?.();
 	}
 	key() {

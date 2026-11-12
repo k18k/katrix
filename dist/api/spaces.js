@@ -1,3 +1,4 @@
+import { isObject, isStrings, stringOrUndefined } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { splitStateKey, stripState } from "../core/events.js";
 import { errors } from "../core/errors.js";
@@ -62,14 +63,14 @@ async function remoteSummary(hs, roomId, via, suggestedOnly, userId) {
 	if (!hs.federation.enabled) return null;
 	for (const server of via.filter((v) => v !== hs.serverName)) try {
 		const room = (await hs.federation.queryHierarchy(server, roomId, suggestedOnly)).room;
-		if (!room || room.room_id !== roomId) continue;
-		const rule = room.join_rule ?? "invite";
+		if (!isObject(room) || room.room_id !== roomId) continue;
+		const rule = stringOrUndefined(room.join_rule) ?? "invite";
 		let accessible = room.world_readable === true || [
 			"public",
 			"knock",
 			"knock_restricted"
 		].includes(rule);
-		if (!accessible && rule === "restricted" && Array.isArray(room.allowed_room_ids)) {
+		if (!accessible && rule === "restricted" && isStrings(room.allowed_room_ids)) {
 			for (const allowed of room.allowed_room_ids) if (await hs.rooms.exists(allowed) && await hs.rooms.membership(allowed, userId) === "join") {
 				accessible = true;
 				break;

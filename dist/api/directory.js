@@ -1,5 +1,5 @@
 import { isValidAlias, isValidRoomId, parseId } from "../shared/ids.js";
-import { isObject } from "../shared/json.js";
+import { isObject, isStrings } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { getState, membershipOf, powerLevels, userLevel } from "../core/authrules.js";
@@ -118,21 +118,19 @@ function registerDirectoryRoutes(r) {
 			}]);
 			const canonical = getState(await ctx.hs.rooms.currentState(row.room_id), M.ROOM.CANONICAL_ALIAS);
 			if (canonical) {
-				const content = { ...canonical.content };
-				let changed = false;
-				if (content.alias === ctx.params.alias) {
-					delete content.alias;
-					changed = true;
-				}
-				if (Array.isArray(content.alt_aliases) && content.alt_aliases.includes(ctx.params.alias)) {
-					content.alt_aliases = content.alt_aliases.filter((a) => a !== ctx.params.alias);
-					changed = true;
-				}
-				if (changed) await ctx.hs.rooms.sendEvent(row.room_id, s.userId, {
+				const { alias, ...rest } = canonical.content;
+				const alt = rest.alt_aliases;
+				const inAlt = isStrings(alt) && alt.includes(ctx.params.alias);
+				const content = {
+					...rest,
+					...alias !== ctx.params.alias && alias !== void 0 && { alias },
+					...inAlt && { alt_aliases: alt.filter((a) => a !== ctx.params.alias) }
+				};
+				if (alias === ctx.params.alias || inAlt) await ctx.hs.rooms.sendEvent(row.room_id, s.userId, {
 					type: M.ROOM.CANONICAL_ALIAS,
 					state_key: "",
 					content
-				}).catch(() => {});
+				}).catch((err) => ctx.hs.logger.warn("Removing the deleted alias from the canonical alias event failed", err));
 			}
 			return {};
 		}
@@ -161,7 +159,7 @@ function registerDirectoryRoutes(r) {
 		handler: async (ctx) => {
 			const s = ctx.session;
 			const body = await ctx.json();
-			if (!["public", "private"].includes(body.visibility)) throw errors.invalidParam("Invalid visibility");
+			if (body.visibility !== "public" && body.visibility !== "private") throw errors.invalidParam("Invalid visibility");
 			const version = await ctx.hs.rooms.roomVersion(ctx.params.roomId);
 			if (!version) throw errors.notFound("Room not found");
 			const state = await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
@@ -197,7 +195,7 @@ function registerDirectoryRoutes(r) {
 		handler: async (ctx) => {
 			if (!ctx.session.appservice) throw errors.forbidden("Only application services may use this endpoint");
 			const body = await ctx.json();
-			if (!["public", "private"].includes(body.visibility)) throw errors.invalidParam("Invalid visibility");
+			if (body.visibility !== "public" && body.visibility !== "private") throw errors.invalidParam("Invalid visibility");
 			if (!await ctx.hs.rooms.exists(ctx.params.roomId)) throw errors.notFound("Room not found");
 			await ctx.hs.db.update("rooms", [{
 				field: "room_id",

@@ -146,6 +146,7 @@ var Homeserver = class extends EventEmitter {
 		this.instanceId = newInstanceId();
 		this.streams = new StreamManager(this.cluster, this.instanceId, (...args) => this.logger.warn(...args));
 		this.notifier = new Notifier(this.cluster, this.instanceId, () => this.streams.lastAllocated, (fresh) => this.streams.position(fresh));
+		this.notifier.warn = (...args) => this.logger.warn(...args);
 		this.streams.onAdvance = () => this.notifier.advanced();
 		this.auth = new AuthService(this);
 		this.rooms = new RoomService(this, !options.cluster);

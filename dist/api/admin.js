@@ -1,3 +1,4 @@
+import { stringOrUndefined } from "../shared/json.js";
 import { errors } from "../core/errors.js";
 import { v } from "../core/vpm.js";
 import { body, fail, lenient } from "../http/input.js";
@@ -62,9 +63,10 @@ function registerAdminRoutes(r) {
 				await target(ctx);
 				const s = await ctx.auth();
 				const body = await ctx.json();
-				if (typeof body[field] !== "boolean") throw errors.badJson(`${field} must be a boolean`);
-				if (field === "locked") await ctx.hs.admin.setLocked(ctx.params.userId, body.locked, s.userId);
-				else await ctx.hs.admin.setSuspended(ctx.params.userId, body.suspended, s.userId);
+				const value = body[field];
+				if (typeof value !== "boolean") throw errors.badJson(`${field} must be a boolean`);
+				if (field === "locked") await ctx.hs.admin.setLocked(ctx.params.userId, value, s.userId);
+				else await ctx.hs.admin.setSuspended(ctx.params.userId, value, s.userId);
 				return { [field]: body[field] };
 			}
 		};
@@ -112,9 +114,9 @@ function registerAdminRoutes(r) {
 		if (!ctx.hs.isLocalUser(userId)) throw errors.invalidParam("Can only manage local users");
 		if (!await ctx.hs.admin.getUser(userId)) {
 			await ctx.hs.admin.createUser(userId.slice(1).split(":")[0], {
-				password: body.password,
+				password: stringOrUndefined(body.password),
 				admin: body.admin === true,
-				displayname: body.displayname
+				displayname: stringOrUndefined(body.displayname)
 			});
 			return new Response(JSON.stringify(await ctx.hs.admin.getUser(userId)), {
 				status: 201,
@@ -252,7 +254,7 @@ function registerAdminRoutes(r) {
 		const body = await ctx.json();
 		const { kicked } = await ctx.hs.admin.deleteRoom(ctx.params.roomId, {
 			actor: s.userId,
-			reason: body.message,
+			reason: stringOrUndefined(body.message),
 			purge: body.purge !== false
 		});
 		return {

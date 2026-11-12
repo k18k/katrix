@@ -84,7 +84,7 @@ var PartialStateService = class {
 		});
 		this.partial.set(roomId, true);
 		this.completedStreams.delete(roomId);
-		this.hs.cluster.publish("partial-state", { roomId }).catch(() => {});
+		this.hs.cluster.publish("partial-state", { roomId }).catch((err) => this.hs.logger.warn("Partial state publish failed", err));
 		this.startResync(roomId);
 	}
 	/** Resolve once the room has its full state (or the signal aborts / the server closes). */
@@ -100,7 +100,7 @@ var PartialStateService = class {
 			};
 			const check = () => void this.isPartial(roomId).then((p) => {
 				if (!p) done();
-			}).catch(() => {});
+			}).catch((err) => this.hs.logger.warn("Partial state check failed", err));
 			this.completed.on(roomId, check);
 			signal?.addEventListener("abort", done);
 			this.hs.once?.("close", done);
@@ -172,7 +172,7 @@ var PartialStateService = class {
 				const notified = /* @__PURE__ */ new Set([...row.servers ?? [], ...this.hs.federation.serversInRoom(await this.hs.rooms.currentState(roomId), false)]);
 				const missed = await this.hs.rooms.withLock(roomId, () => this.hs.rooms.completePartialState(roomId, version, row.join_event_id, fullBefore, notified));
 				await this.finish(roomId);
-				if (missed.length) for (const userId of (await this.hs.rooms.joinedMembers(roomId)).filter((u) => this.hs.isLocalUser(u))) await this.hs.federation.onDeviceListChange(userId, void 0, new Set(missed)).catch(() => {});
+				if (missed.length) for (const userId of (await this.hs.rooms.joinedMembers(roomId)).filter((u) => this.hs.isLocalUser(u))) await this.hs.federation.onDeviceListChange(userId, void 0, new Set(missed)).catch((err) => this.hs.logger.warn("Device list update to federation failed", err));
 				return true;
 			} catch (err) {
 				this.hs.logger.debug("Partial state resync from", server, "failed", err);
@@ -188,7 +188,7 @@ var PartialStateService = class {
 		this.partial.set(roomId, false);
 		this.completedStreams.delete(roomId);
 		this.completed.emit(roomId);
-		this.hs.cluster.publish("partial-state", { roomId }).catch(() => {});
+		this.hs.cluster.publish("partial-state", { roomId }).catch((err) => this.hs.logger.warn("Partial state publish failed", err));
 		const members = await this.hs.rooms.joinedMembers(roomId);
 		this.hs.notifier.notify(members.filter((u) => this.hs.isLocalUser(u)));
 		const row = await this.hs.db.findOne("partial_state_rooms", [{

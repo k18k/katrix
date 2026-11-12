@@ -1,5 +1,5 @@
 import { isValidUserId } from "../shared/ids.js";
-import { isObject } from "../shared/json.js";
+import { isObject, stringOrUndefined } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { getState } from "../core/authrules.js";
@@ -147,7 +147,7 @@ function registerMembershipRoutes(r) {
 					const pending = getState(await ctx.hs.rooms.currentState(roomId), M.ROOM.THIRD_PARTY_INVITE, signed.token);
 					if (!pending || pending.sender !== sender) throw errors.forbidden("No such third-party invite");
 					await ctx.hs.rooms.invite(roomId, sender, s.userId, { thirdPartyInvite: {
-						display_name: pending.content?.display_name ?? "",
+						display_name: stringOrUndefined(pending.content?.display_name) ?? "",
 						signed: proof
 					} });
 				} else await ctx.hs.federation.client.request(sender.slice(sender.indexOf(":") + 1), "PUT", `/_matrix/federation/v1/exchange_third_party_invite/${encodeURIComponent(roomId)}`, { body: event });

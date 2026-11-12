@@ -24,7 +24,7 @@ var TypingService = class {
 		this.apply(msg);
 		await this.hs.cluster.publish("typing", msg);
 		this.hs.notifier.notify(await this.hs.rooms.joinedMembers(roomId));
-		if (this.hs.isLocalUser(userId) && typing !== wasTyping || typing && this.hs.isLocalUser(userId)) await this.hs.federation.onTyping(roomId, userId, typing).catch(() => {});
+		if (this.hs.isLocalUser(userId) && typing !== wasTyping || typing && this.hs.isLocalUser(userId)) await this.hs.federation.onTyping(roomId, userId, typing).catch((err) => this.hs.logger.warn("Typing update to federation failed", err));
 	}
 	apply(msg) {
 		let room = this.rooms.get(msg.roomId);
@@ -40,7 +40,7 @@ var TypingService = class {
 				if (r?.users.get(msg.userId) === timer) {
 					r.users.delete(msg.userId);
 					r.stream = Math.max(r.stream, msg.stream) + .5;
-					this.hs.rooms.joinedMembers(msg.roomId).then((m) => this.hs.notifier.notify(m)).catch(() => {});
+					this.hs.rooms.joinedMembers(msg.roomId).then((m) => this.hs.notifier.notify(m)).catch((err) => this.hs.logger.warn("Typing expiry notification failed", err));
 				}
 			}, msg.timeoutMs);
 			timer.unref?.();

@@ -32,13 +32,13 @@ export declare class FederationService {
   serverAllowed(serverName: string): boolean;
   private requireEnabled;
   /** Convert a stored event into its federation (wire) format. */
-  toFederationPdu(pdu: PDU, version: string): Record<string, any>;
-  computeEventId(raw: Record<string, any>, version: string): string;
+  toFederationPdu(pdu: PDU, version: string): Record<string, unknown>;
+  computeEventId(raw: PDU | Record<string, unknown>, version: string): string;
   /**
    * Verify an incoming PDU: event ID, signatures and content hash. Events with a bad
    * content hash are redacted (as the spec requires) rather than rejected.
    */
-  verifyPdu(raw: Record<string, any>, version: string, roomId: string): Promise<{
+  verifyPdu(raw: unknown, version: string, roomId: string): Promise<{
     pdu: PDU;
     joinAuthorisedSignatureValid?: boolean;
   }>;
@@ -52,7 +52,7 @@ export declare class FederationService {
   /** Send a newly created local event to every server in the room. */
   onLocalEvent(pdu: PDU, state: StateMap): void;
   /** Send an EDU to every server in the given rooms. */
-  sendEduToRooms(roomIds: string[], eduType: string, content: Record<string, any>, durable?: boolean): Promise<void>;
+  sendEduToRooms(roomIds: string[], eduType: string, content: Record<string, unknown>, durable?: boolean): Promise<void>;
   /** Servers sharing a room with a local user. */
   serversSharingRooms(userId: string): Promise<Set<string>>;
   onTyping(roomId: string, userId: string, typing: boolean): Promise<void>;
@@ -62,8 +62,8 @@ export declare class FederationService {
   onDeviceListChange(userId: string, deletedDeviceId?: string, to?: Set<string>): Promise<void>;
   onSigningKeyUpdate(userId: string): Promise<void>;
   /** Deliver to-device messages addressed to remote users. */
-  sendToDevice(sender: string, type: string, messages: Record<string, Record<string, any>>, messageId: string): Promise<void>;
-  receiveTransaction(origin: string, txnId: string, body: Record<string, any>): Promise<Record<string, any>>;
+  sendToDevice(sender: string, type: string, messages: Record<string, Record<string, unknown>>, messageId: string): Promise<void>;
+  receiveTransaction(origin: string, txnId: string, body: Record<string, unknown>): Promise<Record<string, unknown>>;
   private processTransaction;
   /**
    * A PDU for a room we are not in can still matter: a local user's invite being
@@ -71,7 +71,7 @@ export declare class FederationService {
    */
   private handleOutOfRoomMembership;
   /** Process one incoming PDU (caller holds the room lock). */
-  handlePdu(origin: string, roomId: string, version: string, raw: Record<string, any>, depth?: number): Promise<void>;
+  handlePdu(origin: string, roomId: string, version: string, raw: Record<string, unknown>, depth?: number): Promise<void>;
   /**
    * State before an event whose predecessors we lack: for each unknown prev event,
    * fetch the state at it (/state_ids) plus the event itself, then resolve all
@@ -100,35 +100,35 @@ export declare class FederationService {
    * joined, or the room's state is partial (MSC3902) and their server is one of the room's servers.
    */
   private mayActInRoom;
-  handleEdu(origin: string, edu: Record<string, any>): Promise<void>;
+  handleEdu(origin: string, edu: Record<string, unknown>): Promise<void>;
   /** Build a full event from a make_join/make_leave/make_knock template and sign it. */
   private finaliseTemplate;
   /** Join a room hosted on other servers. Returns the room ID. */
-  joinRemoteRoom(userId: string, roomId: string, servers: string[], content: Record<string, any>): Promise<string>;
+  joinRemoteRoom(userId: string, roomId: string, servers: string[], content: Record<string, unknown>): Promise<string>;
   private completeJoin;
   /** Leave (or reject an invite to) a room hosted elsewhere. */
   leaveRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string): Promise<PDU>;
   knockRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string): Promise<{
     pdu: PDU;
-    knockState: any[];
+    knockState: unknown[];
   }>;
   /** Ask the invitee's server to sign an invite; returns the countersigned event. */
-  sendInvite(pdu: PDU, version: string, inviteRoomState: Record<string, any>[]): Promise<PDU>;
-  queryProfile(userId: string, field?: string): Promise<Record<string, any>>;
+  sendInvite(pdu: PDU, version: string, inviteRoomState: Record<string, unknown>[]): Promise<PDU>;
+  queryProfile(userId: string, field?: string): Promise<Record<string, unknown>>;
   queryAlias(alias: string): Promise<{
     room_id: string;
     servers: string[];
   }>;
   queryKeys(deviceKeys: Record<string, string[]>, timeoutMs?: number): Promise<{
-    results: Record<string, any>[];
-    failures: Record<string, any>;
+    results: Record<string, unknown>[];
+    failures: Record<string, unknown>;
   }>;
   claimKeys(oneTimeKeys: Record<string, Record<string, string>>, timeoutMs?: number): Promise<{
-    results: Record<string, any>;
-    failures: Record<string, any>;
+    results: Record<string, unknown>;
+    failures: Record<string, unknown>;
   }>;
-  queryPublicRooms(server: string, body: Record<string, any>): Promise<Record<string, any>>;
-  queryHierarchy(server: string, roomId: string, suggestedOnly: boolean): Promise<Record<string, any>>;
+  queryPublicRooms(server: string, body: Record<string, unknown>): Promise<Record<string, unknown>>;
+  queryHierarchy(server: string, roomId: string, suggestedOnly: boolean): Promise<Record<string, unknown>>;
   /**
    * Fetch history preceding the oldest events we have. Returns the number of new
    * events stored. Caller should not hold the room lock.
@@ -141,12 +141,12 @@ export declare class FederationService {
     filename: string | null;
   }>;
   /** Remote members who should receive the invitee's stripped state. */
-  strippedStateFor(state: StateMap): Record<string, any>[];
+  strippedStateFor(state: StateMap): Record<string, unknown>[];
   /** Servers that may be able to help us join `roomId`. */
   candidateServers(roomId: string, extra?: string[]): string[];
   static memberServers(state: StateMap): string[];
   isMembershipVisibleTo(state: StateMap, server: string): boolean;
-  stripped(pdu: PDU): Record<string, any>;
+  stripped(pdu: PDU): Record<string, unknown>;
   error(status: number, errcode: string, message: string): MatrixError;
 }
 //# sourceMappingURL=index.d.ts.map

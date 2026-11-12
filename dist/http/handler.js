@@ -1,4 +1,5 @@
 import { canonicalJson } from "../shared/canonical-json.js";
+import { isObject } from "../shared/json.js";
 import { UNSTABLE } from "../shared/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 // src/http/handler.ts
@@ -122,7 +123,7 @@ async function dispatch(hs, request, url, options) {
 				} catch {
 					throw errors.notJson();
 				}
-				if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw errors.badJson("Body must be a JSON object");
+				if (!isObject(parsed)) throw errors.badJson("Body must be a JSON object");
 				return parsed;
 			},
 			accessToken: token,

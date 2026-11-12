@@ -79,7 +79,7 @@ async function startAuditBot(hs, options) {
 		if (ev.content?.membership === "join") joinWhenQuiet(ev.room_id);
 		if (options.rooms === "groups" && ev.content?.is_direct === true) (async () => {
 			if (!(await hs.rooms.joinedMembers(ev.room_id)).includes(userId)) return;
-			await client.request("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(ev.room_id)}/leave`, {}).catch(() => {});
+			await client.request("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(ev.room_id)}/leave`, {}).catch((err) => hs.logger.warn("Audit bot failed to leave a direct message room", err));
 			hs.logger.info("Audit bot left a direct message room", ev.room_id);
 		})();
 	};
@@ -181,7 +181,7 @@ async function startAuditBot(hs, options) {
 	};
 	await sweep();
 	const running = loop();
-	const timer = setInterval(() => void sweep().catch(() => {}), options.sweepIntervalMs ?? 6e5);
+	const timer = setInterval(() => void sweep().catch((err) => hs.logger.warn("Audit bot sweep failed", err)), options.sweepIntervalMs ?? 6e5);
 	timer.unref();
 	return {
 		userId,

@@ -1,4 +1,4 @@
-import { isObject } from "../shared/json.js";
+import { isObject, stringOrUndefined } from "../shared/json.js";
 import { M } from "../shared/m.js";
 import { evaluatePushRules, pushTweaks } from "../shared/push.js";
 import { splitStateKey, toClientEvent } from "./events.js";
@@ -38,7 +38,7 @@ var PushService = class {
 			const actions = evaluatePushRules(rules, {
 				event,
 				userId,
-				displayName: getState(state, M.ROOM.MEMBER, userId)?.content?.displayname ?? null,
+				displayName: stringOrUndefined(getState(state, M.ROOM.MEMBER, userId)?.content?.displayname) ?? null,
 				memberCount: joined.length,
 				senderLevel: Number.isFinite(senderLevel) ? senderLevel : Number.MAX_SAFE_INTEGER,
 				notificationLevels: pl.notifications,

@@ -4,7 +4,7 @@ export interface PDU {
   sender: string;
   type: string;
   state_key?: string;
-  content: Record<string, any>;
+  content: Record<string, unknown>;
   origin_server_ts: number;
   depth: number;
   prev_events: any[];

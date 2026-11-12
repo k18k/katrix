@@ -12,7 +12,7 @@ export interface RequestContext {
   /** Remote address, if known. */
   ip: string | null;
   /** Parsed JSON body (empty object when no body was sent). */
-  json<T = any>(): Promise<T>;
+  json(): Promise<Record<string, unknown>>;
   bytes(): Promise<Uint8Array>;
   /** Authenticate the request; throws M_MISSING_TOKEN / M_UNKNOWN_TOKEN. */
   auth(): Promise<Session>;

@@ -81,7 +81,7 @@ async function saveRules(hs, userId, rules) {
 	hs.cluster.publish("pushrules", {
 		from: hs.instanceId,
 		userId
-	}).catch(() => {});
+	}).catch((err) => hs.logger.warn("Push rules cache invalidation failed; other instances may use stale rules", err));
 	await hs.streams.write((stream) => hs.db.upsert("account_data", {
 		user_id: userId,
 		room_id: "",
