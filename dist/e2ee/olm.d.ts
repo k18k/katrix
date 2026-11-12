@@ -7,7 +7,7 @@ import { DeviceTracker } from "./devices.js";
 /** A decrypted to-device event and what the Olm layer proved about its origin. */
 export interface DecryptedToDevice {
   type: string;
-  content: Record<string, any>;
+  content: Record<string, unknown>;
   sender: string;
   /** The Curve25519 key of the sending device: authenticated by the Olm session. */
   senderKey: string;

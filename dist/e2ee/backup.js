@@ -4,6 +4,7 @@ import { decodeBase64, encodeBase64 } from "../shared/base64.js";
 import { constantTimeEqual } from "../shared/bytes.js";
 import { signingJson } from "../shared/canonical-json.js";
 import { decodeUtf8, encodeUtf8 } from "../shared/utf8.js";
+import { isObject, isStringRecord } from "../shared/json.js";
 import { Mutex } from "../util/mutex.js";
 import { inboundKey } from "./crypto-store.js";
 import { MEGOLM_ALGORITHM, verifyObject } from "./keys.js";
@@ -39,8 +40,12 @@ function decryptBackupSession(primitives, backupPrivateKey, data) {
 	const k = backupKeys(primitives, primitives.x25519SharedSecret(backupPrivateKey, decodeBase64(data.ephemeral)));
 	if (!constantTimeEqual(primitives.hmacSha256(k.mac, EMPTY).subarray(0, 8), decodeBase64(data.mac))) throw new Error("The backed-up session does not decrypt with this key");
 	const session = JSON.parse(decodeUtf8(primitives.aes256CbcDecrypt(k.aes, k.iv, decodeBase64(data.ciphertext))));
-	if (typeof session?.session_key !== "string" || typeof session.sender_key !== "string") throw new Error("The backed-up session is malformed");
+	assertBackedUpSession(session);
 	return session;
+}
+function assertBackedUpSession(value) {
+	const isStrings = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
+	if (!(isObject(value) && typeof value.algorithm === "string" && typeof value.session_key === "string" && typeof value.sender_key === "string" && isStrings(value.forwarding_curve25519_key_chain ?? []) && isStringRecord(value.sender_claimed_keys ?? {}) && (value.shared_history === void 0 || typeof value.shared_history === "boolean"))) throw new Error("The backed-up session is malformed");
 }
 const STORE_KEY = "key_backup";
 /**

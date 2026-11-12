@@ -5,7 +5,7 @@ const MEGOLM_ALGORITHM = "m.megolm.v1.aes-sha2";
 /** Add our device's signature to `obj` (https://spec.matrix.org/v1.16/appendices/#signing-json). */
 function signObject(account, userId, deviceId, obj) {
 	const signature = account.sign(signingJson(obj));
-	const existing = obj.signatures ?? {};
+	const existing = ("signatures" in obj ? obj.signatures : void 0) ?? {};
 	return {
 		...obj,
 		signatures: {
@@ -19,7 +19,7 @@ function signObject(account, userId, deviceId, obj) {
 }
 /** Whether `obj` carries a valid signature by `userId`'s key `ed25519:<keyId>`. Never throws. */
 function verifyObject(protocol, obj, userId, keyId, publicKey) {
-	const sig = obj.signatures?.[userId]?.[`ed25519:${keyId}`];
+	const sig = ("signatures" in obj ? obj.signatures : void 0)?.[userId]?.[`ed25519:${keyId}`];
 	if (typeof sig !== "string") return false;
 	try {
 		return protocol.verifyEd25519(publicKey, signingJson(obj), sig);

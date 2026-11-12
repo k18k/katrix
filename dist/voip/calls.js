@@ -1,6 +1,6 @@
 import { describeError } from "../util/logger.js";
 import { TypedEmitter } from "../util/emitter.js";
-import { MatrixCall } from "./call.js";
+import { MatrixCall, isStreamMetadata, sdpOf } from "./call.js";
 // src/voip/calls.ts
 /**
 * Calls in rooms (https://spec.matrix.org/v1.19/client-server-api/#voice-over-ip), one-to-one.
@@ -110,7 +110,8 @@ var CallsApi = class extends TypedEmitter {
 			await existing?.handle(event.type, c, event.sender);
 			return;
 		}
-		if (existing || typeof c.party_id !== "string" || typeof c.offer?.sdp !== "string") return void 0;
+		const offerSdp = sdpOf(c.offer);
+		if (existing || typeof c.party_id !== "string" || offerSdp === void 0) return void 0;
 		if (event.sender === this.userId) return void 0;
 		if (typeof c.invitee === "string" && c.invitee !== this.userId) return void 0;
 		const lifetime = typeof c.lifetime === "number" ? c.lifetime : 0;
@@ -130,9 +131,9 @@ var CallsApi = class extends TypedEmitter {
 			},
 			offer: {
 				type: "offer",
-				sdp: c.offer.sdp
+				sdp: offerSdp
 			},
-			remoteStreamMetadata: c.sdp_stream_metadata
+			remoteStreamMetadata: isStreamMetadata(c.sdp_stream_metadata) ? c.sdp_stream_metadata : void 0
 		});
 		for (const other of this.active()) {
 			if (other === call || other.roomId !== room.roomId || other.direction !== "outbound" || other.state !== "inviting") continue;

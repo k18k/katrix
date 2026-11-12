@@ -1,4 +1,4 @@
-import { CrossSigningKey } from "../shared/api/keys.js";
+import { CrossSigningKey, DeviceKeys } from "../shared/api/keys.js";
 import { E2EEProtocol, InboundGroupSession, OlmAccount, OlmSession, OutboundGroupSession, PickleKey } from "../protocol/protocol.js";
 /** Records of the crypto stores. Pickles are opaque strings of the E2EEProtocol named in `protocol`. */
 export interface AccountRecord {
@@ -69,7 +69,7 @@ export interface DeviceInfo {
   algorithms: string[];
   displayName?: string;
   /** The signed device keys as the server sent them (without `unsigned`), to check cross-signing signatures. */
-  signed?: Record<string, unknown>;
+  signed?: Omit<DeviceKeys, "unsigned">;
 }
 /** A user's cross-signing public keys (https://spec.matrix.org/v1.19/client-server-api/#cross-signing), as the server sent them. */
 export interface CrossSigningKeys {

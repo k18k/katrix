@@ -1,5 +1,6 @@
 import { describeError } from "../util/logger.js";
 import { decodeUtf8, encodeUtf8 } from "../shared/utf8.js";
+import { isObject } from "../shared/json.js";
 import { loadAccount, olmSessionKey, saveAccount } from "./crypto-store.js";
 import { OLM_ALGORITHM, verifyObject } from "./keys.js";
 import { ProtocolError } from "../protocol/protocol.js";
@@ -190,11 +191,11 @@ var OlmService = class OlmService {
 		} catch {
 			throw new OlmDecryptionError("BAD_FORMAT", "Olm plaintext is not JSON");
 		}
-		if (typeof payload !== "object" || payload === null || typeof payload.type !== "string" || typeof payload.content !== "object" || payload.content === null) throw new OlmDecryptionError("BAD_FORMAT", "Olm payload has no type or content");
+		if (!isObject(payload) || typeof payload.type !== "string" || !isObject(payload.content)) throw new OlmDecryptionError("BAD_FORMAT", "Olm payload has no type or content");
 		if (payload.sender !== event.sender) throw new OlmDecryptionError("PAYLOAD_MISMATCH", "Olm payload sender differs from the event's");
 		if (payload.recipient !== this.userId) throw new OlmDecryptionError("PAYLOAD_MISMATCH", "Olm payload is for another user");
-		if (payload.recipient_keys?.ed25519 !== this.identityKeys.ed25519) throw new OlmDecryptionError("PAYLOAD_MISMATCH", "Olm payload is for another device");
-		const claimed = payload.keys?.ed25519;
+		if (!isObject(payload.recipient_keys) || payload.recipient_keys.ed25519 !== this.identityKeys.ed25519) throw new OlmDecryptionError("PAYLOAD_MISMATCH", "Olm payload is for another device");
+		const claimed = isObject(payload.keys) ? payload.keys.ed25519 : void 0;
 		if (typeof claimed !== "string") throw new OlmDecryptionError("BAD_FORMAT", "Olm payload has no sender keys");
 		const device = await this.devices.deviceByCurveKey(event.sender, senderKey, tx);
 		if (device && device.ed25519 !== claimed) throw new OlmDecryptionError("DEVICE_KEY_MISMATCH", "Olm payload claims another Ed25519 key than the sending device's");

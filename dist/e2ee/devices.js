@@ -1,3 +1,4 @@
+import { isObject } from "../shared/json.js";
 import { Mutex } from "../util/mutex.js";
 import { deviceKey } from "./crypto-store.js";
 import { verifyObject } from "./keys.js";
@@ -179,15 +180,16 @@ var DeviceTracker = class {
 		});
 	}
 	validate(userId, deviceId, keys) {
-		if (typeof keys !== "object" || keys === null || keys.user_id !== userId || keys.device_id !== deviceId) {
+		if (!isObject(keys) || keys.user_id !== userId || keys.device_id !== deviceId) {
 			this.logger.warn("device keys name another user or device", {
 				userId,
 				deviceId
 			});
 			return;
 		}
-		const ed25519 = keys.keys?.[`ed25519:${deviceId}`];
-		const curve25519 = keys.keys?.[`curve25519:${deviceId}`];
+		const keyMap = isObject(keys.keys) ? keys.keys : {};
+		const ed25519 = keyMap[`ed25519:${deviceId}`];
+		const curve25519 = keyMap[`curve25519:${deviceId}`];
 		if (typeof ed25519 !== "string" || typeof curve25519 !== "string") return void 0;
 		if (!verifyObject(this.protocol, keys, userId, deviceId, ed25519)) {
 			this.logger.warn("device keys have no valid self-signature", {
@@ -196,7 +198,7 @@ var DeviceTracker = class {
 			});
 			return;
 		}
-		const displayName = keys.unsigned?.device_display_name;
+		const displayName = isObject(keys.unsigned) ? keys.unsigned.device_display_name : void 0;
 		const { unsigned: _unsigned, ...signed } = keys;
 		return {
 			signed,

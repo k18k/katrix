@@ -119,7 +119,7 @@ var SecretStorage = class {
 			iv: check.iv,
 			mac: check.mac
 		};
-		await this.accountData.set(`m.secret_storage.key.${keyId}`, description);
+		await this.accountData.set(`m.secret_storage.key.${keyId}`, { ...description });
 		if (opts.setDefault !== false) await this.accountData.set("m.secret_storage.default_key", { key: keyId });
 		return {
 			keyId,

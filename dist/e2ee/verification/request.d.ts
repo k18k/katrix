@@ -89,7 +89,7 @@ export declare class VerificationRequest extends TypedEmitter<VerificationEvents
   /** Decline or abort (m.key.verification.cancel). */
   cancel(code?: string, reason?: string): Promise<void>;
   /** A message of this verification from the other side (`fromDevice` from its content). */
-  handle(type: string, content: Record<string, any>, sender: string): Promise<void>;
+  handle(type: string, content: Record<string, unknown>, sender: string): Promise<void>;
   private onReady;
   private unexpected;
   /** Start SAS verification (after ready). */

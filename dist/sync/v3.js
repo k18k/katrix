@@ -1,6 +1,12 @@
+import { isObject } from "../shared/json.js";
 // src/sync/v3.ts
 const arr = (v) => Array.isArray(v) ? v : [];
-const obj = (v) => typeof v === "object" && v !== null && !Array.isArray(v) ? v : {};
+const obj = (v) => isObject(v) ? v : {};
+const numberOrUndefined = (v) => typeof v === "number" ? v : void 0;
+const counts = (v) => ({
+	highlight_count: numberOrUndefined(v.highlight_count),
+	notification_count: numberOrUndefined(v.notification_count)
+});
 const events = (v) => arr(obj(v).events).filter((e) => typeof e === "object" && e !== null && typeof e.type === "string");
 function timeline(v) {
 	const t = obj(v);
@@ -51,7 +57,7 @@ var SyncV3Transport = class {
 * every field is checked, and anything malformed is skipped rather than trusted.
 */
 function parseV3(response, initial) {
-	const res = response;
+	const res = { ...response };
 	if (typeof res.next_batch !== "string") throw new Error("Sync response has no next_batch");
 	const rooms = obj(res.rooms);
 	const join = {};
@@ -68,11 +74,11 @@ function parseV3(response, initial) {
 			accountData: events(room.account_data),
 			summary: room.summary ? {
 				heroes: arr(summary["m.heroes"]),
-				joinedMemberCount: summary["m.joined_member_count"],
-				invitedMemberCount: summary["m.invited_member_count"]
+				joinedMemberCount: numberOrUndefined(summary["m.joined_member_count"]),
+				invitedMemberCount: numberOrUndefined(summary["m.invited_member_count"])
 			} : void 0,
-			unreadNotifications: room.unread_notifications,
-			unreadThreadNotifications: room.unread_thread_notifications ? obj(room.unread_thread_notifications) : void 0
+			unreadNotifications: isObject(room.unread_notifications) ? counts(room.unread_notifications) : void 0,
+			unreadThreadNotifications: isObject(room.unread_thread_notifications) ? Object.fromEntries(Object.entries(room.unread_thread_notifications).map(([thread, c]) => [thread, counts(obj(c))])) : void 0
 		};
 	}
 	const invited = (section) => {
@@ -107,7 +113,7 @@ function parseV3(response, initial) {
 			changed: arr(deviceLists.changed),
 			left: arr(deviceLists.left)
 		},
-		oneTimeKeyCounts: res.device_one_time_keys_count,
+		oneTimeKeyCounts: isObject(res.device_one_time_keys_count) ? Object.fromEntries(Object.entries(res.device_one_time_keys_count).filter((e) => typeof e[1] === "number")) : void 0,
 		unusedFallbackKeyTypes: Array.isArray(res.device_unused_fallback_key_types) ? res.device_unused_fallback_key_types : void 0,
 		accountData: events(res.account_data),
 		presence: events(res.presence)

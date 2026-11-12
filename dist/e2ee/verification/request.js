@@ -1,6 +1,7 @@
 import { describeError } from "../../util/logger.js";
 import { decodeBase64, encodeBase64 } from "../../shared/base64.js";
 import { bytesEqual, constantTimeEqual } from "../../shared/bytes.js";
+import { isStringRecord } from "../../shared/json.js";
 import { TypedEmitter } from "../../util/emitter.js";
 import { QR_SCAN, QR_SHOW, RECIPROCATE, decodeQr, encodeQr } from "./qr.js";
 import { HASH, KEY_AGREEMENT, MAC_METHOD, SAS_METHOD, SAS_TYPES, sasBytes, sasCommitment, sasDecimals, sasEmoji, sasInfo, sasMac } from "./sas.js";
@@ -270,7 +271,7 @@ var VerificationRequest = class extends TypedEmitter {
 	}
 	async onMac(content) {
 		const sas = this.sas;
-		if (!sas?.shared || sas.theirMac || typeof content.mac !== "object" || content.mac === null || typeof content.keys !== "string") return this.unexpected();
+		if (!sas?.shared || sas.theirMac || !isStringRecord(content.mac) || typeof content.keys !== "string") return this.unexpected();
 		sas.theirMac = {
 			mac: content.mac,
 			keys: content.keys

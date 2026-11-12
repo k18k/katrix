@@ -1,5 +1,6 @@
 import { describeError } from "../util/logger.js";
 import { decodeUtf8, encodeUtf8 } from "../shared/utf8.js";
+import { isObject } from "../shared/json.js";
 import { KeyedMutex } from "../util/mutex.js";
 import { inboundKey } from "./crypto-store.js";
 import { MEGOLM_ALGORITHM } from "./keys.js";
@@ -321,7 +322,7 @@ var MegolmService = class {
 			} catch {
 				throw new MegolmDecryptionError("BAD_ENCRYPTED_MESSAGE", "The plaintext is not JSON");
 			}
-			if (typeof payload !== "object" || payload === null || typeof payload.type !== "string" || typeof payload.content !== "object" || payload.content === null) throw new MegolmDecryptionError("BAD_ENCRYPTED_MESSAGE", "The plaintext has no type or content");
+			if (!isObject(payload) || typeof payload.type !== "string" || !isObject(payload.content)) throw new MegolmDecryptionError("BAD_ENCRYPTED_MESSAGE", "The plaintext has no type or content");
 			if (payload.room_id !== roomId) throw new MegolmDecryptionError("ROOM_MISMATCH", "The plaintext is for another room");
 			const clearContent = { ...payload.content };
 			if (clearContent["m.relates_to"] === void 0 && content["m.relates_to"] !== void 0) clearContent["m.relates_to"] = content["m.relates_to"];

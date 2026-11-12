@@ -49,7 +49,7 @@ export declare class MatrixHttpApi {
   endpoint<K extends ClientEndpoint>(key: K, params: EndpointParams<K>, opts: EndpointOptions<K>): Promise<EndpointResponse<K>>;
   /** The URL of a path under the server's base URL (for links the app opens itself, such as SSO redirects). */
   url(path: string, query?: Record<string, QueryValue>): string;
-  request<T = Record<string, any>>(method: string, path: string, opts?: RequestOptions): Promise<T>;
+  request<T = Record<string, unknown>>(method: string, path: string, opts?: RequestOptions): Promise<T>;
   private once;
 }
 //# sourceMappingURL=api.d.ts.map

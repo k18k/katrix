@@ -1180,14 +1180,14 @@ var MatrixClient = class extends TypedEmitter {
 			echo.localStatus = "encrypting";
 			if (!room.state.membersLoaded) await this.loadMembers(roomId);
 			const enc = room.state.get("m.room.encryption").content;
-			body = await this.e2ee.encryptRoomEvent({
+			body = { ...await this.e2ee.encryptRoomEvent({
 				roomId,
 				algorithm: enc.algorithm,
 				rotationPeriodMs: enc.rotation_period_ms,
 				rotationPeriodMsgs: enc.rotation_period_msgs,
 				historyVisibility: room.state.get("m.room.history_visibility")?.content.history_visibility ?? "shared",
 				members: room.encryptionTargets()
-			}, type, content);
+			}, type, content) };
 			sendType = "m.room.encrypted";
 			echo.localStatus = "sending";
 		} else if (!room && type !== "m.room.encrypted") {

@@ -196,7 +196,7 @@ var CrossSigning = class {
 			else if (userId !== this.userId && await this.ownIdentityTrusted()) {
 				const usk = (await this.ownRecord())?.crossSigning?.userSigning;
 				const uskPub = usk ? publicKeyOf(usk) : void 0;
-				verified = uskPub !== void 0 && verifyObject(this.protocol, master, this.userId, uskPub, uskPub);
+				verified = master !== void 0 && uskPub !== void 0 && verifyObject(this.protocol, master, this.userId, uskPub, uskPub);
 			}
 		}
 		const pinned = rec?.trust?.pinnedMaster;

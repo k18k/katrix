@@ -1,7 +1,17 @@
 import { clearTimer, setTimer } from "../platform.js";
 import { describeError } from "../util/logger.js";
+import { isObject } from "../shared/json.js";
 import { TypedEmitter } from "../util/emitter.js";
 // src/voip/call.ts
+function isStreamMetadata(value) {
+	return isObject(value) && Object.values(value).every((m) => isObject(m) && typeof m.purpose === "string" && (m.audio_muted === void 0 || typeof m.audio_muted === "boolean") && (m.video_muted === void 0 || typeof m.video_muted === "boolean"));
+}
+function isIceCandidate(value) {
+	return isObject(value) && typeof value.candidate === "string" && (value.sdpMid === void 0 || value.sdpMid === null || typeof value.sdpMid === "string") && (value.sdpMLineIndex === void 0 || value.sdpMLineIndex === null || typeof value.sdpMLineIndex === "number");
+}
+function sdpOf(value) {
+	return isObject(value) && typeof value.sdp === "string" ? value.sdp : void 0;
+}
 /** The minimal recommended invite lifetime (spec: 90 seconds). */
 const INVITE_LIFETIME_MS = 9e4;
 /** Candidate batching (spec's suggested starting points). */
@@ -234,7 +244,7 @@ var MatrixCall = class extends TypedEmitter {
 	async handle(type, content, sender) {
 		if (this.state === "ended") return;
 		if (sender === this.myUserId && content.party_id === this.partyId) return;
-		if (content.sdp_stream_metadata && typeof content.sdp_stream_metadata === "object") {
+		if (isStreamMetadata(content.sdp_stream_metadata)) {
 			this.remoteStreamMetadata = content.sdp_stream_metadata;
 			this.emit("streamMetadata", content.sdp_stream_metadata);
 		}
@@ -245,7 +255,8 @@ var MatrixCall = class extends TypedEmitter {
 					if (sender === this.myUserId && this.state === "ringing") this.end("answered_elsewhere");
 					return;
 				}
-				if (this.opponent || this.state !== "inviting" || typeof content.answer?.sdp !== "string") return;
+				const answerSdp = sdpOf(content.answer);
+				if (this.opponent || this.state !== "inviting" || answerSdp === void 0 || typeof content.party_id !== "string") return;
 				this.opponent = {
 					userId: sender,
 					partyId: content.party_id
@@ -254,7 +265,7 @@ var MatrixCall = class extends TypedEmitter {
 				this.setState("connecting");
 				await this.peerConnection.setRemoteDescription({
 					type: "answer",
-					sdp: content.answer.sdp
+					sdp: answerSdp
 				});
 				this.remoteDescriptionSet = true;
 				await this.flushRemoteCandidates();
@@ -270,20 +281,21 @@ var MatrixCall = class extends TypedEmitter {
 				if (!Array.isArray(content.candidates)) return;
 				if (this.opponent && !fromOpponent) return;
 				for (const c of content.candidates) {
-					if (typeof c?.candidate !== "string") continue;
+					if (!isIceCandidate(c)) continue;
 					if (this.remoteDescriptionSet) await this.addRemoteCandidate(c);
 					else this.queuedRemoteCandidates.push(c);
 				}
 				return;
 			case "m.call.negotiate": {
 				const d = content.description;
-				if (!fromOpponent || !this.peerConnection || typeof d?.sdp !== "string") return;
+				const sdp = sdpOf(d);
+				if (!fromOpponent || !this.peerConnection || !isObject(d) || sdp === void 0 || d.type !== "offer" && d.type !== "answer") return;
 				const pc = this.peerConnection;
 				const polite = this.direction === "inbound";
 				if (d.type === "offer" && (this.makingOffer || pc.signalingState !== "stable") && !polite) return;
 				await pc.setRemoteDescription({
 					type: d.type,
-					sdp: d.sdp
+					sdp
 				});
 				if (d.type === "offer") {
 					const answer = await pc.createAnswer();
@@ -309,6 +321,6 @@ var MatrixCall = class extends TypedEmitter {
 		}
 	}
 };
-export { INVITE_LIFETIME_MS, MatrixCall };
+export { INVITE_LIFETIME_MS, MatrixCall, isStreamMetadata, sdpOf };
 
 //# sourceMappingURL=call.js.map

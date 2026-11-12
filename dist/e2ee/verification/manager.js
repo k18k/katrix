@@ -1,4 +1,5 @@
 import { describeError } from "../../util/logger.js";
+import { isObject } from "../../shared/json.js";
 import { TypedEmitter } from "../../util/emitter.js";
 import { ALL_METHODS, VerificationRequest } from "./request.js";
 // src/e2ee/verification/manager.ts
@@ -150,7 +151,7 @@ var VerificationManager = class extends TypedEmitter {
 					otherDeviceId: c.from_device
 				});
 				request.phase = "ready";
-				request.theirMethods = [c.method];
+				request.theirMethods = typeof c.method === "string" ? [c.method] : [];
 				this.byTxn.set(txn, request);
 				this.emit("request", request);
 			} else {
@@ -182,7 +183,7 @@ var VerificationManager = class extends TypedEmitter {
 			return;
 		}
 		if (!VERIFICATION_TYPES.has(event.type)) return;
-		const rel = c["m.relates_to"];
+		const rel = isObject(c["m.relates_to"]) ? c["m.relates_to"] : void 0;
 		const request = rel?.rel_type === "m.reference" && typeof rel.event_id === "string" ? this.byEvent.get(rel.event_id) : void 0;
 		if (!request) return;
 		if (event.sender === this.ctx.userId && c.from_device === this.ctx.deviceId) return;

@@ -2,6 +2,7 @@ import { MatrixError } from "../http/errors.js";
 import { encodeQuery, parseQuery } from "../util/query.js";
 import { encodeBase64 } from "../shared/base64.js";
 import { encodeUtf8 } from "../shared/utf8.js";
+import { isObject } from "../shared/json.js";
 // src/auth/oauth.ts
 /**
 * OAuth 2.0 login, the "next-generation auth" of the Matrix spec
@@ -13,6 +14,15 @@ import { encodeUtf8 } from "../shared/utf8.js";
 async function getAuthMetadata(api) {
 	return api.endpoint("GET /v1/auth_metadata", {}, { auth: false });
 }
+async function responseObject(res) {
+	const text = await res.text();
+	try {
+		const value = JSON.parse(text);
+		return isObject(value) ? value : {};
+	} catch {
+		return {};
+	}
+}
 async function tokenRequest(http, endpoint, form) {
 	const res = await http.request({
 		method: "POST",
@@ -23,11 +33,7 @@ async function tokenRequest(http, endpoint, form) {
 		},
 		body: encodeQuery(form)
 	});
-	const text = await res.text();
-	let json = {};
-	try {
-		json = text ? JSON.parse(text) : {};
-	} catch {}
+	const json = await responseObject(res);
 	if (res.status < 200 || res.status >= 300 || typeof json.access_token !== "string") throw new MatrixError(res.status, {
 		errcode: typeof json.error === "string" ? json.error : "M_UNKNOWN",
 		error: json.error_description
@@ -60,9 +66,9 @@ async function registerClient(http, metadata, client) {
 		},
 		body: JSON.stringify(client)
 	});
-	const json = JSON.parse(await res.text() || "{}");
+	const json = await responseObject(res);
 	if (res.status < 200 || res.status >= 300 || typeof json.client_id !== "string") throw new MatrixError(res.status, {
-		errcode: json.error ?? "M_UNKNOWN",
+		errcode: typeof json.error === "string" ? json.error : "M_UNKNOWN",
 		error: json.error_description
 	}, {
 		method: "POST",

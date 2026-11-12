@@ -11,9 +11,11 @@ import { CrossSigning } from "./cross-signing.js";
 /** The plaintext of a backed-up session (BackedUpSessionData). */
 export interface BackedUpSession {
   algorithm: string;
-  forwarding_curve25519_key_chain: string[];
+  /** Optional: backups made by other clients may leave it out. */
+  forwarding_curve25519_key_chain?: string[];
   sender_key: string;
-  sender_claimed_keys: Record<string, string>;
+  /** Optional: backups made by other clients may leave it out. */
+  sender_claimed_keys?: Record<string, string>;
   session_key: string;
   shared_history?: boolean;
 }

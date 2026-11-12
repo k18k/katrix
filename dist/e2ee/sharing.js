@@ -120,28 +120,29 @@ var KeySharing = class {
 			this.logger.warn("ignoring a forwarded room key from a device that is not ours and verified", { sender: decrypted.sender });
 			return;
 		}
-		if (c.algorithm !== "m.megolm.v1.aes-sha2" || typeof c.room_id !== "string" || typeof c.session_id !== "string" || typeof c.session_key !== "string") return void 0;
-		const requested = await this.store.get("client", `keyreq|${c.room_id}|${c.session_id}`);
+		const { room_id: roomId, session_id: sessionId, session_key: sessionKey } = c;
+		if (c.algorithm !== "m.megolm.v1.aes-sha2" || typeof roomId !== "string" || typeof sessionId !== "string" || typeof sessionKey !== "string") return void 0;
+		const requested = await this.store.get("client", `keyreq|${roomId}|${sessionId}`);
 		if (!requested) {
-			this.logger.warn("ignoring a forwarded room key nobody asked for", { roomId: c.room_id });
+			this.logger.warn("ignoring a forwarded room key nobody asked for", { roomId });
 			return;
 		}
 		let session;
 		try {
-			session = this.protocol.inboundGroupSessionFromExport(c.session_key);
+			session = this.protocol.inboundGroupSessionFromExport(sessionKey);
 		} catch (e) {
 			this.logger.warn("ignoring a malformed forwarded room key", describeError(e));
 			return;
 		}
-		if (session.sessionId() !== c.session_id) return void 0;
+		if (session.sessionId() !== sessionId) return void 0;
 		if (!await this.store.transaction(async (tx) => {
-			const key = inboundKey(c.room_id, c.session_id);
+			const key = inboundKey(roomId, sessionId);
 			const existing = await tx.get("inbound_group_sessions", key);
 			if (existing && session.compare(this.pickler.inbound(existing)) !== "better") return false;
 			tx.put("inbound_group_sessions", key, {
 				pickle: this.pickler.pickle(session),
-				roomId: c.room_id,
-				sessionId: c.session_id,
+				roomId,
+				sessionId,
 				senderKey: typeof c.sender_key === "string" ? c.sender_key : "",
 				senderUserId: existing?.senderUserId ?? "",
 				claimedEd25519Key: typeof c.sender_claimed_ed25519_key === "string" ? c.sender_claimed_ed25519_key : void 0,
@@ -149,7 +150,7 @@ var KeySharing = class {
 				source: "forwarded",
 				forwardingChain: [...Array.isArray(c.forwarding_curve25519_key_chain) ? c.forwarding_curve25519_key_chain : [], decrypted.senderKey]
 			});
-			tx.delete("client", `keyreq|${c.room_id}|${c.session_id}`);
+			tx.delete("client", `keyreq|${roomId}|${sessionId}`);
 			return true;
 		})) return void 0;
 		const req = requested;
@@ -159,8 +160,8 @@ var KeySharing = class {
 			requesting_device_id: this.deviceId
 		} } }).catch((e) => this.logger.warn("could not cancel a room key request", describeError(e)));
 		return {
-			roomId: c.room_id,
-			sessionId: c.session_id
+			roomId,
+			sessionId
 		};
 	}
 	/** m.room_key.withheld: the sender will not share the key, and says why (shown on the undecryptable events). */

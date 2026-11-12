@@ -10,6 +10,9 @@ import { Mutex } from "../util/mutex.js";
 * the end), which lets one /sync response, its to-device messages and the new sync token be
 * committed together.
 */
+function readJson(raw) {
+	return JSON.parse(raw);
+}
 var Store = class {
 	adapter;
 	mutex = new Mutex();
@@ -19,10 +22,10 @@ var Store = class {
 	/** Read committed state, outside any unit of work. */
 	async get(store, key) {
 		const raw = await this.adapter.get(store, key);
-		return raw === void 0 ? void 0 : JSON.parse(raw);
+		return raw === void 0 ? void 0 : readJson(raw);
 	}
 	async list(store, prefix = "") {
-		return (await this.adapter.list(store, prefix)).map(([k, v]) => [k, JSON.parse(v)]);
+		return (await this.adapter.list(store, prefix)).map(([k, v]) => [k, readJson(v)]);
 	}
 	/** Run `task` as one unit of work. Its writes are applied atomically after it returns. */
 	transaction(task) {
@@ -53,9 +56,9 @@ var Transaction = class Transaction {
 	}
 	async get(store, key) {
 		const op = this.pending.get(Transaction.id(store, key));
-		if (op) return op.type === "put" ? JSON.parse(op.value) : void 0;
+		if (op) return op.type === "put" ? readJson(op.value) : void 0;
 		const raw = await this.adapter.get(store, key);
-		return raw === void 0 ? void 0 : JSON.parse(raw);
+		return raw === void 0 ? void 0 : readJson(raw);
 	}
 	async list(store, prefix = "") {
 		const merged = new Map(await this.adapter.list(store, prefix));
@@ -64,7 +67,7 @@ var Transaction = class Transaction {
 			if (op.type === "put") merged.set(op.key, op.value);
 			else merged.delete(op.key);
 		}
-		return [...merged.entries()].sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0).map(([k, v]) => [k, JSON.parse(v)]);
+		return [...merged.entries()].sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0).map(([k, v]) => [k, readJson(v)]);
 	}
 	put(store, key, value) {
 		this.assertOpen();

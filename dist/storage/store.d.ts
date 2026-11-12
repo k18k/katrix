@@ -1,14 +1,4 @@
 import { StorageAdapter, StoreName } from "./adapter.js";
-/**
- * The client's view of storage: typed JSON values, and units of work. A unit of work reads
- * through its own pending writes and commits them as one atomic batch at the end; if the task
- * throws, nothing is written. Units of work run one at a time (the client is the single writer),
- * so two of them never read the same state and overwrite each other's changes.
- *
- * Network calls inside a unit of work are allowed (the batch is only handed to the adapter at
- * the end), which lets one /sync response, its to-device messages and the new sync token be
- * committed together.
- */
 export declare class Store {
   private readonly adapter;
   private readonly mutex;

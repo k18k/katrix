@@ -131,6 +131,6 @@ export declare class MatrixCall extends TypedEmitter<CallEvents> {
   private addRemoteCandidate;
   private renegotiate;
   /** An m.call.* event of this call from someone else (or from another device of ours). */
-  handle(type: string, content: Record<string, any>, sender: string): Promise<void>;
+  handle(type: string, content: Record<string, unknown>, sender: string): Promise<void>;
 }
 //# sourceMappingURL=call.d.ts.map
