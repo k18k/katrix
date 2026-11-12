@@ -181,7 +181,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
         if (event.type !== "m.key.verification.cancel" && typeof c.from_device === "string")
           await this.toDeviceChannel(txn, event.sender, [c.from_device])
             .send("m.key.verification.cancel", { code: "m.unknown_transaction", reason: "Unknown verification" })
-            .catch(() => {});
+            .catch(() => {}); // ts-pro-exception: the cancellation is a courtesy; the other side times out
         return;
       }
     }

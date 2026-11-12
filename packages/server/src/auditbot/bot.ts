@@ -143,7 +143,11 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
     if (options.rooms === "groups" && ev.content?.is_direct === true)
       void (async () => {
         if (!(await hs.rooms.joinedMembers(ev.room_id)).includes(userId)) return;
-        await client.request("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(ev.room_id)}/leave`, {}).catch(() => {});
+        // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+        // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+        await client
+          .request("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(ev.room_id)}/leave`, {})
+          .catch((err) => hs.logger.warn("Audit bot failed to leave a direct message room", err));
         hs.logger.info("Audit bot left a direct message room", ev.room_id);
       })();
   };
@@ -247,7 +251,10 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
 
   await sweep();
   const running = loop();
-  const timer = setInterval(() => void sweep().catch(() => {}), options.sweepIntervalMs ?? 600_000);
+  const timer = setInterval(
+    () => void sweep().catch((err) => hs.logger.warn("Audit bot sweep failed", err)),
+    options.sweepIntervalMs ?? 600_000,
+  );
   timer.unref();
 
   return {
@@ -266,7 +273,7 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
       clearInterval(timer);
       for (const t of quietTimers.values()) clearTimeout(t);
       hs.off("event", onEvent);
-      await running.catch(() => {});
+      await running.catch(() => {}); // ts-pro-exception: stopping: the sync loop rejects with the abort
       client.close();
     },
   };

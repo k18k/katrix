@@ -235,9 +235,11 @@ export function registerProfileRoutes(r: Router): void {
             stream,
           }),
         );
+        // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+        // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
         await ctx.hs.federation
           .onPresence(s.userId, body.presence, typeof body.status_msg === "string" ? body.status_msg : null)
-          .catch(() => {});
+          .catch((err) => ctx.hs.logger.warn("Presence update to federation failed", err));
         ctx.hs.notifier.notify(await ctx.hs.rooms.usersSharingRooms(s.userId));
         return {};
       },

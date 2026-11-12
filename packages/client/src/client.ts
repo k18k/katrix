@@ -314,7 +314,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   async stop(): Promise<void> {
     this.running = false;
     this.syncAbort?.abort();
-    await this.loop?.catch(() => {});
+    await this.loop?.catch(() => {}); // ts-pro-exception: stopping: the sync loop rejects with the abort
     this.loop = undefined;
     this.started = undefined;
     this.emit("sync", "stopped");
@@ -1493,7 +1493,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * The replied-to sender is mentioned. A reply to an event in a thread stays in the thread.
    */
   async sendReply(roomId: string, inReplyTo: string, content: ContentOf<"m.room.message">): Promise<string> {
-    const target = this.rooms.get(roomId)?.timeline.find(inReplyTo) ?? (await this.fetchEvent(roomId, inReplyTo).catch(() => undefined));
+    const target = this.rooms.get(roomId)?.timeline.find(inReplyTo) ?? (await this.fetchEvent(roomId, inReplyTo).catch(() => undefined)); // ts-pro-exception: a reply to an event the client cannot fetch is sent without the quote fallback
     const mentions = new Set(content["m.mentions"]?.user_ids ?? []);
     if (target?.sender && target.sender !== this.userId) mentions.add(target.sender);
     const thread = target?.threadRootId;

@@ -300,6 +300,7 @@ export class Homeserver extends EventEmitter {
       () => this.streams.lastAllocated,
       (fresh) => this.streams.position(fresh),
     );
+    this.notifier.warn = (...args) => this.logger.warn(...args);
     this.streams.onAdvance = () => this.notifier.advanced();
 
     this.auth = new AuthService(this);

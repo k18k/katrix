@@ -316,7 +316,9 @@ export class KeyService {
       await this.hs.streams.write((stream) => this.hs.db.upsert("cross_signing_keys", { user_id: userId, key_type: type, key, stream }));
     }
     await this.markDeviceListChanged(userId);
-    await this.hs.federation.onSigningKeyUpdate(userId).catch(() => {});
+    // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+    // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+    await this.hs.federation.onSigningKeyUpdate(userId).catch((err) => this.hs.logger.warn("Signing key update to federation failed", err));
   }
 
   async uploadSignatures(signer: string, body: Record<string, any>): Promise<Record<string, any>> {
@@ -346,7 +348,10 @@ export class KeyService {
       if (this.hs.isLocalUser(u)) await this.deviceChanged(u);
       else await this.markDeviceListChanged(u);
     }
-    if (changed.has(signer)) await this.hs.federation.onSigningKeyUpdate(signer).catch(() => {});
+    if (changed.has(signer))
+      await this.hs.federation
+        .onSigningKeyUpdate(signer)
+        .catch((err) => this.hs.logger.warn("Signing key update to federation failed", err));
     return { failures };
   }
 

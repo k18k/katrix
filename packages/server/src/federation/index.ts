@@ -545,7 +545,7 @@ export class FederationService {
         for (const id of queue) {
           if (seen.has(id) || (await this.hs.rooms.knowsEvent(id))) continue;
           seen.add(id);
-          const raw = await this.fetchRawEvent(origin, id).catch(() => null);
+          const raw = await this.fetchRawEvent(origin, id).catch(() => null); // ts-pro-exception: an event the origin cannot serve is skipped; the gap is filled by later backfill
           if (!raw) continue;
           raws.push(raw);
           for (const a of (raw.auth_events ?? []).map(eventIdOf)) next.push(a);
@@ -629,7 +629,7 @@ export class FederationService {
       // Fetch everything first, then store in depth order so auth events precede dependents.
       const raws: Record<string, any>[] = [];
       for (let i = 0; i < missing.length; i += 20) {
-        const batch = await Promise.all(missing.slice(i, i + 20).map((id) => this.fetchRawEvent(origin, id).catch(() => null)));
+        const batch = await Promise.all(missing.slice(i, i + 20).map((id) => this.fetchRawEvent(origin, id).catch(() => null))); // ts-pro-exception: an event the origin cannot serve is skipped; the gap is filled by later backfill
         for (const raw of batch) if (raw) raws.push(raw);
       }
       await this.storeOutliers(roomId, version, raws);

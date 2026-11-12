@@ -211,7 +211,7 @@ export const adapterConformance: ConformanceCheck[] = [
           await paused;
           throw new Error("rollback");
         })
-        .catch(() => {});
+        .catch(() => {}); // ts-pro-exception: the test expects this transaction to reject and asserts on its effects
       const outside = db.update(T, [{ field: "id", value: 1 }], { label: "2" });
       resume();
       await Promise.all([tx, outside]);

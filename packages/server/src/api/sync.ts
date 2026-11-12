@@ -777,7 +777,11 @@ async function touchPresence(hs: Homeserver, userId: string, presence: string): 
   });
   // #50: the users sharing a room see the change in their next sync; wake them for it.
   hs.notifier.notify([userId, ...(await hs.rooms.usersSharingRooms(userId))], stream);
-  await hs.federation.onPresence(userId, state, row?.status_msg ?? null).catch(() => {});
+  // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+  // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+  await hs.federation
+    .onPresence(userId, state, row?.status_msg ?? null)
+    .catch((err) => hs.logger.warn("Presence update to federation failed", err));
 }
 
 export function registerSyncRoutes(r: Router): void {

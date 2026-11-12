@@ -166,10 +166,14 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   for (const a of aliases) await hs.db.update("room_aliases", [{ field: "alias", value: a.alias }], { room_id: newRoomId });
   const canonical = getState(state, M.ROOM.CANONICAL_ALIAS);
   if (canonical && Object.keys(canonical.content).length) {
-    await hs.rooms.sendEvent(roomId, s.userId, { type: M.ROOM.CANONICAL_ALIAS, state_key: "", content: {} }).catch(() => {});
+    // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+    // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+    await hs.rooms
+      .sendEvent(roomId, s.userId, { type: M.ROOM.CANONICAL_ALIAS, state_key: "", content: {} })
+      .catch((err) => hs.logger.warn("Room upgrade: removing the old room's canonical alias failed", err));
     await hs.rooms
       .sendEvent(newRoomId, s.userId, { type: M.ROOM.CANONICAL_ALIAS, state_key: "", content: canonical.content })
-      .catch(() => {});
+      .catch((err) => hs.logger.warn("Room upgrade: setting the new room's canonical alias failed", err));
   }
   if (isPublic) {
     await hs.db.update("rooms", [{ field: "room_id", value: roomId }], { is_public: false });
@@ -182,7 +186,9 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   });
   // Restrict the old room so people move over.
   const restricted = { ...oldPl, events_default: Math.max(50, oldPl.events_default ?? 0), invite: Math.max(50, oldPl.invite ?? 0) };
-  await hs.rooms.sendEvent(roomId, s.userId, { type: M.ROOM.POWER_LEVELS, state_key: "", content: restricted }).catch(() => {});
+  await hs.rooms
+    .sendEvent(roomId, s.userId, { type: M.ROOM.POWER_LEVELS, state_key: "", content: restricted })
+    .catch((err) => hs.logger.warn("Room upgrade: restricting the old room's power levels failed", err));
   return newRoomId;
 }
 
@@ -476,7 +482,9 @@ export function registerRoomRoutes(r: Router): void {
       }),
     );
     hs.notifier.notify(type === M.READ.PRIVATE ? [s.userId] : await hs.rooms.joinedMembers(roomId));
-    await hs.federation.onReceipt(roomId, s.userId, type, eventId, Date.now(), threadId ?? "").catch(() => {});
+    await hs.federation
+      .onReceipt(roomId, s.userId, type, eventId, Date.now(), threadId ?? "")
+      .catch((err) => hs.logger.warn("Receipt update to federation failed", err));
   };
 
   const receiptBody = body({
@@ -581,7 +589,7 @@ export function registerRoomRoutes(r: Router): void {
     if (hs.adminRoom) {
       void hs.adminRoom
         .say(`New report #${id} from ${s.userId} about ${ctx.params.eventId ?? "room"} in ${roomId}: ${body.reason ?? "(no reason)"}`)
-        .catch(() => {});
+        .catch((err) => hs.logger.warn("Posting the report to the admin room failed", err));
     }
     return {};
   };
@@ -611,7 +619,9 @@ export function registerRoomRoutes(r: Router): void {
         });
         await hs.audit.record({ action: "user_report", actor: s.userId, target: userId, details: { report_id: id } });
         if (hs.adminRoom)
-          void hs.adminRoom.say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`).catch(() => {});
+          void hs.adminRoom
+            .say(`New user report #${id} from ${s.userId} about ${userId}: ${body.reason || "(no reason)"}`)
+            .catch((err) => hs.logger.warn("Posting the report to the admin room failed", err));
         return {};
       },
     }),

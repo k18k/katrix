@@ -205,7 +205,7 @@ export async function publicGet(
     for await (const chunk of (res.body ?? []) as AsyncIterable<Uint8Array>) {
       size += chunk.length;
       if (size > options.maxBytes) {
-        await res.body?.cancel().catch(() => {});
+        await res.body?.cancel().catch(() => {}); // ts-pro-exception: cancelling an over-size body is cleanup; the size error below is what matters
         if (!options.truncate) throw errors.tooLarge("Remote response is too large");
         chunks.push(chunk.subarray(0, chunk.length - (size - options.maxBytes)));
         break;

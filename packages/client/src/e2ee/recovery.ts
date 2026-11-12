@@ -77,7 +77,7 @@ export class Recovery {
     } catch (e) {
       if (!(e instanceof SecretStorageError)) throw e;
     }
-    key ??= await this.secretStorage.keyFromPassphrase(input).catch(() => undefined);
+    key ??= await this.secretStorage.keyFromPassphrase(input).catch(() => undefined); // ts-pro-exception: input that is neither a key nor a usable passphrase is rejected just below
     if (!key || !(await this.secretStorage.checkKey(key)))
       throw new SecretStorageError("BAD_KEY", "That is not the recovery key or passphrase");
     return key;

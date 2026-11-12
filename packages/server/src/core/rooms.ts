@@ -198,7 +198,11 @@ export class RoomService {
 
   /** Tell other instances to drop cached data. */
   invalidate(msg: { rooms?: string[]; events?: string[]; sharing?: boolean }): void {
-    void this.hs.cluster.publish("invalidate", { ...msg, from: this.hs.instanceId }).catch(() => {});
+    // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+    // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+    void this.hs.cluster
+      .publish("invalidate", { ...msg, from: this.hs.instanceId })
+      .catch((err) => this.hs.logger.warn("Cluster cache invalidation failed; other instances may serve stale state", err));
   }
 
   forgetEventCache(eventId: string): void {
@@ -1030,7 +1034,10 @@ export class RoomService {
           if (this.hs.isLocalUser(userId) && joinedNow && !wasJoined) {
             // Only the servers of this room, as far as its (possibly partial) state tells.
             const to = this.hs.federation.serversInRoom(newState);
-            if (to.size) void this.hs.federation.onDeviceListChange(userId, undefined, to).catch(() => {});
+            if (to.size)
+              void this.hs.federation
+                .onDeviceListChange(userId, undefined, to)
+                .catch((err) => this.hs.logger.warn("Device list update to federation failed", err));
           }
         }
       }
@@ -1045,7 +1052,10 @@ export class RoomService {
         if (opts.local && !opts.noFederate) this.hs.federation.onLocalEvent(view, newState);
         if (this.hs.appservices.registrations.length)
           await this.hs.appservices.onEvent(view, newState).catch((err) => this.hs.logger.warn("Appservice push failed", err));
-        if (isState) await this.hs.delayedEvents.onStateEvent(roomId, pdu.type, pdu.state_key!, sender).catch(() => {});
+        if (isState)
+          await this.hs.delayedEvents
+            .onStateEvent(roomId, pdu.type, pdu.state_key!, sender)
+            .catch((err) => this.hs.logger.warn("Delayed events state update failed", err));
         // Guests leave rooms that stop allowing them (#87). In the background: it sends events, under the room lock.
         if (key === stateKey(M.ROOM.GUEST_ACCESS, "") && pdu.content?.guest_access !== "can_join")
           void this.removeGuests(roomId).catch((err) => this.hs.logger.warn("Could not remove guests from", roomId, err));

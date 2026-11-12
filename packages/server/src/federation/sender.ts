@@ -28,9 +28,14 @@ export class TransactionSender {
   /** Start background sweeping for destinations with pending items (e.g. after a restart). */
   start(): void {
     if (this.sweepTimer) return;
-    this.sweepTimer = setInterval(() => void this.sweep().catch(() => {}), SWEEP_INTERVAL_MS);
+    // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+    // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+    this.sweepTimer = setInterval(
+      () => void this.sweep().catch((err) => this.hs.logger.warn("Federation outbox sweep failed", err)),
+      SWEEP_INTERVAL_MS,
+    );
     this.sweepTimer.unref?.();
-    void this.sweep().catch(() => {});
+    void this.sweep().catch((err) => this.hs.logger.warn("Federation outbox sweep failed", err));
   }
 
   private async sweep(): Promise<void> {

@@ -4,7 +4,7 @@ export class Mutex {
 
   run<T>(task: () => Promise<T>): Promise<T> {
     const result = this.tail.then(task, task);
-    this.tail = result.catch(() => {});
+    this.tail = result.catch(() => {}); // ts-pro-exception: the settled tail only orders the queue; result's own rejection reaches its caller
     return result;
   }
 }

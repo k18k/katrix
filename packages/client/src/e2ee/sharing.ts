@@ -242,7 +242,7 @@ export class KeySharing {
       [this.userId]: Object.fromEntries(
         devices.map((d) => [d.deviceId, { action: "request_cancellation", requesting_device_id: this.deviceId, request_id: requestId }]),
       ),
-    }).catch(() => {});
+    }).catch(() => {}); // ts-pro-exception: the cancellation is a courtesy; devices drop unanswered requests themselves
     return secret;
   }
 

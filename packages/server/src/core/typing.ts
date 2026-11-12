@@ -31,7 +31,11 @@ export class TypingService {
     await this.hs.cluster.publish("typing", msg);
     this.hs.notifier.notify(await this.hs.rooms.joinedMembers(roomId));
     if ((this.hs.isLocalUser(userId) && typing !== wasTyping) || (typing && this.hs.isLocalUser(userId))) {
-      await this.hs.federation.onTyping(roomId, userId, typing).catch(() => {});
+      // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+      // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+      await this.hs.federation
+        .onTyping(roomId, userId, typing)
+        .catch((err) => this.hs.logger.warn("Typing update to federation failed", err));
     }
   }
 
@@ -51,7 +55,7 @@ export class TypingService {
           void this.hs.rooms
             .joinedMembers(msg.roomId)
             .then((m) => this.hs.notifier.notify(m))
-            .catch(() => {});
+            .catch((err) => this.hs.logger.warn("Typing expiry notification failed", err));
         }
       }, msg.timeoutMs);
       timer.unref?.();

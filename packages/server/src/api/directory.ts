@@ -132,7 +132,11 @@ export function registerDirectoryRoutes(r: Router): void {
             changed = true;
           }
           if (changed) {
-            await ctx.hs.rooms.sendEvent(row.room_id, s.userId, { type: M.ROOM.CANONICAL_ALIAS, state_key: "", content }).catch(() => {});
+            // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+            // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+            await ctx.hs.rooms
+              .sendEvent(row.room_id, s.userId, { type: M.ROOM.CANONICAL_ALIAS, state_key: "", content })
+              .catch((err) => ctx.hs.logger.warn("Removing the deleted alias from the canonical alias event failed", err));
           }
         }
         return {};

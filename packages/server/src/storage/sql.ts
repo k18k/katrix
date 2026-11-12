@@ -531,7 +531,7 @@ export function postgresAdapter(
             await client.query({ text: "COMMIT" });
             return result;
           } catch (err) {
-            await client.query({ text: "ROLLBACK" }).catch(() => {});
+            await client.query({ text: "ROLLBACK" }).catch(() => {}); // ts-pro-exception: a failed ROLLBACK must not hide the error that caused it, rethrown below
             throw err;
           } finally {
             client.off?.("error", ignorePgError);
@@ -576,7 +576,7 @@ export function mysqlAdapter(pool: MysqlPoolLike, options: { tablePrefix?: strin
             await conn.query("COMMIT");
             return result;
           } catch (err) {
-            await conn.query("ROLLBACK").catch(() => {});
+            await conn.query("ROLLBACK").catch(() => {}); // ts-pro-exception: a failed ROLLBACK must not hide the error that caused it, rethrown below
             throw err;
           } finally {
             conn.release();

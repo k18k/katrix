@@ -77,7 +77,7 @@ export function localCluster(): ClusterAdapter {
     async lock(key, fn) {
       const prev = locks.get(key) ?? Promise.resolve();
       const run = prev.then(fn, fn);
-      const settled = run.catch(() => {});
+      const settled = run.catch(() => {}); // ts-pro-exception: the settled tail only orders the queue; run's own rejection reaches its caller
       locks.set(key, settled);
       try {
         return await run;
@@ -176,7 +176,9 @@ export class StreamManager {
     this.cluster = cluster;
     this.instanceId = instanceId;
     this.warn = warn;
-    this.heartbeat = setInterval(() => void this.flush().catch(() => {}), WRITER_TTL_MS / 3);
+    // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+    // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+    this.heartbeat = setInterval(() => void this.flush().catch((err) => this.warn("Writer heartbeat failed", err)), WRITER_TTL_MS / 3);
     this.heartbeat.unref?.();
   }
 
@@ -210,7 +212,7 @@ export class StreamManager {
     };
     const p = this.publishing.then(run, run);
     this.nextPublish = p;
-    this.publishing = p.catch(() => {});
+    this.publishing = p.catch(() => {}); // ts-pro-exception: the settled tail only orders publishes; p's rejection reaches its caller
     return p;
   }
 
@@ -320,7 +322,7 @@ export class StreamManager {
 
   async stop(): Promise<void> {
     clearInterval(this.heartbeat);
-    await this.cluster.delete(this.key()).catch(() => {});
+    await this.cluster.delete(this.key()).catch(() => {}); // ts-pro-exception: the writer key expires after WRITER_TTL_MS when this delete fails
   }
 }
 

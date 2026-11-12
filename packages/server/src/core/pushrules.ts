@@ -81,7 +81,11 @@ async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
 
 export async function saveRules(hs: Homeserver, userId: string, rules: Ruleset): Promise<void> {
   cacheFor(hs).set(userId, deepFreeze(structuredClone(rules)));
-  void hs.cluster.publish("pushrules", { from: hs.instanceId, userId }).catch(() => {});
+  // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+  // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+  void hs.cluster
+    .publish("pushrules", { from: hs.instanceId, userId })
+    .catch((err) => hs.logger.warn("Push rules cache invalidation failed; other instances may use stale rules", err));
   await hs.streams.write((stream) =>
     hs.db.upsert("account_data", { user_id: userId, room_id: "", type: M.PUSH_RULES, content: { global: rules }, stream }),
   );

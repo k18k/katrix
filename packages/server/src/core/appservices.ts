@@ -387,7 +387,7 @@ export class AppServiceService {
     for (const svc of this.services) {
       const res = await this.query(svc.reg, `/_matrix/app/v1/thirdparty/${path}${query.toString() ? `?${query}` : ""}`);
       if (res?.ok) {
-        const body = await res.json().catch(() => null);
+        const body = await res.json().catch(() => null); // ts-pro-exception: an application service answering with invalid JSON contributes no results
         if (Array.isArray(body)) results.push(...body);
       }
     }
@@ -399,7 +399,7 @@ export class AppServiceService {
     for (const svc of this.services) {
       for (const protocol of svc.reg.protocols ?? []) {
         const res = await this.query(svc.reg, `/_matrix/app/v1/thirdparty/protocol/${encodeURIComponent(protocol)}`);
-        const body = res?.ok ? await res.json().catch(() => null) : null;
+        const body = res?.ok ? await res.json().catch(() => null) : null; // ts-pro-exception: an application service answering with invalid JSON gets the empty protocol description
         out[protocol] = body ?? { user_fields: [], location_fields: [], icon: "", field_types: {}, instances: [] };
       }
     }

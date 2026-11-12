@@ -92,7 +92,7 @@ export async function handleRequest(hs: Homeserver, request: Request, options: H
     info.error = await response
       .clone()
       .json()
-      .catch(() => undefined);
+      .catch(() => undefined); // ts-pro-exception: an error response whose body is not JSON is logged without its Matrix error
   }
   hs.emit("request", info);
   return response;
@@ -163,7 +163,7 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
         return token() ? ctx.auth() : null;
       },
       async rateLimit(action) {
-        const s = token() ? await ctx.auth().catch(() => null) : null;
+        const s = token() ? await ctx.auth().catch(() => null) : null; // ts-pro-exception: a request whose token fails to authenticate is rate limited as anonymous; the handler's own auth rejects it
         if (s?.isAdmin || (s?.appservice && s.appservice.rate_limited === false)) return;
         await hs.rateLimits.check(action, s?.userId ?? ctx.ip ?? "unknown");
       },

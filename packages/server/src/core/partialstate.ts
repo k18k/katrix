@@ -91,7 +91,9 @@ export class PartialStateService {
     });
     this.partial.set(roomId, true);
     this.completedStreams.delete(roomId);
-    void this.hs.cluster.publish("partial-state", { roomId }).catch(() => {});
+    // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+    // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+    void this.hs.cluster.publish("partial-state", { roomId }).catch((err) => this.hs.logger.warn("Partial state publish failed", err));
     this.startResync(roomId);
   }
 
@@ -112,7 +114,7 @@ export class PartialStateService {
           .then((p) => {
             if (!p) done();
           })
-          .catch(() => {});
+          .catch((err) => this.hs.logger.warn("Partial state check failed", err));
       this.completed.on(roomId, check);
       signal?.addEventListener("abort", done);
       this.hs.once?.("close", done);
@@ -172,7 +174,7 @@ export class PartialStateService {
         await this.hs.cluster.set(claim, this.hs.instanceId, RESYNC_CLAIM_MS);
       }
     } finally {
-      await this.hs.cluster.delete(claim).catch(() => {});
+      await this.hs.cluster.delete(claim).catch(() => {}); // ts-pro-exception: the claim expires after RESYNC_CLAIM_MS when this delete fails
     }
   }
 
@@ -205,7 +207,9 @@ export class PartialStateService {
         // Servers wrongly left out meanwhile get our members' device lists now.
         if (missed.length) {
           for (const userId of (await this.hs.rooms.joinedMembers(roomId)).filter((u) => this.hs.isLocalUser(u))) {
-            await this.hs.federation.onDeviceListChange(userId, undefined, new Set(missed)).catch(() => {});
+            await this.hs.federation
+              .onDeviceListChange(userId, undefined, new Set(missed))
+              .catch((err) => this.hs.logger.warn("Device list update to federation failed", err));
           }
         }
         return true;
@@ -223,7 +227,7 @@ export class PartialStateService {
     this.partial.set(roomId, false);
     this.completedStreams.delete(roomId);
     this.completed.emit(roomId);
-    void this.hs.cluster.publish("partial-state", { roomId }).catch(() => {});
+    void this.hs.cluster.publish("partial-state", { roomId }).catch((err) => this.hs.logger.warn("Partial state publish failed", err));
     // Local members' eager syncs now include the room; tracked device lists may have changed.
     const members = await this.hs.rooms.joinedMembers(roomId);
     this.hs.notifier.notify(members.filter((u) => this.hs.isLocalUser(u)));

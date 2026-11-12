@@ -39,6 +39,8 @@ export class Notifier {
   private instanceId: string;
   private lastAllocated: () => number;
   private position: (fresh: boolean) => Promise<number>;
+  /** Reports a wake-up that could not be published to other instances; the homeserver sets it to its logger. */
+  warn: (...args: unknown[]) => void = () => {};
   /** Wake-ups whose change is beyond the position known to be visible. */
   private held: { users: string[]; pos: number }[] = [];
   /** The highest position known to be visible. */
@@ -73,7 +75,11 @@ export class Notifier {
     if (!users.length) return;
     const at = pos ?? this.lastAllocated();
     this.hold(users, at);
-    void this.cluster.publish("notify", { from: this.instanceId, users, pos: at }).catch(() => {});
+    // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
+    // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
+    void this.cluster
+      .publish("notify", { from: this.instanceId, users, pos: at })
+      .catch((err) => this.warn("Wake-up publish to other instances failed", err));
   }
 
   /** The position may have moved (a write of this instance completed): release what it covers. */

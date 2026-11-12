@@ -10,7 +10,7 @@ function localQueue() {
   return async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
     const prev = tails.get(key) ?? Promise.resolve();
     const run = prev.then(fn, fn);
-    const settled = run.catch(() => {});
+    const settled = run.catch(() => {}); // ts-pro-exception: the settled tail only orders the queue; run's own rejection reaches its caller
     tails.set(key, settled);
     try {
       return await run;
@@ -87,7 +87,7 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
         parsed = JSON.parse(res.rows[0].value);
       }
       for (const h of handlers.get(parsed.channel) ?? []) h(parsed.message);
-    })().catch(() => {});
+    })().catch(() => {}); // ts-pro-exception: the adapter has no logger; a lost notification is recovered by the resync after reconnect (#92)
   };
   // https://github.com/k18k/katrix/issues/92 — insufficient session expiration (CWE-613): when the
   // LISTEN connection dropped (a Postgres restart), it was never opened again, so this instance missed every later
@@ -144,19 +144,19 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
       await setup.query(`CREATE TABLE IF NOT EXISTS ${kv} (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at BIGINT)`);
       await setup.query("COMMIT");
     } catch (err) {
-      await setup.query("ROLLBACK").catch(() => {});
+      await setup.query("ROLLBACK").catch(() => {}); // ts-pro-exception: a failed ROLLBACK must not hide the error that caused it, rethrown below
       throw err;
     } finally {
       setup.release();
     }
     await listen();
     cleanup = setInterval(
-      () => void pool.query(`DELETE FROM ${kv} WHERE expires_at IS NOT NULL AND expires_at < $1`, [Date.now()]).catch(() => {}),
+      () => void pool.query(`DELETE FROM ${kv} WHERE expires_at IS NOT NULL AND expires_at < $1`, [Date.now()]).catch(() => {}), // ts-pro-exception: expired rows are ignored on read; the cleanup runs again in a minute
       60_000,
     );
     cleanup.unref?.();
   })();
-  ready.catch(() => {});
+  ready.catch(() => {}); // ts-pro-exception: marks ready as handled; every adapter method awaits it and rethrows
 
   const q = async (text: string, values?: unknown[]) => {
     await ready;
@@ -241,7 +241,7 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
               `WITH released AS (DELETE FROM ${kv} WHERE key = $1 AND value = $2 RETURNING key) SELECT pg_notify($3, $4) FROM released`,
               [lockKey, token, PG_CHANNEL, JSON.stringify({ channel: RELEASED, message: lockKey })],
             )
-            .catch(() => {});
+            .catch(() => {}); // ts-pro-exception: the lock row expires with its lease when this release fails
         }
       });
     },
@@ -296,7 +296,7 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
       const l = listener;
       listener = null;
       if (l) {
-        await l.query(`UNLISTEN ${PG_CHANNEL}`).catch(() => {});
+        await l.query(`UNLISTEN ${PG_CHANNEL}`).catch(() => {}); // ts-pro-exception: the connection is released next either way
         l.release();
       }
     },
