@@ -1,4 +1,4 @@
-import { canonicalJson, UNSTABLE } from "@katrix/shared";
+import { canonicalJson, isObject, UNSTABLE } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext } from "#http/router.ts";
@@ -129,8 +129,8 @@ async function dispatch(hs: Homeserver, request: Request, url: URL, options: Han
         } catch {
           throw errors.notJson();
         }
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw errors.badJson("Body must be a JSON object");
-        return parsed as any;
+        if (!isObject(parsed)) throw errors.badJson("Body must be a JSON object");
+        return parsed;
       },
       accessToken: token,
       auth() {

@@ -229,7 +229,8 @@ export function registerProfileRoutes(r: Router): void {
         const s = ctx.session;
         if (ctx.params.userId !== s.userId) throw errors.forbidden("Cannot set another user's presence");
         const body = await ctx.json();
-        if (!["online", "offline", "unavailable"].includes(body.presence)) throw errors.invalidParam("Invalid presence");
+        if (body.presence !== "online" && body.presence !== "offline" && body.presence !== "unavailable")
+          throw errors.invalidParam("Invalid presence");
         await ctx.hs.streams.write((stream) =>
           ctx.hs.db.upsert("presence", {
             user_id: s.userId,

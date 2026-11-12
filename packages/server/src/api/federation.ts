@@ -234,7 +234,7 @@ async function sendMembership(ctx: RequestContext, origin: string, membership: s
   const version = await roomOr404(hs, roomId);
   await checkAcl(hs, roomId, origin);
   const raw = await ctx.json();
-  if (raw.type !== M.ROOM.MEMBER || raw.content?.membership !== membership || raw.state_key !== raw.sender) {
+  if (!isPdu(raw) || raw.type !== M.ROOM.MEMBER || raw.content.membership !== membership || raw.state_key !== raw.sender) {
     throw errors.badJson(`Expected a ${membership} event`);
   }
   if (domainOf(raw.sender) !== origin) throw errors.forbidden("Sender does not belong to the origin server");
@@ -845,8 +845,15 @@ export function registerFederationRoutes(r: Router): void {
       const hs = ctx.hs;
       const roomId = ctx.params.roomId;
       const event = await ctx.json();
-      const signed = event.content?.third_party_invite?.signed;
-      if (event.type !== M.ROOM.MEMBER || event.room_id !== roomId || event.content?.membership !== "invite" || !isObject(signed)) {
+      const invite = isObject(event.content) ? event.content.third_party_invite : undefined;
+      const signed = isObject(invite) ? invite.signed : undefined;
+      if (
+        !isPdu(event) ||
+        event.type !== M.ROOM.MEMBER ||
+        event.room_id !== roomId ||
+        event.content.membership !== "invite" ||
+        !isObject(signed)
+      ) {
         throw errors.badJson("Expected an m.room.member invite with third_party_invite");
       }
       if (typeof event.sender !== "string" || !hs.isLocalUser(event.sender))

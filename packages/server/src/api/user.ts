@@ -416,7 +416,12 @@ export function registerUserRoutes(r: Router): void {
           recipients.add(userId);
         }
         hs.notifier.notify(recipients);
-        await hs.federation.sendToDevice(s.userId, ctx.params.eventType, body.messages, `${s.deviceId}-${ctx.params.txnId}`);
+        // https://github.com/k18k/katrix/issues/128: only local users' device maps were checked; remote ones went to
+        // federation as sent. Entries that are not device maps are dropped for both.
+        const messages = Object.fromEntries(
+          Object.entries(body.messages).filter((e): e is [string, Record<string, unknown>] => isObject(e[1])),
+        );
+        await hs.federation.sendToDevice(s.userId, ctx.params.eventType, messages, `${s.deviceId}-${ctx.params.txnId}`);
         return {};
       },
     }),

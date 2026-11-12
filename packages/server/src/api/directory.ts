@@ -177,7 +177,7 @@ export function registerDirectoryRoutes(r: Router): void {
       handler: async (ctx) => {
         const s = ctx.session;
         const body = await ctx.json();
-        if (!["public", "private"].includes(body.visibility)) throw errors.invalidParam("Invalid visibility");
+        if (body.visibility !== "public" && body.visibility !== "private") throw errors.invalidParam("Invalid visibility");
         const version = await ctx.hs.rooms.roomVersion(ctx.params.roomId);
         if (!version) throw errors.notFound("Room not found");
         const state = await ctx.hs.rooms.requireJoined(ctx.params.roomId, s.userId);
@@ -225,7 +225,7 @@ export function registerDirectoryRoutes(r: Router): void {
         const s = ctx.session;
         if (!s.appservice) throw errors.forbidden("Only application services may use this endpoint");
         const body = await ctx.json();
-        if (!["public", "private"].includes(body.visibility)) throw errors.invalidParam("Invalid visibility");
+        if (body.visibility !== "public" && body.visibility !== "private") throw errors.invalidParam("Invalid visibility");
         if (!(await ctx.hs.rooms.exists(ctx.params.roomId))) throw errors.notFound("Room not found");
         await ctx.hs.db.update("rooms", [{ field: "room_id", value: ctx.params.roomId }], { is_public: body.visibility === "public" });
         return {};
