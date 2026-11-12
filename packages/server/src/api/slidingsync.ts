@@ -230,8 +230,6 @@ async function buildResponse(
     const counts = JSON.stringify([room.notification_count, room.highlight_count, room.joined_count, room.invited_count]);
     if (!initial && room.timeline.length === 0 && room.required_state.length === 0 && known!.counts === counts) continue;
     if (initial) room.initial = true;
-    if (since !== null && !initial) room.num_live = room.timeline.filter((e: any) => e.__stream > since).length;
-    for (const e of room.timeline) delete e.__stream;
     rooms[roomId] = room;
     next.rooms[roomId] = { config: configKey, counts };
   }
@@ -300,7 +298,10 @@ async function buildRoom(
         );
   if ((config.timeline_limit ?? 0) > 0) {
     const { timeline, timelineEvents } = await roomTimeline(hs, p, roomId, since, upTo);
-    room.timeline = timeline.events.map((e: any, i: number) => ({ ...e, room_id: undefined, __stream: timelineEvents[i].stream }));
+    room.timeline = timeline.events.map((e: any) => ({ ...e, room_id: undefined }));
+    // https://github.com/k18k/katrix/issues/129: num_live was counted by the caller from a __stream field added to each event and
+    // deleted again; it is counted here, where the stream positions are known.
+    if (since !== null) room.num_live = timelineEvents.filter((e) => e.stream > since).length;
     room.limited = timeline.limited;
     room.prev_batch = timeline.prev_batch;
   }

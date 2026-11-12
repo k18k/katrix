@@ -93,12 +93,15 @@ export class FederationService {
 
   /** Convert a stored event into its federation (wire) format. */
   toFederationPdu(pdu: PDU, version: string): Record<string, any> {
-    const { unsigned, ...rest } = pdu as PDU & Record<string, any>;
-    const out: Record<string, any> = { ...rest };
+    // https://github.com/k18k/katrix/issues/129: the fields were deleted from a copy, and core/rooms.ts strippedState repeated the
+    // same rule; they are left out by destructuring now, and strippedState calls this.
+    const { unsigned: _unsigned, event_id, room_id, ...rest } = pdu as PDU & Record<string, any>;
     const f = roomVersionFeatures(version);
-    if (!f.legacyEventIds) delete out.event_id;
-    if (f.v12 && out.type === M.ROOM.CREATE) delete out.room_id;
-    return out;
+    return {
+      ...rest,
+      ...(f.legacyEventIds && { event_id }),
+      ...(!(f.v12 && pdu.type === M.ROOM.CREATE) && { room_id }),
+    };
   }
 
   computeEventId(raw: Record<string, any>, version: string): string {

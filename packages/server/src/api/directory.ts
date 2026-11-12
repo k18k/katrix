@@ -121,17 +121,15 @@ export function registerDirectoryRoutes(r: Router): void {
         // Remove the alias from the room's canonical alias event, too.
         const canonical = getState(await ctx.hs.rooms.currentState(row.room_id), M.ROOM.CANONICAL_ALIAS);
         if (canonical) {
-          const content = { ...canonical.content };
-          let changed = false;
-          if (content.alias === ctx.params.alias) {
-            delete content.alias;
-            changed = true;
-          }
-          if (Array.isArray(content.alt_aliases) && content.alt_aliases.includes(ctx.params.alias)) {
-            content.alt_aliases = content.alt_aliases.filter((a: string) => a !== ctx.params.alias);
-            changed = true;
-          }
-          if (changed) {
+          // https://github.com/k18k/katrix/issues/129: the alias was deleted from a mutable copy; the new content is built without it.
+          const { alias, ...rest } = canonical.content;
+          const inAlt = Array.isArray(rest.alt_aliases) && rest.alt_aliases.includes(ctx.params.alias);
+          const content = {
+            ...rest,
+            ...(alias !== ctx.params.alias && alias !== undefined && { alias }),
+            ...(inAlt && { alt_aliases: rest.alt_aliases.filter((a: string) => a !== ctx.params.alias) }),
+          };
+          if (alias === ctx.params.alias || inAlt) {
             // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
             // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
             await ctx.hs.rooms

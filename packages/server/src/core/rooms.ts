@@ -1198,18 +1198,10 @@ export class RoomService {
     const types = [M.ROOM.CREATE, M.ROOM.JOIN_RULES, M.ROOM.NAME, M.ROOM.AVATAR, M.ROOM.CANONICAL_ALIAS, M.ROOM.ENCRYPTION, M.ROOM.TOPIC];
     const create = getState(state, M.ROOM.CREATE);
     const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
-    const f = roomVersionFeatures(version);
-    const out: Record<string, any>[] = [];
-    for (const t of types) {
+    return types.flatMap((t) => {
       const ev = getState(state, t);
-      if (!ev) continue;
-      const { unsigned, ...full } = ev as PDU & Record<string, any>;
-      const wire: Record<string, any> = { ...full };
-      if (!f.legacyEventIds) delete wire.event_id;
-      if (f.v12 && t === M.ROOM.CREATE) delete wire.room_id;
-      out.push(wire);
-    }
-    return out;
+      return ev ? [this.hs.federation.toFederationPdu(ev, version)] : [];
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1822,9 +1814,9 @@ export class RoomService {
     for (const roomId of await this.roomsForUser(userId)) {
       const prev = getState(await this.currentState(roomId), M.ROOM.MEMBER, userId);
       if (!prev) continue;
-      const content = { ...prev.content, membership: "join", ...profile };
-      if (profile.displayname === undefined) delete content.displayname;
-      if (profile.avatar_url === undefined) delete content.avatar_url;
+      // https://github.com/k18k/katrix/issues/129: a profile field that is unset is left out of the member event (it was deleted after the spread).
+      const { displayname: _d, avatar_url: _a, ...rest } = prev.content;
+      const content = { ...rest, membership: "join", ...profile };
       try {
         await this.sendEvent(roomId, userId, { type: M.ROOM.MEMBER, state_key: userId, content });
       } catch (err) {
