@@ -94,10 +94,12 @@ export class PushService {
     const pushers = await this.hs.db.findMany("pushers", {
       where: [{ field: "user_id", operator: "in", value: notified.map((n) => n.userId) }],
     });
+    // https://github.com/k18k/katrix/issues/108: the pusher list was filtered again for every
+    // notified user (users × pushers); it is grouped by user once.
+    const pushersByUser = Map.groupBy(pushers, (p) => p.user_id);
     for (const n of notified) {
-      const own = pushers.filter((p) => p.user_id === n.userId);
-      if (own.length)
-        void this.deliver(n.userId, ev, state, n.tweaks, own).catch((err) => this.hs.logger.warn("Push delivery failed", err));
+      const own = pushersByUser.get(n.userId);
+      if (own) void this.deliver(n.userId, ev, state, n.tweaks, own).catch((err) => this.hs.logger.warn("Push delivery failed", err));
     }
   }
 
@@ -112,9 +114,12 @@ export class PushService {
     });
     let unthreaded = 0;
     const threadRead = new Map<string, number>();
-    for (const r of receipts) {
-      if (r.receipt_type !== M.READ._ && r.receipt_type !== M.READ.PRIVATE) continue;
-      const target = await this.hs.rooms.getEvent(r.event_id);
+    const readReceipts = receipts.filter((r) => r.receipt_type === M.READ._ || r.receipt_type === M.READ.PRIVATE);
+    // https://github.com/k18k/katrix/issues/108: each receipt's event was read on its own, one
+    // query per receipt on every unread count; they are read in one batch.
+    const targets = await this.hs.rooms.getEvents(readReceipts.map((r) => r.event_id));
+    for (const r of readReceipts) {
+      const target = targets.get(r.event_id);
       if (!target) continue;
       if (r.thread_id === "") unthreaded = Math.max(unthreaded, target.stream);
       else threadRead.set(r.thread_id, Math.max(threadRead.get(r.thread_id) ?? 0, target.stream));
