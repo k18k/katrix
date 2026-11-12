@@ -1,4 +1,4 @@
-import type { DatabaseAdapter, Schema } from "#storage/types.ts";
+import { DatabaseAdapter, Schema } from "./types.js";
 /**
  * Checks that a `DatabaseAdapter` keeps the guarantees the homeserver relies on (see the
  * interface's documentation). Each check gets a fresh adapter on which `CONFORMANCE_SCHEMA` was
@@ -11,9 +11,10 @@ import type { DatabaseAdapter, Schema } from "#storage/types.ts";
  * adapter could miss a guarantee (an atomic conditional delete, a rollback) without anything noticing.
  */
 export interface ConformanceCheck {
-    name: string;
-    run(adapter: DatabaseAdapter): Promise<void>;
+  name: string;
+  run(adapter: DatabaseAdapter): Promise<void>;
 }
 /** The tables the checks use. Migrate them before each check (`adapter.migrate(CONFORMANCE_SCHEMA)`). */
 export declare const CONFORMANCE_SCHEMA: Schema;
 export declare const adapterConformance: ConformanceCheck[];
+//# sourceMappingURL=conformance.d.ts.map

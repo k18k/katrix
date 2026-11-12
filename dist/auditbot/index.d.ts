@@ -1,3 +1,4 @@
-export { startAuditBot, type AuditBot, type AuditBotOptions } from "#auditbot/bot.ts";
-export { fileSink, memorySink, type AuditRecord, type AuditSink } from "#auditbot/sinks.ts";
-export { CryptoClient } from "#auditbot/client.ts";
+import { AuditRecord, AuditSink, fileSink, memorySink } from "./sinks.js";
+import { AuditBot, AuditBotOptions, startAuditBot } from "./bot.js";
+import { CryptoClient } from "./client.js";
+export { type AuditBot, type AuditBotOptions, type AuditRecord, type AuditSink, CryptoClient, fileSink, memorySink, startAuditBot };

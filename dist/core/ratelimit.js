@@ -1,53 +1,86 @@
-import { MatrixError } from "#core/errors.ts";
-export const DEFAULT_RATE_LIMITS = {
-    login: { perSecond: 0.17, burst: 5 },
-    register: { perSecond: 0.17, burst: 3 },
-    message: { perSecond: 1, burst: 20 },
-    join: { perSecond: 0.5, burst: 10 },
-    invite: { perSecond: 0.3, burst: 10 },
-    upload: { perSecond: 1, burst: 10 },
-    createRoom: { perSecond: 0.1, burst: 5 },
-    keyQuery: { perSecond: 5, burst: 50 },
-    // OAuth 2.0 client registration: clients register again at every login.
-    oauthClient: { perSecond: 0.5, burst: 10 },
-    // URL previews: each one may fetch a page and an image from elsewhere (#104).
-    preview: { perSecond: 0.5, burst: 10 },
+import { MatrixError } from "./errors.js";
+// src/core/ratelimit.ts
+const DEFAULT_RATE_LIMITS = {
+	login: {
+		perSecond: .17,
+		burst: 5
+	},
+	register: {
+		perSecond: .17,
+		burst: 3
+	},
+	message: {
+		perSecond: 1,
+		burst: 20
+	},
+	join: {
+		perSecond: .5,
+		burst: 10
+	},
+	invite: {
+		perSecond: .3,
+		burst: 10
+	},
+	upload: {
+		perSecond: 1,
+		burst: 10
+	},
+	createRoom: {
+		perSecond: .1,
+		burst: 5
+	},
+	keyQuery: {
+		perSecond: 5,
+		burst: 50
+	},
+	oauthClient: {
+		perSecond: .5,
+		burst: 10
+	},
+	preview: {
+		perSecond: .5,
+		burst: 10
+	}
 };
 /** In-process token bucket limiter. */
-export function memoryRateLimiter() {
-    const buckets = new Map();
-    return {
-        async consume(key, rule) {
-            const now = Date.now();
-            let b = buckets.get(key);
-            if (!b) {
-                if (buckets.size > 100_000)
-                    buckets.clear();
-                buckets.set(key, (b = { tokens: rule.burst, updated: now }));
-            }
-            b.tokens = Math.min(rule.burst, b.tokens + ((now - b.updated) / 1000) * rule.perSecond);
-            b.updated = now;
-            if (b.tokens >= 1) {
-                b.tokens -= 1;
-                return 0;
-            }
-            return Math.ceil(((1 - b.tokens) / rule.perSecond) * 1000);
-        },
-    };
+function memoryRateLimiter() {
+	const buckets = /* @__PURE__ */ new Map();
+	return { async consume(key, rule) {
+		const now = Date.now();
+		let b = buckets.get(key);
+		if (!b) {
+			if (buckets.size > 1e5) buckets.clear();
+			buckets.set(key, b = {
+				tokens: rule.burst,
+				updated: now
+			});
+		}
+		b.tokens = Math.min(rule.burst, b.tokens + (now - b.updated) / 1e3 * rule.perSecond);
+		b.updated = now;
+		if (b.tokens >= 1) {
+			b.tokens -= 1;
+			return 0;
+		}
+		return Math.ceil((1 - b.tokens) / rule.perSecond * 1e3);
+	} };
 }
-export class RateLimits {
-    limiter;
-    rules;
-    constructor(limiter, overrides = {}) {
-        this.limiter = limiter;
-        this.rules = { ...DEFAULT_RATE_LIMITS, ...overrides };
-    }
-    /** Throw M_LIMIT_EXCEEDED when `key` exceeded the limit for `action`. Exempt keys are never limited. */
-    async check(action, key) {
-        if (!this.limiter)
-            return;
-        const wait = await this.limiter.consume(`${action}:${key}`, this.rules[action]);
-        if (wait > 0)
-            throw new MatrixError(429, "M_LIMIT_EXCEEDED", "Too many requests", { retry_after_ms: wait });
-    }
-}
+var RateLimits = class {
+	limiter;
+	rules;
+	constructor(limiter, overrides = {}) {
+		this.limiter = limiter;
+		this.rules = {
+			...DEFAULT_RATE_LIMITS,
+			...overrides
+		};
+	}
+	/** Throw M_LIMIT_EXCEEDED when `key` exceeded the limit for `action`. Exempt keys are never limited. */
+	async check(action, key) {
+		if (!this.limiter) return;
+		const wait = await this.limiter.consume(`${action}:${key}`, this.rules[action]);
+		if (wait > 0) throw new MatrixError(429, "M_LIMIT_EXCEEDED", "Too many requests", { retry_after_ms: wait });
+	}
+};
+export { DEFAULT_RATE_LIMITS, RateLimits, memoryRateLimiter };
+
+//# sourceMappingURL=ratelimit.js.map

@@ -1,27 +1,28 @@
-import type { KeyObject } from "node:crypto";
-import { type PDU } from "#core/events.ts";
-import type { Homeserver } from "#homeserver.ts";
+import { PDU } from "./events.js";
+import { Homeserver } from "../homeserver.js";
+import { KeyObject } from "node:crypto";
 interface RoomPolicy {
-    via: string;
-    key: KeyObject;
+  via: string;
+  key: KeyObject;
 }
 export declare class PolicyServers {
-    private readonly hs;
-    constructor(hs: Homeserver);
-    /** The room's policy server, if the room uses one (valid `m.room.policy` and a joined user on `via`). */
-    policyOf(roomId: string): Promise<RoomPolicy | null>;
-    /** The policy state event itself is never sent to the policy server. */
-    private exempt;
-    private validSignature;
-    /** Ask the policy server to sign `pdu`; adds the signature to it. Throws the server's error. */
-    private requestSignature;
-    /**
-     * Before a local event is sent: get the policy server's signature, or refuse the event with the
-     * policy server's error. If the policy server cannot be reached the event is sent unsigned (other
-     * servers may then soft-fail it), so an unavailable policy server does not lock up the room.
-     */
-    signLocal(roomId: string, version: string, pdu: PDU): Promise<void>;
-    /** Whether a remote event is recommended for inclusion (otherwise it is soft-failed). */
-    recommended(roomId: string, version: string, pdu: PDU): Promise<boolean>;
+  private readonly hs;
+  constructor(hs: Homeserver);
+  /** The room's policy server, if the room uses one (valid `m.room.policy` and a joined user on `via`). */
+  policyOf(roomId: string): Promise<RoomPolicy | null>;
+  /** The policy state event itself is never sent to the policy server. */
+  private exempt;
+  private validSignature;
+  /** Ask the policy server to sign `pdu`; adds the signature to it. Throws the server's error. */
+  private requestSignature;
+  /**
+   * Before a local event is sent: get the policy server's signature, or refuse the event with the
+   * policy server's error. If the policy server cannot be reached the event is sent unsigned (other
+   * servers may then soft-fail it), so an unavailable policy server does not lock up the room.
+   */
+  signLocal(roomId: string, version: string, pdu: PDU): Promise<void>;
+  /** Whether a remote event is recommended for inclusion (otherwise it is soft-failed). */
+  recommended(roomId: string, version: string, pdu: PDU): Promise<boolean>;
 }
 export {};
+//# sourceMappingURL=policy.d.ts.map

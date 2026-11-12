@@ -1,5 +1,4 @@
-// @katrix/server/auditbot: records the server's rooms, end-to-end encrypted ones
-// decrypted. Needs the optional peer dependency @matrix-org/matrix-sdk-crypto-nodejs.
-export { startAuditBot } from "#auditbot/bot.ts";
-export { fileSink, memorySink } from "#auditbot/sinks.ts";
-export { CryptoClient } from "#auditbot/client.ts";
+import { CryptoClient } from "./client.js";
+import { startAuditBot } from "./bot.js";
+import { fileSink, memorySink } from "./sinks.js";
+export { CryptoClient, fileSink, memorySink, startAuditBot };

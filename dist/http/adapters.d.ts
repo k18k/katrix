@@ -1,5 +1,5 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Homeserver } from "#homeserver.ts";
+import { Homeserver } from "../homeserver.js";
+import { IncomingMessage, ServerResponse } from "node:http";
 /** Paths this library serves. Framework adapters forward only these. */
 export declare function isMatrixPath(pathname: string): boolean;
 /** A web-standard fetch handler: `(Request) => Promise<Response>`. Works with Hono, Bun, Deno, workers… */
@@ -15,19 +15,19 @@ export declare function getNodeHandler(hs: Homeserver): NodeHandler;
 export declare function getExpressHandler(hs: Homeserver): (req: any, res: any, next: (err?: unknown) => void) => void;
 /** Minimal structural Fastify types so that fastify is not a dependency. */
 interface FastifyLike {
-    removeAllContentTypeParsers(): void;
-    addContentTypeParser(type: string, opts: {
-        parseAs: "buffer";
-    }, parser: (req: any, body: Buffer, done: (err: Error | null, body?: unknown) => void) => void): void;
-    route(opts: {
-        method: string[];
-        url: string;
-        handler: (request: any, reply: any) => unknown;
-    }): void;
+  removeAllContentTypeParsers(): void;
+  addContentTypeParser(type: string, opts: {
+    bodyLimit: number;
+  }, parser: (req: unknown, payload: unknown, done: (err: Error | null, body?: unknown) => void) => void): void;
+  route(opts: {
+    method: string[];
+    url: string;
+    handler: (request: any, reply: any) => unknown;
+  }): void;
 }
 /**
  * Fastify plugin. Register with `fastify.register(getFastifyPlugin(hs))`.
- * The plugin is encapsulated so its raw body parser does not leak into your app.
+ * The plugin is encapsulated so its pass-through body parser does not leak into your app.
  */
 export declare function getFastifyPlugin(hs: Homeserver): (fastify: FastifyLike, opts: unknown, done?: (err?: Error) => void) => Promise<void>;
 /**
@@ -36,3 +36,4 @@ export declare function getFastifyPlugin(hs: Homeserver): (fastify: FastifyLike,
  */
 export declare function getHonoHandler(hs: Homeserver): (c: any, next: () => Promise<void>) => Promise<Response | void>;
 export {};
+//# sourceMappingURL=adapters.d.ts.map

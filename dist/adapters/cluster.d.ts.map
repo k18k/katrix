@@ -1,0 +1,1 @@
+{"version":3,"file":"cluster.d.ts","names":[],"sources":["../../src/adapters/cluster.ts"],"mappings":";UA0BU;EACR,MAAM,cAAc,qBAAqB;IAAU;IAAa;;;EAEhE,QAAQ,MAAM;EACd,GAAG,uBAAuB,WAAW;IAAO;IAAiB;;EAC7D,GAAG,wBAAwB,WAAW,MAAM;;iBAG7B;EACf,MAAM,cAAc,qBAAqB;IAAU;IAAa;;EAChE,WAAW,QAAQ;EACnB,IAAI,gBAAgB,WAAW,KAAK;;;;;;;wBAetB,gBAAgB,MAAM,mBAAmB;EAAW;IAA8B"}
