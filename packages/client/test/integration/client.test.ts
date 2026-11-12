@@ -4,6 +4,11 @@ import { MatrixClient } from "../../src/client.ts";
 import { MatrixError } from "../../src/http/errors.ts";
 import { MemoryStorage } from "../../src/storage/memory.ts";
 import { Auth } from "../../src/auth/login.ts";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { sqliteStorage } from "../../src/adapters/sqlite.ts";
+import { nodeSqlite } from "../env/sqlite.ts";
 import { body, findEvent, homeserver, until } from "./helpers.ts";
 
 test("login flows, password login, whoami, profile", async () => {
@@ -12,9 +17,9 @@ test("login flows, password login, whoami, profile", async () => {
     const flows = await new Auth({ baseUrl: t.baseUrl, http: t.http }).loginFlows();
     assert.ok(flows.some((f) => f.type === "m.login.password"));
     const alice = await t.login("alice");
-    assert.equal((await alice.whoami()).user_id, "@alice:localhost");
-    await alice.setDisplayName("Alice A.");
-    assert.equal((await alice.getProfile(alice.userId)).displayname, "Alice A.");
+    assert.equal((await alice.account.whoami()).user_id, "@alice:localhost");
+    await alice.profile.setDisplayName("Alice A.");
+    assert.equal((await alice.profile.get()).displayname, "Alice A.");
     const wrong = await new Auth({ baseUrl: t.baseUrl, http: t.http }).loginWithPassword("alice", "nope").catch((e) => e);
     assert.ok(wrong instanceof MatrixError && wrong.errcode === "M_FORBIDDEN");
     const registered = await new Auth({ baseUrl: t.baseUrl, http: t.http }).register("newbie", "a long password");
@@ -191,6 +196,83 @@ test("a revoked access token stops the sync loop with loggedOut", async () => {
     await alice.api.request("POST", "/v3/logout", { body: {} });
     const [err] = await loggedOut;
     assert.equal(err.errcode, "M_UNKNOWN_TOKEN");
+  } finally {
+    await t.close();
+  }
+});
+
+test("an encrypted session survives a restart on SQLite: keys, rooms and history", async () => {
+  const path = join(mkdtempSync(join(tmpdir(), "katrix-")), "client.sqlite");
+  const t = await homeserver();
+  try {
+    const pickleKey = new Uint8Array(32).fill(7);
+    const first = await t.login("alice", { storage: sqliteStorage(nodeSqlite(path)), e2ee: { pickleKey } });
+    const bob = await t.login("bob");
+    await Promise.all([first.start(), bob.start()]);
+    await Promise.all([first.waitForPrepared(), bob.waitForPrepared()]);
+    const roomId = await first.createRoom({ encrypted: true, invite: [bob.userId] });
+    await until("the invite", () => bob.getRoom(roomId)?.membership === "invite");
+    await bob.joinRoom(roomId);
+    await until("bob joined", () => first.getRoom(roomId)?.state.membership(bob.userId) === "join");
+    await until("bob has the room", () => bob.getRoom(roomId)?.state.membership(first.userId) === "join");
+    await bob.sendText(roomId, "kept across restarts");
+    await until("decrypted", () => findEvent(first, roomId, (e) => body(e) === "kept across restarts"));
+    await first.stop();
+    const credentials = {
+      userId: first.userId,
+      deviceId: first.deviceId,
+      accessToken: (first as unknown as { tokens: { accessToken(): string } }).tokens.accessToken(),
+    };
+
+    const second = new MatrixClient({
+      baseUrl: t.baseUrl,
+      http: t.http,
+      credentials,
+      storage: sqliteStorage(nodeSqlite(path)),
+      e2ee: { pickleKey },
+      sync: { pollTimeoutMs: 1000 },
+    });
+    await second.start();
+    assert.ok(
+      findEvent(second, roomId, (e) => body(e) === "kept across restarts"),
+      "decrypted from the stored timeline and keys",
+    );
+    await bob.sendText(roomId, "after the restart");
+    await until("new message decrypted", () => findEvent(second, roomId, (e) => body(e) === "after the restart"));
+    await second.stop();
+  } finally {
+    await t.close();
+  }
+});
+
+test("state after the timeline wins; presence from sync; logout clears the storage", async () => {
+  const t = await homeserver();
+  try {
+    const storage = new MemoryStorage();
+    const alice = await t.login("alice", { e2ee: false, storage });
+    const bob = await t.login("bob");
+    await Promise.all([alice.start(), bob.start()]);
+    await Promise.all([alice.waitForPrepared(), bob.waitForPrepared()]);
+    const roomId = await alice.createRoom({ invite: [bob.userId], name: "one" });
+    await bob.joinRoom(roomId);
+    await alice.setRoomName(roomId, "two");
+    await alice.setRoomName(roomId, "three");
+    await until("the last name", () => bob.getRoom(roomId)?.name() === "three");
+
+    // Device list changes between two tokens (keys/changes).
+    const from = (await bob.store.get<string>("sync", "token"))!;
+    const changes = await bob.e2ee!.devices.changesBetween(from, from);
+    assert.deepEqual(changes, { changed: [], left: [] });
+
+    await alice.presence.set("unavailable", "away for lunch");
+    await until("presence", () => bob.getPresence(alice.userId)?.presence === "unavailable");
+    assert.equal(bob.getPresence(alice.userId)?.status_msg, "away for lunch");
+
+    assert.ok((await storage.list("rooms", "")).length > 0);
+    await alice.logout();
+    for (const store of ["rooms", "sync", "client", "room_state", "room_timeline"] as const)
+      assert.deepEqual(await storage.list(store, ""), [], store);
+    assert.equal(alice.getRooms().length, 0);
   } finally {
     await t.close();
   }

@@ -113,7 +113,27 @@ export interface AuthMetadata {
   token_endpoint: string;
   registration_endpoint?: string;
   revocation_endpoint?: string;
+  response_types_supported?: string[];
+  grant_types_supported?: string[];
   response_modes_supported?: string[];
   code_challenge_methods_supported?: string[];
+  prompt_values_supported?: string[];
+  account_management_uri?: string;
+  account_management_actions_supported?: string[];
+  device_authorization_endpoint?: string;
   [key: string]: unknown;
+}
+
+/** GET /.well-known/matrix/support (https://spec.matrix.org/v1.19/client-server-api/#getwell-knownmatrixsupport). */
+export interface WellKnownSupport {
+  contacts?: Array<{ matrix_id?: string; email_address?: string; role: "m.role.admin" | "m.role.security" | string }>;
+  support_page?: string;
+}
+
+export interface UsernameAvailableResponse {
+  available?: boolean;
+}
+
+export interface RegistrationTokenValidityResponse {
+  valid: boolean;
 }

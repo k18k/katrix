@@ -11,6 +11,12 @@ export interface V3SyncOptions {
   lazyLoadMembers?: boolean;
   /** A filter of your own instead (an ID or a filter object). */
   filter?: string | Record<string, unknown>;
+  /**
+   * Ask for the state at the end of the timeline (`use_state_after`, v1.16; default true) rather
+   * than at its start: the room state is then what the server resolved, not a guess from the
+   * timeline's state events. Servers that do not know the parameter answer as before.
+   */
+  useStateAfter?: boolean;
 }
 
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
@@ -29,9 +35,11 @@ export class SyncV3Transport implements SyncTransport {
   readonly kind = "v3";
   private readonly api: MatrixHttpApi;
   private readonly filter: string;
+  private readonly useStateAfter: boolean;
 
   constructor(api: MatrixHttpApi, opts: V3SyncOptions = {}) {
     this.api = api;
+    this.useStateAfter = opts.useStateAfter ?? true;
     if (typeof opts.filter === "string") this.filter = opts.filter;
     else {
       const lazy = opts.lazyLoadMembers ?? true;
@@ -39,7 +47,7 @@ export class SyncV3Transport implements SyncTransport {
         opts.filter ?? {
           room: {
             state: { lazy_load_members: lazy },
-            timeline: { limit: opts.timelineLimit ?? 20, lazy_load_members: lazy },
+            timeline: { limit: opts.timelineLimit ?? 20, lazy_load_members: lazy, unread_thread_notifications: true },
           },
         },
       );
@@ -51,7 +59,13 @@ export class SyncV3Transport implements SyncTransport {
       "GET /v3/sync",
       {},
       {
-        query: { since: req.since, timeout: req.timeoutMs, filter: this.filter, set_presence: req.setPresence },
+        query: {
+          since: req.since,
+          timeout: req.timeoutMs,
+          filter: this.filter,
+          set_presence: req.setPresence,
+          use_state_after: this.useStateAfter ? true : undefined,
+        },
         signal: req.signal,
         // The server holds the request for up to timeoutMs; allow for the network on top.
         timeoutMs: req.timeoutMs + 30_000,
@@ -73,8 +87,11 @@ export function parseV3(response: SyncResponse | Record<string, unknown>, initia
   for (const [roomId, r] of Object.entries(obj(rooms.join))) {
     const room = obj(r);
     const summary = obj(room.summary);
+    // state_after (v1.16) replaces state when the server honoured use_state_after.
+    const after = room.state_after !== undefined;
     join[roomId] = {
-      state: events(room.state),
+      state: events(after ? room.state_after : room.state),
+      stateAfter: after,
       initial,
       timeline: timeline(room.timeline),
       ephemeral: events(room.ephemeral),
@@ -87,6 +104,7 @@ export function parseV3(response: SyncResponse | Record<string, unknown>, initia
           }
         : undefined,
       unreadNotifications: room.unread_notifications,
+      unreadThreadNotifications: room.unread_thread_notifications ? obj(room.unread_thread_notifications) : undefined,
     };
   }
   const invited = (section: unknown) => {
@@ -99,7 +117,13 @@ export function parseV3(response: SyncResponse | Record<string, unknown>, initia
   const leave: Record<string, LeftRoomUpdate> = {};
   for (const [roomId, r] of Object.entries(obj(rooms.leave))) {
     const room = obj(r);
-    leave[roomId] = { state: events(room.state), timeline: timeline(room.timeline), accountData: events(room.account_data) };
+    const after = room.state_after !== undefined;
+    leave[roomId] = {
+      state: events(after ? room.state_after : room.state),
+      stateAfter: after,
+      timeline: timeline(room.timeline),
+      accountData: events(room.account_data),
+    };
   }
   const knock: SyncResult["rooms"]["knock"] = {};
   for (const [roomId, r] of Object.entries(obj(rooms.knock))) knock[roomId] = { strippedState: arr(obj(obj(r).knock_state).events) };

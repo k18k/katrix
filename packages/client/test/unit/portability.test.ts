@@ -44,10 +44,15 @@ const FORBIDDEN: Array<[RegExp, string]> = [
   [/\bimport\s*\(/, "dynamic import (bundlers for React Native handle it poorly)"],
 ];
 
+// Storage adapters for one platform (src/adapters: IndexedDB) are entry points of their own
+// (@katrix/client/indexeddb), which apps import on that platform; the core never imports them.
+const ADAPTERS = "adapters/";
+
 test("the sources use no platform-specific globals or modules", () => {
   const problems: string[] = [];
   for (const file of [...files(SRC), ...files(SHARED)]) {
     const rel = file.startsWith(SHARED) ? `shared/${relative(SHARED, file)}` : relative(SRC, file);
+    if (rel.startsWith(ADAPTERS)) continue;
     const source = readFileSync(file, "utf8");
     const c = code(source);
     for (const [re, what] of FORBIDDEN) {
@@ -63,6 +68,15 @@ test("the sources use no platform-specific globals or modules", () => {
     }
   }
   assert.deepEqual(problems, []);
+});
+
+test("the core does not import the platform adapters", () => {
+  for (const file of files(SRC)) {
+    const rel = relative(SRC, file);
+    if (rel.startsWith(ADAPTERS)) continue;
+    const source = readFileSync(file, "utf8");
+    assert.ok(!/from\s+"(\.\.?\/)+adapters\//.test(source), `${rel} imports an adapter`);
+  }
 });
 
 test("no top-level await in the sources (Metro and Hermes do not support it)", () => {

@@ -2,7 +2,8 @@ import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { cbc, ctr } from "@noble/ciphers/aes.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { hmac } from "@noble/hashes/hmac.js";
-import { sha256 } from "@noble/hashes/sha2.js";
+import { pbkdf2 } from "@noble/hashes/pbkdf2.js";
+import { sha256, sha512 } from "@noble/hashes/sha2.js";
 import { platformRandomValues } from "../platform.ts";
 import { CryptoPrimitiveError, type CryptoPrimitives, type KeyPair } from "./primitives.ts";
 
@@ -34,6 +35,10 @@ export function nobleCryptoPrimitives(opts: { randomValues?: (array: Uint8Array)
     randomBytes,
     sha256: (data) => sha256(data),
     hmacSha256: (key, data) => hmac(sha256, key, data),
+    pbkdf2Sha512(password, salt, iterations, length) {
+      if (!Number.isInteger(iterations) || iterations < 1) throw new CryptoPrimitiveError("PBKDF2 needs a positive iteration count");
+      return pbkdf2(sha512, password, salt, { c: iterations, dkLen: length });
+    },
     hkdfSha256: (ikm, salt, info, length) => hkdf(sha256, ikm, salt && salt.length > 0 ? salt : undefined, info, length),
 
     x25519GenerateKeyPair(): KeyPair {

@@ -10,7 +10,9 @@ process.env.KATRIX_TSDOWN = "1";
 // (unbundled, so apps and their bundlers, Metro for React Native among them, tree-shake and
 // debug against the real module structure).
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // The core, and the storage adapters as entry points of their own (@katrix/client/sqlite,
+  // @katrix/client/indexeddb), so the core never pulls in platform code.
+  entry: ["src/index.ts", "src/adapters/sqlite.ts", "src/adapters/indexeddb.ts"],
   unbundle: true,
   format: "esm",
   // No Node.js built-ins, no browser globals: the same build runs in Node.js, browsers and Hermes.

@@ -1,95 +1,14 @@
-import { isObject, M, UNSTABLE } from "@katrix/shared";
+import { defaultPushRules, isObject, M, PUSH_RULE_KINDS } from "@katrix/shared";
 import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import type { Homeserver } from "#homeserver.ts";
 
 export type Rule = Record<string, any>;
 export type Ruleset = Record<string, Rule[]>;
 
-export const KINDS = ["override", "content", "postcontent", "room", "sender", "underride"];
+export const KINDS: readonly string[] = PUSH_RULE_KINDS;
 
 export function defaultRules(userId: string): Ruleset {
-  const localpart = userId.slice(1).split(":")[0];
-  const notify = ["notify"];
-  const sound = (s: string) => ({ set_tweak: "sound", value: s });
-  const highlight = { set_tweak: "highlight" };
-  const r = (rule_id: string, conditions: any[] | undefined, actions: any[], extra: Rule = {}) => ({
-    rule_id,
-    default: true,
-    enabled: true,
-    actions,
-    ...(conditions ? { conditions } : {}),
-    ...extra,
-  });
-  const em = (key: string, pattern: string) => ({ kind: "event_match", key, pattern });
-  const ep = (key: string, value: unknown) => ({ kind: "event_property_is", key, value });
-  return {
-    override: [
-      r(M.RULE.MASTER, [], [], { enabled: false }),
-      r(M.RULE.SUPPRESS_NOTICES, [em("content.msgtype", M.NOTICE)], []),
-      r(
-        M.RULE.INVITE_FOR_ME,
-        [em("type", M.ROOM.MEMBER), em("content.membership", "invite"), em("state_key", userId)],
-        [...notify, sound("default")],
-      ),
-      r(M.RULE.MEMBER_EVENT, [em("type", M.ROOM.MEMBER)], []),
-      r(
-        M.RULE.IS_USER_MENTION,
-        [{ kind: "event_property_contains", key: "content.m\\.mentions.user_ids", value: userId }],
-        [...notify, sound("default"), highlight],
-      ),
-      r(M.RULE.CONTAINS_DISPLAY_NAME, [{ kind: "contains_display_name" }], [...notify, sound("default"), highlight]),
-      r(
-        M.RULE.IS_ROOM_MENTION,
-        [ep("content.m\\.mentions.room", true), { kind: "sender_notification_permission", key: "room" }],
-        [...notify, highlight],
-      ),
-      r(M.RULE.ROOMNOTIF, [em("content.body", "@room"), { kind: "sender_notification_permission", key: "room" }], [...notify, highlight]),
-      r(M.RULE.TOMBSTONE, [em("type", M.ROOM.TOMBSTONE), em("state_key", "")], [...notify, highlight]),
-      r(M.RULE.REACTION, [em("type", M.REACTION)], []),
-      r(M.RULE.ROOM.SERVER_ACL, [em("type", M.ROOM.SERVER_ACL), em("state_key", "")], []),
-      r(M.RULE.SUPPRESS_EDITS, [ep("content.m\\.relates_to.rel_type", M.REPLACE)], []),
-      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_RESPONSE, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.RESPONSE)], []),
-    ],
-    content: [r(M.RULE.CONTAINS_USER_NAME, undefined, [...notify, sound("default"), highlight], { pattern: localpart })],
-    // MSC4306: thread replies notify only in subscribed threads.
-    postcontent: [
-      r(
-        UNSTABLE.IO.ELEMENT.MSC4306.RULE.UNSUBSCRIBED_THREAD,
-        [{ kind: UNSTABLE.IO.ELEMENT.MSC4306.THREAD_SUBSCRIPTION, subscribed: false }],
-        [],
-      ),
-      r(
-        UNSTABLE.IO.ELEMENT.MSC4306.RULE.SUBSCRIBED_THREAD,
-        [{ kind: UNSTABLE.IO.ELEMENT.MSC4306.THREAD_SUBSCRIPTION, subscribed: true }],
-        [...notify, sound("default")],
-      ),
-    ],
-    room: [],
-    sender: [],
-    underride: [
-      r(M.RULE.CALL, [em("type", M.CALL.INVITE)], [...notify, sound("ring")]),
-      r(
-        M.RULE.ENCRYPTED_ROOM_ONE_TO_ONE,
-        [{ kind: "room_member_count", is: "2" }, em("type", M.ROOM.ENCRYPTED)],
-        [...notify, sound("default")],
-      ),
-      r(M.RULE.ROOM_ONE_TO_ONE, [{ kind: "room_member_count", is: "2" }, em("type", M.ROOM.MESSAGE)], [...notify, sound("default")]),
-      r(M.RULE.MESSAGE, [em("type", M.ROOM.MESSAGE)], notify),
-      r(
-        UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_START_ONE_TO_ONE,
-        [{ kind: "room_member_count", is: "2" }, em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.START)],
-        [...notify, sound("default")],
-      ),
-      r(
-        UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_END_ONE_TO_ONE,
-        [{ kind: "room_member_count", is: "2" }, em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.END)],
-        [...notify, sound("default")],
-      ),
-      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_START, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.START)], notify),
-      r(UNSTABLE.ORG.MATRIX.MSC3930.RULE.POLL_END, [em("type", UNSTABLE.ORG.MATRIX.MSC3381.POLL.END)], notify),
-      r(M.RULE.ENCRYPTED, [em("type", M.ROOM.ENCRYPTED)], notify),
-    ],
-  };
+  return defaultPushRules(userId);
 }
 
 /** Serialise read-modify-write cycles on a user's push rules (cluster-wide). */

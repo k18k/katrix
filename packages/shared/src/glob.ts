@@ -36,7 +36,11 @@ export function globMatch(pattern: string, value: string, opts: { caseInsensitiv
   return pi === p.length;
 }
 
-const isWordChar = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+// https://github.com/k18k/katrix/issues/118: word characters are exactly [A-Za-z0-9_], as the
+// spec defines a word boundary for content.body. Every Unicode letter used to count, so text in
+// scripts written without spaces (Japanese, Chinese) had no boundary around a name or keyword
+// in it, and its mentions never notified.
+const isWordChar = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_]/.test(c);
 
 /**
  * Whether `pattern` (a glob) matches some run of `value` that starts and ends on a word boundary,

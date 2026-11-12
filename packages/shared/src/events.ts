@@ -118,6 +118,9 @@ export interface EventContentMap {
   "m.room.pinned_events": { pinned: string[] };
   "m.room.tombstone": { body: string; replacement_room: string };
   "m.room.server_acl": { allow?: string[]; deny?: string[]; allow_ip_literals?: boolean };
+  "m.space.child": { via?: string[]; order?: string; suggested?: boolean };
+  "m.space.parent": { via?: string[]; canonical?: boolean };
+  "m.ignored_user_list": { ignored_users: Record<string, Record<string, never>> };
   "m.reaction": { "m.relates_to": RelatesTo & { rel_type: "m.annotation"; event_id: string; key: string } };
   "m.sticker": { body: string; url: string; info?: Record<string, unknown> };
   "m.typing": { user_ids: string[] };

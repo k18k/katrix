@@ -25,8 +25,9 @@ export async function homeserver(options: Partial<HomeserverOptions> = {}) {
   const clients: MatrixClient[] = [];
 
   /** Create a user and log a new device in with a password. */
-  async function login(localpart: string, opts: Partial<ClientOptions> & { password?: string; create?: boolean } = {}) {
-    if (opts.create !== false) await hs.admin.createUser(localpart, { password: opts.password ?? "password" }).catch(() => {});
+  async function login(localpart: string, opts: Partial<ClientOptions> & { password?: string; create?: boolean; admin?: boolean } = {}) {
+    if (opts.create !== false)
+      await hs.admin.createUser(localpart, { password: opts.password ?? "password", admin: opts.admin }).catch(() => {});
     const credentials = await new Auth({ baseUrl, http }).loginWithPassword(localpart, opts.password ?? "password");
     const client = new MatrixClient({ baseUrl, http, credentials, sync: { pollTimeoutMs: 1000 }, ...opts });
     clients.push(client);

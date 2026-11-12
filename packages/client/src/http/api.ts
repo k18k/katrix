@@ -4,7 +4,15 @@ import { abortError, clearTimer, isAbortError, newAbortController, setTimer, sle
 import type { HttpAdapter } from "./adapter.ts";
 import { ConnectionError, MatrixError } from "./errors.ts";
 import type { TokenProvider } from "../auth/types.ts";
-import { endpointPath, type ClientEndpoint, type EndpointParams, type EndpointRequest, type EndpointResponse } from "@katrix/shared";
+import {
+  endpointPath,
+  endpointUrlPath,
+  type ClientEndpoint,
+  type EndpointParams,
+  type EndpointRequest,
+  type EndpointResponse,
+  type MediaBody,
+} from "@katrix/shared";
 
 /** Options of an endpoint call: a body exactly when the endpoint takes one (ClientEndpoints in @katrix/shared). */
 export type EndpointOptions<K extends ClientEndpoint> = Omit<RequestOptions, "body"> &
@@ -12,7 +20,10 @@ export type EndpointOptions<K extends ClientEndpoint> = Omit<RequestOptions, "bo
 
 export interface RequestOptions {
   query?: Record<string, QueryValue>;
+  /** JSON, or a MediaBody, which is sent as its bytes with its content type. */
   body?: unknown;
+  /** Read the response as bytes (a MediaBody) instead of JSON. */
+  responseType?: "json" | "bytes";
   /** Send the access token (default true). */
   auth?: boolean;
   signal?: AbortSignalLike;
@@ -25,6 +36,28 @@ export interface RequestOptions {
   retryRateLimited?: boolean;
   /** Path prefix (default /_matrix/client). */
   prefix?: string;
+}
+
+/** The endpoints of the map whose response is a file (MediaBody), not JSON. */
+const MEDIA_RESPONSE = /^GET \/v1\/media\/(download|thumbnail)\//;
+
+function isMediaBody(body: unknown): body is MediaBody {
+  return typeof body === "object" && body !== null && (body as MediaBody).data instanceof Uint8Array;
+}
+
+/** The file name of a Content-Disposition header (`filename*=UTF-8''…` or `filename="…"`). */
+function dispositionFilename(header: string | undefined): string | undefined {
+  if (!header) return undefined;
+  const star = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      // A malformed escape: fall back to the plain parameter.
+    }
+  }
+  const plain = /filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;\s]+))/.exec(header);
+  return plain ? (plain[1]?.replace(/\\(.)/g, "$1") ?? plain[2]) : undefined;
 }
 
 const MAX_RATE_LIMIT_RETRIES = 5;
@@ -54,11 +87,22 @@ export class MatrixHttpApi {
    */
   endpoint<K extends ClientEndpoint>(key: K, params: EndpointParams<K>, opts: EndpointOptions<K>): Promise<EndpointResponse<K>> {
     const space = key.indexOf(" ");
+    const template = key.slice(space + 1);
     return this.request<EndpointResponse<K>>(
       key.slice(0, space),
-      endpointPath(key.slice(space + 1), params as Record<string, string>),
-      opts,
+      endpointPath(endpointUrlPath(template), params as Record<string, string>),
+      {
+        ...opts,
+        prefix: "",
+        responseType: opts.responseType ?? (MEDIA_RESPONSE.test(key) ? "bytes" : "json"),
+      },
     );
+  }
+
+  /** The URL of a path under the server's base URL (for links the app opens itself, such as SSO redirects). */
+  url(path: string, query?: Record<string, QueryValue>): string {
+    const q = query ? encodeQuery(query) : "";
+    return `${this.baseUrl}${path}${q ? `?${q}` : ""}`;
   }
 
   async request<T = Record<string, any>>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
@@ -94,11 +138,15 @@ export class MatrixHttpApi {
       const token = this.tokens?.accessToken();
       if (token) headers.authorization = `Bearer ${token}`;
     }
-    let body: string | undefined;
-    if (opts.body !== undefined) {
+    let body: string | Uint8Array | undefined;
+    if (isMediaBody(opts.body)) {
+      headers["content-type"] = opts.body.contentType ?? "application/octet-stream";
+      body = opts.body.data;
+    } else if (opts.body !== undefined) {
       headers["content-type"] = "application/json";
       body = JSON.stringify(opts.body);
     }
+    if (opts.responseType === "bytes") headers.accept = "*/*";
 
     // One controller for the caller's signal and the timeout.
     let controller;
@@ -128,6 +176,14 @@ export class MatrixHttpApi {
         if (isAbortError(e) || controller?.signal.aborted) throw new ConnectionError(request, new Error("timeout"));
         this.logger.debug("request failed", { method, path, ...describeError(e) });
         throw new ConnectionError(request, e);
+      }
+      if (opts.responseType === "bytes" && res.status >= 200 && res.status < 300) {
+        const media: MediaBody = {
+          data: await res.bytes(),
+          contentType: res.header("content-type"),
+          filename: dispositionFilename(res.header("content-disposition")),
+        };
+        return media as T;
       }
       const text = await res.text();
       let json: unknown = {};

@@ -1,5 +1,5 @@
 import { isObject, M, UNSTABLE } from "@katrix/shared";
-import { globMatch as matchGlob } from "#core/glob.ts";
+import { globMatch as matchGlob } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import type { PDU } from "#core/events.ts";
 import type { RequestContext } from "#http/router.ts";
