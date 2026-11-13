@@ -5,7 +5,7 @@ import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "#co
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
-import type { BatchQuery, Row } from "#storage/types.ts";
+import type { BatchQuery, Row, WhereClause } from "#storage/types.ts";
 import { readBatch } from "#storage/batch.ts";
 import { trackedReads } from "#core/changes.ts";
 import { Semaphore } from "#core/semaphore.ts";
@@ -60,7 +60,7 @@ async function loadFilter(hs: Homeserver, userId: string, raw: string | null): P
 }
 
 /** A stripped state event as clients expect it. */
-export function toStripped(ev: Record<string, any>): Record<string, any> {
+export function toStripped(ev: Pick<PDU, "type" | "state_key" | "sender" | "content">) {
   return { type: ev.type, state_key: ev.state_key, sender: ev.sender, content: ev.content };
 }
 
@@ -98,16 +98,10 @@ async function snapshotAt(hs: Homeserver, roomId: string, pos: number): Promise<
 }
 
 /** Build the timeline + state section of a room. */
-export async function roomTimeline(
-  hs: Homeserver,
-  p: SyncParams,
-  roomId: string,
-  since: number | null,
-  upTo: number,
-): Promise<{ timeline: Record<string, any>; state: PDU[]; stateAfter: PDU[]; timelineEvents: StoredEvent[] }> {
+export async function roomTimeline(hs: Homeserver, p: SyncParams, roomId: string, since: number | null, upTo: number) {
   const tf = p.filter.room?.timeline;
   const limit = tf?.limit ?? 10;
-  const where: any[] = [
+  const where: WhereClause[] = [
     { field: "room_id", value: roomId },
     { field: "stream", operator: "lte", value: upTo },
   ];
@@ -262,26 +256,25 @@ export async function roomTimeline(
   };
 }
 
-export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: string, prefetched?: Row[]): Promise<Record<string, any>[]> {
+export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: string, prefetched?: Row[]) {
   const since = p.since?.pos ?? null;
-  const out: { type: string; content: Record<string, any> }[] = [];
   const typing = hs.typing.typingSince(roomId, since);
-  if (typing !== null && (since !== null || typing.length > 0)) out.push({ type: M.TYPING, content: { user_ids: typing } });
-  const where: any[] = [{ field: "room_id", value: roomId }];
+  const where: WhereClause[] = [{ field: "room_id", value: roomId }];
   if (since !== null) where.push({ field: "stream", operator: "gt", value: since });
   const receipts = (prefetched ?? (await hs.db.findMany("receipts", { where }))).filter((r) => r.stream <= p.to);
-  const content: Record<string, any> = {};
+  /** By event, receipt type and user. */
+  const content: Record<string, Record<string, Record<string, { ts: number; thread_id?: string }>>> = {};
   for (const r of receipts) {
     if (r.receipt_type === M.READ.PRIVATE && r.user_id !== p.session.userId) continue;
-    content[r.event_id] ??= {};
-    content[r.event_id][r.receipt_type] ??= {};
+    const users = ((content[r.event_id] ??= {})[r.receipt_type] ??= {});
     // MSC4102: when receipts clash on one event, the unthreaded one wins.
-    if (r.thread_id && content[r.event_id][r.receipt_type][r.user_id] && !content[r.event_id][r.receipt_type][r.user_id].thread_id)
-      continue;
-    content[r.event_id][r.receipt_type][r.user_id] = { ts: r.ts, ...(r.thread_id ? { thread_id: r.thread_id } : {}) };
+    if (r.thread_id && users[r.user_id] && !users[r.user_id].thread_id) continue;
+    users[r.user_id] = { ts: r.ts, ...(r.thread_id ? { thread_id: r.thread_id } : {}) };
   }
-  if (Object.keys(content).length) out.push({ type: M.RECEIPT, content });
-  return out.filter((e) => matchesFilter(p.filter.room?.ephemeral, e));
+  return [
+    ...(typing !== null && (since !== null || typing.length > 0) ? [{ type: M.TYPING, content: { user_ids: typing } }] : []),
+    ...(Object.keys(content).length ? [{ type: M.RECEIPT, content }] : []),
+  ].filter((e) => matchesFilter(p.filter.room?.ephemeral, e));
 }
 
 async function accountData(hs: Homeserver, p: SyncParams, roomId: string, prefetched?: Row[]): Promise<{ type: string; content: any }[]> {
@@ -535,7 +528,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       const { timeline, state } = await roomTimeline(hs, p, roomId, since, m.stream);
       // Leaves of rooms we never joined (e.g. rejected remote invites) are outliers.
       const tf = p.filter.room?.timeline;
-      if (!(await hs.rooms.exists(roomId)) && (tf?.limit ?? 10) > 0 && !timeline.events.some((e: any) => e.event_id === m.event_id)) {
+      if (!(await hs.rooms.exists(roomId)) && (tf?.limit ?? 10) > 0 && !timeline.events.some((e) => e.event_id === m.event_id)) {
         const leavePdu = await hs.rooms.getPdu(m.event_id);
         if (leavePdu && matchesFilter(tf, leavePdu)) timeline.events.push(toClientEvent(leavePdu, { includeRoomId: false }));
       }
