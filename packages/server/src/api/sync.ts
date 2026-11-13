@@ -1,4 +1,4 @@
-import { M, UNSTABLE } from "@katrix/shared";
+import { M, UNSTABLE, type InvitedRoom, type JoinedRoom, type KnockedRoom, type LeftRoom, type SyncResponse } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
 import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "#core/events.ts";
@@ -61,7 +61,8 @@ async function loadFilter(hs: Homeserver, userId: string, raw: string | null): P
 
 /** A stripped state event as clients expect it. */
 export function toStripped(ev: Pick<PDU, "type" | "state_key" | "sender" | "content">) {
-  return { type: ev.type, state_key: ev.state_key, sender: ev.sender, content: ev.content };
+  // Stripped state is state: the fallback only satisfies the type.
+  return { type: ev.type, state_key: ev.state_key ?? "", sender: ev.sender, content: ev.content };
 }
 
 export interface SyncParams {
@@ -277,8 +278,8 @@ export async function roomEphemeral(hs: Homeserver, p: SyncParams, roomId: strin
   ].filter((e) => matchesFilter(p.filter.room?.ephemeral, e));
 }
 
-async function accountData(hs: Homeserver, p: SyncParams, roomId: string, prefetched?: Row[]): Promise<{ type: string; content: any }[]> {
-  const where: any[] = [
+async function accountData(hs: Homeserver, p: SyncParams, roomId: string, prefetched?: Row[]) {
+  const where: WhereClause[] = [
     { field: "user_id", value: p.session.userId },
     { field: "room_id", value: roomId },
   ];
@@ -292,7 +293,7 @@ async function accountData(hs: Homeserver, p: SyncParams, roomId: string, prefet
     .filter((e) => matchesFilter(filter, e));
 }
 
-export async function roomSummary(hs: Homeserver, roomId: string, userId: string): Promise<Record<string, any>> {
+export async function roomSummary(hs: Homeserver, roomId: string, userId: string) {
   const state = await hs.rooms.currentState(roomId);
   let joined = 0;
   let invited = 0;
@@ -305,11 +306,8 @@ export async function roomSummary(hs: Homeserver, roomId: string, userId: string
     if (m === "invite") invited++;
     if ((m === "join" || m === "invite") && sk !== userId && heroes.length < 5) heroes.push(sk);
   }
-  const summary: Record<string, any> = { [M.JOINED_MEMBER_COUNT]: joined, [M.INVITED_MEMBER_COUNT]: invited };
-  if (!getState(state, M.ROOM.NAME)?.content?.name && !getState(state, M.ROOM.CANONICAL_ALIAS)?.content?.alias) {
-    summary[M.HEROES] = heroes.sort();
-  }
-  return summary;
+  const named = getState(state, M.ROOM.NAME)?.content?.name || getState(state, M.ROOM.CANONICAL_ALIAS)?.content?.alias;
+  return { [M.JOINED_MEMBER_COUNT]: joined, [M.INVITED_MEMBER_COUNT]: invited, ...(named ? {} : { [M.HEROES]: heroes.sort() }) };
 }
 
 /**
@@ -409,7 +407,7 @@ async function mapConcurrently<T, R>(items: T[], limit: number, fn: (item: T) =>
   return out;
 }
 
-async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<string, any>; empty: boolean; nextToDevice: number }> {
+async function buildSync(hs: Homeserver, p: SyncParams) {
   const userId = p.session.userId;
   const since = p.since?.pos ?? null;
   const incremental = since !== null && !p.fullState;
@@ -488,10 +486,10 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   // device lists alike, so read once for this request.
   let memberChangesRead: Promise<Row[]> | null = changes ? Promise.resolve(changes.memberChanges) : null;
   const memberChanges = () => (memberChangesRead ??= hs.rooms.membershipChangesSince(userId, since ?? 0, memberships));
-  const join: Record<string, any> = {};
-  const invite: Record<string, any> = {};
-  const leave: Record<string, any> = {};
-  const knock: Record<string, any> = {};
+  const join: Record<string, JoinedRoom> = {};
+  const invite: Record<string, InvitedRoom> = {};
+  const leave: Record<string, LeftRoom> = {};
+  const knock: Record<string, KnockedRoom> = {};
   let empty = true;
   const joinedBuilds: Row[] = [];
 
@@ -545,7 +543,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   // after another, each with its reads in sequence, so a sync took as many round trips as its
   // rooms had reads. They are built concurrently now (a few at a time, so an initial sync of many
   // rooms does not take the whole database pool), and a room's independent reads run together.
-  const joinedRoom = async (m: Row): Promise<Record<string, any> | null> => {
+  const joinedRoom = async (m: Row): Promise<JoinedRoom | null> => {
     const roomId: string = m.room_id;
     // MSC3902: without lazy-loaded members the room is withheld until its full state is known,
     // and then sent as if newly joined.
@@ -572,7 +570,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     const stateSection = p.useStateAfter
       ? { [p.stateAfterKey ?? "state_after"]: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } }
       : { state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) } };
-    const room: Record<string, any> = {
+    const room: JoinedRoom = {
       timeline,
       ...stateSection,
       ephemeral: { events: ephemeral },
@@ -613,7 +611,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   if (toDevice.length) empty = false;
 
   // Presence for users sharing rooms, and (incrementally) device-list changes: one batch (#34).
-  const presenceEvents: Record<string, any>[] = [];
+  const presenceEvents = [];
   const wantPresence = !p.filter.presence?.types || p.filter.presence.types.length > 0;
   const sharing = await hs.rooms.usersSharingRooms(userId);
   const joinedRooms = memberships.filter((m) => m.membership === "join").map((m) => m.room_id as string);
@@ -675,9 +673,12 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
       if (seen.has(row.user_id)) continue;
       seen.add(row.user_id);
       if (row.stream > p.to) continue;
-      const content: Record<string, any> = { presence: row.presence, last_active_ago: Date.now() - row.last_active_ts };
-      if (row.status_msg) content.status_msg = row.status_msg;
-      if (row.presence === "online") content.currently_active = true;
+      const content = {
+        presence: row.presence,
+        last_active_ago: Date.now() - row.last_active_ts,
+        ...(row.status_msg ? { status_msg: row.status_msg } : {}),
+        ...(row.presence === "online" ? { currently_active: true } : {}),
+      };
       const ev = { type: M.PRESENCE, sender: row.user_id, content };
       if (matchesFilter(p.filter.presence, ev)) presenceEvents.push(ev);
     }
@@ -687,7 +688,7 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
   const profileUpdates = await profileUpdatesFor(hs, p, memberships, memberChanges);
   if (profileUpdates) empty = false;
 
-  const body: Record<string, any> = {
+  const body: SyncResponse = {
     next_batch: formatToken({ pos: p.to, toDevice: nextToDevice, ack: toDevice.length > 0 }),
     // Empty sections are omitted, as clients (and Synapse) expect.
     rooms: Object.fromEntries(Object.entries({ join, invite, leave, knock }).filter(([, v]) => Object.keys(v).length)),
@@ -696,8 +697,8 @@ async function buildSync(hs: Homeserver, p: SyncParams): Promise<{ body: Record<
     to_device: { events: toDevice.map((r) => ({ sender: r.sender, type: r.type, content: r.content })) },
     device_one_time_keys_count: countAlgorithms(oneTimeKeyRows),
     device_unused_fallback_key_types: [...new Set(fallbackRows.map((r) => r.algorithm as string))],
+    ...(profileUpdates ? { [UNSTABLE.ORG.MATRIX.MSC4429.USERS]: profileUpdates } : {}),
   };
-  if (profileUpdates) body[UNSTABLE.ORG.MATRIX.MSC4429.USERS] = profileUpdates;
   if (since !== null) {
     const lists = await hs.keys.changesSince(userId, since, p.to, { memberChanges: await memberChanges(), deviceRows, joinedRooms });
     body.device_lists = lists;
@@ -778,9 +779,9 @@ async function touchPresence(hs: Homeserver, userId: string, presence: string): 
 }
 
 export function registerSyncRoutes(r: Router): void {
-  // Not bound to the shared endpoint map ("GET /v3/sync") yet: the response is assembled field by
-  // field as Record<string, any>.
-  r.client("GET", "/sync", procedure({ handler: sync }));
+  // https://github.com/k18k/katrix/issues/128: the response was assembled as Record<string, any>; it is bound to the shared
+  // endpoint map now, so the server and the client cannot disagree on its shape.
+  r.client("GET", "/sync", procedure({ endpoint: "GET /v3/sync", handler: sync }));
 
   // Filters are checked by validateSyncFilter, shared with filters given inline to /sync.
   r.client(
@@ -824,20 +825,16 @@ export function registerSyncRoutes(r: Router): void {
  * MSC4429: profile changes of users sharing a room, limited to the fields the filter asks for.
  * The initial sync carries current values; users we no longer share any room with get `null`.
  */
-async function profileUpdatesFor(
-  hs: Homeserver,
-  p: SyncParams,
-  memberships: Record<string, any>[],
-  memberChanges: () => Promise<Row[]>,
-): Promise<Record<string, any> | null> {
+async function profileUpdatesFor(hs: Homeserver, p: SyncParams, memberships: Row[], memberChanges: () => Promise<Row[]>) {
   const ids = (p.filter.profile_fields ?? p.filter[UNSTABLE.ORG.MATRIX.MSC4429.PROFILE_FIELDS])?.ids;
   if (!Array.isArray(ids) || !ids.length) return null;
   const wanted = new Set(ids.filter((x) => typeof x === "string"));
   const since = p.since?.pos ?? null;
   const sharing = await hs.rooms.usersSharingRooms(p.session.userId);
-  const out: Record<string, any> = {};
+  const out: Record<string, { profile_updates: Record<string, unknown> | null }> = {};
   const add = (userId: string, field: string, value: unknown) => {
-    (out[userId] ??= { profile_updates: {} }).profile_updates[field] = value ?? null;
+    const updates = (out[userId] ??= { profile_updates: {} }).profile_updates;
+    if (updates) updates[field] = value ?? null;
   };
   // Users whose profile we must send in full: everyone on initial sync, newly shared users otherwise.
   const full = new Set<string>(since === null ? sharing : []);
