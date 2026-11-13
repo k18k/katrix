@@ -32,7 +32,7 @@ const publicRoomsBody = body({
   filter: lenient(v.looseObject({ generic_search_term: lenient(v.string()) })),
 });
 import { canonicalJsonResponse } from "#http/handler.ts";
-import { roomDetails } from "#api/spaces.ts";
+import { allowedRoomIds, roomDetails } from "#api/spaces.ts";
 
 const F = "/_matrix/federation";
 
@@ -741,14 +741,8 @@ export function registerFederationRoutes(r: Router): void {
       const state = await checkAcl(hs, roomId, origin);
       const suggestedOnly = ctx.query.get("suggested_only") === "true";
       const summary = async (id: string, s: StateMap) => {
-        const details = await roomDetails(hs, id);
-        const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
-        if (jr?.join_rule === "restricted" || jr?.join_rule === "knock_restricted") {
-          details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr!.allow : []).flatMap((a: unknown) =>
-            isObject(a) && a.type === M.ROOM_MEMBERSHIP && typeof a.room_id === "string" ? [a.room_id] : [],
-          );
-        }
-        return details;
+        const allowed = allowedRoomIds(getState(s, M.ROOM.JOIN_RULES)?.content);
+        return { ...(await roomDetails(hs, id)), ...(allowed ? { allowed_room_ids: allowed } : {}) };
       };
       const accessible = async (s: StateMap) => {
         const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
@@ -783,12 +777,9 @@ export function registerFederationRoutes(r: Router): void {
           inaccessible.push(childId);
           continue;
         }
-        const childSummary = await summary(childId, childState);
-        childSummary.children_state = [];
-        children.push(childSummary);
+        children.push({ ...(await summary(childId, childState)), children_state: [] });
       }
-      const room = await summary(roomId, state);
-      room.children_state = childrenState;
+      const room = { ...(await summary(roomId, state)), children_state: childrenState };
       return { room, children, inaccessible_children: inaccessible };
     },
   });

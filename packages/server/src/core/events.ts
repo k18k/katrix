@@ -215,7 +215,7 @@ export function toClientEvent(pdu: PDU, opts: { includeRoomId?: boolean } = {}):
   return ev;
 }
 
-export function stripState(pdu: PDU): Record<string, any> {
+export function stripState(pdu: PDU) {
   return { type: pdu.type, state_key: pdu.state_key, sender: pdu.sender, content: pdu.content };
 }
 
