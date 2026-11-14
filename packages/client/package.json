@@ -59,7 +59,7 @@
     "@katrix/server": "*",
     "@katrix/shared": "*",
     "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6",
-    "fake-indexeddb": "6.2.5"
+    "fake-indexeddb": "6.2.8"
   },
   "engines": {
     "node": ">=22"
