@@ -55,7 +55,10 @@ async function drain(req: IncomingMessage, chunks: AsyncIterator<Buffer>, budget
 const DRAIN_MS = 5_000;
 
 async function toWebRequest(req: NodeRequestWithBody): Promise<{ request: Request; unread?: AsyncIterator<Buffer> }> {
-  const proto = (req.socket as any)?.encrypted ? "https" : "http";
+  // https://github.com/k18k/katrix/issues/128: the framework objects here were any; they have structural types now, so that
+  // no framework is a dependency and each property read is one the type declares.
+  const socket = req.socket;
+  const proto = socket && "encrypted" in socket && socket.encrypted ? "https" : "http";
   const host = req.headers.host ?? "localhost";
   const url = new URL(req.originalUrl ?? req.url ?? "/", `${proto}://${host}`);
   const headers = new Headers();
@@ -65,13 +68,14 @@ async function toWebRequest(req: NodeRequestWithBody): Promise<{ request: Reques
     else headers.set(key, value);
   }
   const method = req.method ?? "GET";
-  let body: any = undefined;
+  let body: RequestInit["body"] = undefined;
   let unread: AsyncIterator<Buffer> | undefined;
   if (method !== "GET" && method !== "HEAD") {
     const pre = req.body;
-    if (pre !== undefined && pre !== null && (req as any).readableEnded !== false) {
+    if (pre !== undefined && pre !== null && req.readableEnded !== false) {
       // A framework body-parser already consumed the stream.
-      if (pre instanceof Uint8Array || typeof pre === "string") body = pre as any;
+      if (typeof pre === "string") body = pre;
+      else if (pre instanceof Uint8Array) body = pre;
       else if (typeof pre === "object" && Object.keys(pre as object).length === 0 && headers.get("content-length") === null)
         body = undefined;
       else body = JSON.stringify(pre);
@@ -94,7 +98,7 @@ async function writeWebResponse(res: ServerResponse, response: Response): Promis
     res.end();
     return;
   }
-  const nodeStream = Readable.fromWeb(response.body as any);
+  const nodeStream = Readable.fromWeb(response.body);
   nodeStream.on("error", () => res.destroy());
   nodeStream.pipe(res);
 }
@@ -141,8 +145,8 @@ export function getNodeHandler(hs: Homeserver): NodeHandler {
 }
 
 /** Express / Connect middleware. Mount with `app.use(getExpressHandler(hs))`. */
-export function getExpressHandler(hs: Homeserver): (req: any, res: any, next: (err?: unknown) => void) => void {
-  return getNodeHandler(hs) as any;
+export function getExpressHandler(hs: Homeserver): (req: IncomingMessage, res: ServerResponse, next: (err?: unknown) => void) => void {
+  return getNodeHandler(hs);
 }
 
 /** Minimal structural Fastify types so that fastify is not a dependency. */
@@ -153,7 +157,24 @@ interface FastifyLike {
     opts: { bodyLimit: number },
     parser: (req: unknown, payload: unknown, done: (err: Error | null, body?: unknown) => void) => void,
   ): void;
-  route(opts: { method: string[]; url: string; handler: (request: any, reply: any) => unknown }): void;
+  route(opts: { method: string[]; url: string; handler: (request: FastifyRequestLike, reply: FastifyReplyLike) => unknown }): void;
+}
+
+interface FastifyRequestLike {
+  raw: IncomingMessage;
+  ip?: string;
+}
+
+interface FastifyReplyLike {
+  status(code: number): unknown;
+  header(key: string, value: string): unknown;
+  send(body: unknown): unknown;
+}
+
+/** Minimal structural Hono context: the request, and the Node socket when served by @hono/node-server. */
+interface HonoContextLike {
+  req: { raw: Request };
+  env?: { incoming?: { socket?: { remoteAddress?: string } } };
 }
 
 /**
@@ -168,7 +189,7 @@ export function getFastifyPlugin(hs: Homeserver): (fastify: FastifyLike, opts: u
     // allows. The parser now leaves the body unread: it is passed on as a stream, read only by a
     // handler that needs it, under the server's limit (#77), as in the Node adapter.
     fastify.addContentTypeParser("*", { bodyLimit: maxRequestBody(hs) }, (_req, _payload, done) => done(null));
-    const handler = async (request: any, reply: any) => {
+    const handler = async (request: FastifyRequestLike, reply: FastifyReplyLike) => {
       const { request: webRequest } = await toWebRequest(request.raw);
       const response = await handleRequest(hs, webRequest, { ip: request.ip ?? null });
       reply.status(response.status);
@@ -189,9 +210,9 @@ export function getFastifyPlugin(hs: Homeserver): (fastify: FastifyLike, opts: u
  * Hono handler. Mount with `app.all("*", getHonoHandler(hs))` or
  * `app.mount("/", getFetchHandler(hs))`. Non-Matrix paths call `next()`.
  */
-export function getHonoHandler(hs: Homeserver): (c: any, next: () => Promise<void>) => Promise<Response | void> {
+export function getHonoHandler(hs: Homeserver): (c: HonoContextLike, next: () => Promise<void>) => Promise<Response | void> {
   return async (c, next) => {
-    const request: Request = c.req.raw;
+    const request = c.req.raw;
     if (!isMatrixPath(new URL(request.url).pathname)) return next();
     const ip = c.env?.incoming?.socket?.remoteAddress ?? null;
     return handleRequest(hs, request, { ip });
