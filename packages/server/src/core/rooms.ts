@@ -3,7 +3,6 @@ import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { errors, MatrixError } from "#core/errors.ts";
 import {
   DEFAULT_ROOM_VERSION,
-  SUPPORTED_ROOM_VERSIONS,
   eventIdOf,
   finalisePdu,
   redactPdu,
@@ -30,6 +29,7 @@ import type { Homeserver } from "#homeserver.ts";
 import type { Row } from "#storage/types.ts";
 import { copyRoomPushRules } from "#core/pushrules.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
+import { initialPowerLevels, parseCreateRoom } from "#core/createroom.ts";
 
 const PARTIAL_REJECTION = "Partial state: ";
 
@@ -1304,50 +1304,29 @@ export class RoomService {
   // Room lifecycle
   // ---------------------------------------------------------------------------
 
-  async createRoom(sender: string, body: Record<string, any>): Promise<{ room_id: string; room_alias?: string }> {
-    if (body.room_version !== undefined && typeof body.room_version !== "string") throw errors.badJson("room_version must be a string");
-    const version = body.room_version ?? this.hs.config.defaultRoomVersion;
-    if (!SUPPORTED_ROOM_VERSIONS.includes(version)) throw errors.unsupportedRoomVersion();
+  async createRoom(sender: string, body: Record<string, unknown>): Promise<{ room_id: string; room_alias?: string }> {
+    const req = parseCreateRoom(body, this.hs.config.defaultRoomVersion);
+    const { version, visibility, preset } = req;
     const features = roomVersionFeatures(version);
-    const visibility = body.visibility === "public" ? "public" : "private";
-    const preset: string = body.preset ?? (visibility === "public" ? "public_chat" : "private_chat");
-    if (!["public_chat", "private_chat", "trusted_private_chat"].includes(preset)) throw errors.invalidParam("Unknown preset");
-    if (body.creation_content !== undefined && !isObject(body.creation_content)) throw errors.badJson("creation_content must be an object");
-    if (body.initial_state !== undefined && !Array.isArray(body.initial_state)) throw errors.badJson("initial_state must be an array");
-    if (body.invite !== undefined && (!Array.isArray(body.invite) || !body.invite.every(isValidUserId)))
-      throw errors.invalidParam("invite must be a list of user IDs");
-    if (body.name !== undefined && typeof body.name !== "string") throw errors.badJson("name must be a string");
-    if (body.topic !== undefined && typeof body.topic !== "string") throw errors.badJson("topic must be a string");
-    if (Array.isArray(body.invite_3pid) && body.invite_3pid.length > 0) throw errors.threepidDenied();
 
-    let alias: string | undefined;
-    if (body.room_alias_name !== undefined) {
-      if (typeof body.room_alias_name !== "string" || /[:\s#]/.test(body.room_alias_name) || body.room_alias_name.length === 0) {
-        throw errors.invalidParam("Invalid room_alias_name");
-      }
-      alias = `#${body.room_alias_name}:${this.hs.serverName}`;
-      if (await this.hs.db.findOne("room_aliases", [{ field: "alias", value: alias }])) throw errors.roomInUse();
-    }
+    const alias = req.aliasName === undefined ? undefined : `#${req.aliasName}:${this.hs.serverName}`;
+    if (alias && (await this.hs.db.findOne("room_aliases", [{ field: "alias", value: alias }]))) throw errors.roomInUse();
 
-    const createContent: Record<string, any> = { ...body.creation_content, room_version: version };
-    if (!features.v11) createContent.creator = sender;
-    else delete createContent.creator;
+    // The creator and additional creators are the server's to set: v11 drops `creator`, v12 derives the creators.
+    const { creator: _creator, additional_creators: extra, ...requested } = req.creationContent;
+    const createContent: Record<string, unknown> = { ...requested, room_version: version, ...(features.v11 ? {} : { creator: sender }) };
     const creators = new Set<string>();
     if (features.v12) {
-      const extra = createContent.additional_creators;
       if (extra !== undefined && (!Array.isArray(extra) || !extra.every(isValidUserId))) {
         throw errors.badJson("additional_creators must be a list of user IDs");
       }
       const additional = new Set<string>(extra ?? []);
       // trusted_private_chat makes invitees creators instead of giving them PL 100.
-      if (preset === "trusted_private_chat") for (const u of body.invite ?? []) additional.add(u);
+      if (preset === "trusted_private_chat") for (const u of req.invite) additional.add(u);
       additional.delete(sender);
       if (additional.size) createContent.additional_creators = [...additional];
-      else delete createContent.additional_creators;
       creators.add(sender);
       for (const u of additional) creators.add(u);
-    } else {
-      delete createContent.additional_creators;
     }
 
     let roomId: string;
@@ -1393,8 +1372,10 @@ export class RoomService {
     const profile = await this.hs.profile(sender);
     await send({ type: M.ROOM.MEMBER, state_key: sender, content: { membership: "join", ...profile } });
 
-    const pl: Record<string, any> = {
-      users: features.v12 ? {} : { [sender]: 100 },
+    const users: Record<string, number> = features.v12 ? {} : { [sender]: 100 };
+    if (preset === "trusted_private_chat" && !features.v12) for (const u of req.invite) users[u] = 100;
+    const pl = {
+      users,
       users_default: 0,
       events: {
         [M.ROOM.NAME]: 50,
@@ -1415,14 +1396,11 @@ export class RoomService {
       invite: preset === "public_chat" ? 50 : 0,
       notifications: { room: 50 },
     };
-    if (preset === "trusted_private_chat" && !features.v12) for (const u of body.invite ?? []) pl.users[u] = 100;
-    const override = body.power_level_content_override;
-    if (override !== undefined && !isObject(override)) throw errors.badJson("power_level_content_override must be an object");
-    const initialState: any[] = body.initial_state ?? [];
-    const initialPl = initialState.find((e) => e?.type === M.ROOM.POWER_LEVELS && (e.state_key ?? "") === "");
-    const predecessor = createContent.predecessor?.room_id;
+    const initialState = req.initialState;
+    const initialPl = initialPowerLevels(initialState);
+    const predecessor = isObject(createContent.predecessor) ? createContent.predecessor.room_id : undefined;
     if (typeof predecessor === "string") await copyRoomPushRules(this.hs, sender, predecessor, roomId);
-    const plContent = { ...pl, ...override, ...initialPl?.content };
+    const plContent = { ...pl, ...req.override, ...initialPl?.content };
     validatePowerLevelContent(plContent, creators);
     await send({ type: M.ROOM.POWER_LEVELS, state_key: "", content: plContent });
 
@@ -1431,38 +1409,31 @@ export class RoomService {
       await send({ type: M.ROOM.CANONICAL_ALIAS, state_key: "", content: { alias } });
     }
 
-    const presetState: [string, Record<string, any>][] = [
+    const presetState: [string, Record<string, unknown>][] = [
       [M.ROOM.JOIN_RULES, { join_rule: preset === "public_chat" ? "public" : "invite" }],
       [M.ROOM.HISTORY_VISIBILITY, { history_visibility: "shared" }],
     ];
     if (preset !== "public_chat") presetState.push([M.ROOM.GUEST_ACCESS, { guest_access: "can_join" }]);
-    const initialKeys = new Set(initialState.map((e) => stateKey(e?.type, e?.state_key ?? "")));
+    const initialKeys = new Set(initialState.map((e) => stateKey(e.type, e.state_key)));
     for (const [type, content] of presetState) {
       if (!initialKeys.has(stateKey(type, ""))) await send({ type, state_key: "", content });
     }
     for (const ev of initialState) {
-      // https://github.com/k18k/katrix/issues/128: state_key was read as any, so a non-string one was stored as is.
-      if (
-        !isObject(ev) ||
-        typeof ev.type !== "string" ||
-        !isObject(ev.content) ||
-        (ev.state_key !== undefined && typeof ev.state_key !== "string")
-      )
-        throw errors.badJson("Invalid initial_state event");
       if (ev.type === M.ROOM.POWER_LEVELS || ev.type === M.ROOM.CREATE || ev.type === M.ROOM.MEMBER) continue;
-      await send({ type: ev.type, state_key: ev.state_key ?? "", content: ev.content });
+      await send(ev);
     }
-    if (body.name !== undefined) await send({ type: M.ROOM.NAME, state_key: "", content: { name: body.name } });
-    if (body.topic !== undefined) {
+    const { name, topic } = req;
+    if (name !== undefined) await send({ type: M.ROOM.NAME, state_key: "", content: { name } });
+    if (topic !== undefined) {
       await send({
         type: M.ROOM.TOPIC,
         state_key: "",
-        content: { topic: body.topic, [M.TOPIC]: { [M.TEXT]: [{ mimetype: "text/plain", body: body.topic }] } },
+        content: { topic, [M.TOPIC]: { [M.TEXT]: [{ mimetype: "text/plain", body: topic }] } },
       });
     }
-    for (const invitee of body.invite ?? []) {
+    for (const invitee of req.invite) {
       // A user who blocks invites is left out; the room is still created (spec, invite blocking; #88).
-      await this.invite(roomId, sender, invitee, { isDirect: !!body.is_direct }).catch((err) => {
+      await this.invite(roomId, sender, invitee, { isDirect: req.isDirect }).catch((err) => {
         if (!(err instanceof MatrixError && err.errcode === "M_INVITE_BLOCKED")) throw err;
       });
     }

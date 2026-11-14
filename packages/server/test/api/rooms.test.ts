@@ -205,3 +205,39 @@ test("m.invite_permission_config with default_action block refuses every invite 
     await t.close();
   }
 });
+
+// https://github.com/k18k/katrix/issues/128
+test("a room is created only from a request that is valid as a whole", async () => {
+  const t = await testServer();
+  try {
+    const alice = await t.user("alice");
+    const rooms = async () => (await t.hs.db.findMany("rooms")).length;
+    const before = await rooms();
+    for (const body of [
+      {
+        initial_state: [
+          { type: M.ROOM.TOPIC, content: { topic: "t" } },
+          { type: "x", state_key: 5, content: {} },
+        ],
+      },
+      { initial_state: [{ type: M.ROOM.TOPIC, content: "t" }] },
+      { name: "Plans", room_alias_name: "bad alias" },
+      { power_level_content_override: [] },
+    ]) {
+      const res = await t.call("POST", "/_matrix/client/v3/createRoom", { token: alice, body });
+      assert.equal(res.status, 400, JSON.stringify(body));
+    }
+    assert.equal(await rooms(), before, "no room was left behind");
+
+    const created = await t.call("POST", "/_matrix/client/v3/createRoom", {
+      token: alice,
+      body: { creation_content: { creator: "@mallory:localhost", "m.federate": false }, room_version: "10" },
+    });
+    const create = await t.call("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(created.json.room_id)}/state/${M.ROOM.CREATE}/`, {
+      token: alice,
+    });
+    assert.deepEqual(create.json, { creator: "@alice:localhost", "m.federate": false, room_version: "10" });
+  } finally {
+    await t.close();
+  }
+});
