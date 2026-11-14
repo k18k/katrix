@@ -170,3 +170,36 @@ test("claimed keys are taken only for the users and devices asked of that server
     await t.close();
   }
 });
+
+// https://github.com/k18k/katrix/issues/128
+test("queried keys of remote users are passed on only when they are well-formed", async (ctx) => {
+  const t = await testServer({ federation: { enabled: true } });
+  try {
+    const alice = await t.user("alice");
+    const bob = "@bob:remote.example";
+    const signatures = { [bob]: { "ed25519:BOBDEV": "sig" } };
+    const device = {
+      user_id: bob,
+      device_id: "BOBDEV",
+      algorithms: ["m.olm.v1.curve25519-aes-sha2"],
+      keys: { "ed25519:BOBDEV": "e" },
+      signatures,
+    };
+    const master = { user_id: bob, usage: ["master"], keys: { "ed25519:m": "m" } };
+    ctx.mock.method(t.hs.federation.client, "request", async () => ({
+      device_keys: {
+        [bob]: { BOBDEV: device, BROKEN: { ...device, device_id: "BROKEN", keys: "none" } },
+        "@carol:remote.example": { CAROLDEV: { ...device, user_id: "@carol:remote.example" } },
+      },
+      master_keys: { [bob]: master, "@alice:localhost": { ...master, user_id: "@alice:localhost" } },
+      self_signing_keys: { [bob]: { user_id: bob, usage: "self_signing", keys: {} } },
+    }));
+    const res = await t.call("POST", "/_matrix/client/v3/keys/query", { token: alice, body: { device_keys: { [bob]: [] } } });
+    assert.equal(res.status, 200, res.text);
+    assert.deepEqual(res.json.device_keys, { [bob]: { BOBDEV: device } });
+    assert.deepEqual(res.json.master_keys, { [bob]: master });
+    assert.deepEqual(res.json.self_signing_keys, {});
+  } finally {
+    await t.close();
+  }
+});

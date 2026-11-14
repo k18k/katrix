@@ -1,7 +1,21 @@
-import { isObject, UNSTABLE } from "@katrix/shared";
+import {
+  isCrossSigningKey,
+  isDeviceKeys,
+  isObject,
+  UNSTABLE,
+  type CrossSigningKey,
+  type DeviceKeys,
+  type KeysClaimResponse,
+  type KeysQueryResponse,
+  type Signatures,
+} from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { FindManyOptions, Row } from "#storage/types.ts";
+
+// https://github.com/k18k/katrix/issues/128: the key objects were Record<string, any>, so the keys fetched from other servers
+// were handed to clients unchecked. They have the spec types now: local keys were checked on upload, and remote ones are
+// checked where they arrive; a remote key that is not well-formed is dropped.
 
 /** End-to-end encryption key storage (device keys, one-time keys, cross-signing). */
 export class KeyService {
@@ -34,7 +48,7 @@ export class KeyService {
     this.hs.notifier.notify([...members].filter((u) => this.hs.isLocalUser(u)));
   }
 
-  async upload(userId: string, deviceId: string, body: Record<string, any>): Promise<Record<string, number>> {
+  async upload(userId: string, deviceId: string, body: Record<string, unknown>): Promise<Record<string, number>> {
     if (body.device_keys !== undefined) {
       const dk = body.device_keys;
       if (!isObject(dk) || dk.user_id !== userId || dk.device_id !== deviceId)
@@ -120,8 +134,14 @@ export class KeyService {
     return [...new Set(rows.map((r) => r.algorithm))];
   }
 
-  async query(requester: string, deviceKeys: Record<string, string[]>, timeoutMs = 10_000): Promise<Record<string, any>> {
-    const result: Record<string, any> = { device_keys: {}, failures: {}, master_keys: {}, self_signing_keys: {}, user_signing_keys: {} };
+  async query(requester: string, deviceKeys: Record<string, string[]>, timeoutMs = 10_000) {
+    const result: Required<KeysQueryResponse> = {
+      device_keys: {},
+      failures: {},
+      master_keys: {},
+      self_signing_keys: {},
+      user_signing_keys: {},
+    };
     const remote: Record<string, string[]> = {};
     for (const [userId, devices] of Object.entries(deviceKeys ?? {})) {
       if (!this.hs.isLocalUser(userId)) {
@@ -132,21 +152,24 @@ export class KeyService {
       const deviceRows = await this.hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
       const names = new Map(deviceRows.map((d) => [d.device_id, d.display_name]));
       const wanted = Array.isArray(devices) && devices.length ? new Set(devices) : null;
-      const out: Record<string, any> = {};
+      const out: Record<string, DeviceKeys> = {};
       for (const row of rows) {
         if (wanted && !wanted.has(row.device_id)) continue;
         if (!names.has(row.device_id)) continue;
-        const keys = await this.withSignatures(userId, `${row.device_id}`, row.keys);
+        const stored: DeviceKeys = row.keys;
+        const keys = await this.withSignatures({ userId, keyId: `${row.device_id}`, key: stored });
         const name = names.get(row.device_id);
-        keys.unsigned = { ...keys.unsigned, ...(name ? { device_display_name: name } : {}) };
-        out[row.device_id] = keys;
+        out[row.device_id] = { ...keys, unsigned: { ...keys.unsigned, ...(name ? { device_display_name: name } : {}) } };
       }
       result.device_keys[userId] = out;
       const csRows = await this.hs.db.findMany("cross_signing_keys", { where: [{ field: "user_id", value: userId }] });
       for (const cs of csRows) {
         if (cs.key_type === "user_signing" && userId !== requester) continue;
         const pub = Object.values(cs.key.keys ?? {})[0] as string;
-        result[`${cs.key_type}_keys`][userId] = await this.withSignatures(userId, pub, cs.key);
+        const section =
+          cs.key_type === "master" ? "master_keys" : cs.key_type === "self_signing" ? "self_signing_keys" : "user_signing_keys";
+        const stored: CrossSigningKey = cs.key;
+        result[section][userId] = await this.withSignatures({ userId, keyId: pub, key: stored });
       }
     }
     if (Object.keys(remote).length && requester) {
@@ -171,28 +194,19 @@ export class KeyService {
       if (Object.keys(fetch).length) {
         const { results, failures } = await this.hs.federation.queryKeys(fetch, timeoutMs);
         Object.assign(result.failures, failures);
-        const fetched: Record<string, any> = { device_keys: {}, master_keys: {}, self_signing_keys: {} };
-        for (const res of results) {
-          for (const kind of ["device_keys", "master_keys", "self_signing_keys"]) {
-            for (const [userId, value] of Object.entries(isObject(res[kind]) ? res[kind] : {})) {
-              if (fetch[userId] !== undefined) fetched[kind][userId] = value;
-            }
-          }
-        }
+        const fetched = remoteKeys(fetch, results);
         for (const userId of Object.keys(fetch)) {
-          if (tracked.has(userId) && isObject(fetched.device_keys[userId])) {
-            await this.storeRemoteCache(
-              userId,
-              fetched.device_keys[userId],
-              fetched.master_keys[userId],
-              fetched.self_signing_keys[userId],
-            );
+          const devices = fetched.device_keys[userId];
+          const master = fetched.master_keys[userId];
+          const selfSigning = fetched.self_signing_keys[userId];
+          if (tracked.has(userId) && devices) {
+            await this.storeRemoteCache({ userId, devices, master, selfSigning });
             await this.fromRemoteCache(userId, remote[userId], result);
             continue;
           }
-          for (const kind of ["device_keys", "master_keys", "self_signing_keys"]) {
-            if (fetched[kind][userId] !== undefined) result[kind][userId] = fetched[kind][userId];
-          }
+          if (devices) result.device_keys[userId] = devices;
+          if (master) result.master_keys[userId] = master;
+          if (selfSigning) result.self_signing_keys[userId] = selfSigning;
         }
       }
     }
@@ -227,16 +241,14 @@ export class KeyService {
     }
   }
 
-  private async storeRemoteCache(userId: string, devices: Record<string, any>, master?: unknown, selfSigning?: unknown): Promise<void> {
+  private async storeRemoteCache({ userId, devices, master, selfSigning }: { userId: string } & RemoteKeys) {
     await this.hs.db.delete("remote_devices", [{ field: "user_id", value: userId }]);
     for (const [deviceId, keys] of Object.entries(devices)) {
-      if (!isObject(keys)) continue;
-      const name = isObject(keys.unsigned) ? keys.unsigned.device_display_name : undefined;
       await this.hs.db.upsert("remote_devices", {
         user_id: userId,
         device_id: deviceId,
         keys,
-        display_name: typeof name === "string" ? name : null,
+        display_name: keys.unsigned?.device_display_name ?? null,
         stream_id: 0,
       });
     }
@@ -244,40 +256,40 @@ export class KeyService {
       ["master", master],
       ["self_signing", selfSigning],
     ] as const) {
-      if (isObject(key))
+      if (key)
         await this.hs.streams.write((stream) => this.hs.db.upsert("cross_signing_keys", { user_id: userId, key_type: type, key, stream }));
     }
     await this.hs.db.upsert("remote_device_lists", { user_id: userId, stream_id: 0, stale: false });
   }
 
-  private async fromRemoteCache(userId: string, devices: string[], result: Record<string, any>): Promise<void> {
+  private async fromRemoteCache(userId: string, devices: string[], result: Required<KeysQueryResponse>): Promise<void> {
     const wanted = Array.isArray(devices) && devices.length ? new Set(devices) : null;
-    const out: Record<string, any> = {};
+    const out: Record<string, DeviceKeys> = {};
     for (const row of await this.hs.db.findMany("remote_devices", { where: [{ field: "user_id", value: userId }] })) {
       if (!wanted || wanted.has(row.device_id)) out[row.device_id] = row.keys;
     }
     result.device_keys[userId] = out;
     for (const cs of await this.hs.db.findMany("cross_signing_keys", { where: [{ field: "user_id", value: userId }] })) {
-      if (cs.key_type === "master" || cs.key_type === "self_signing") result[`${cs.key_type}_keys`][userId] = cs.key;
+      if (cs.key_type === "master") result.master_keys[userId] = cs.key;
+      if (cs.key_type === "self_signing") result.self_signing_keys[userId] = cs.key;
     }
   }
 
-  private async withSignatures(userId: string, keyId: string, key: Record<string, any>): Promise<Record<string, any>> {
+  /** The key with the signatures uploaded for it since (by other devices and cross-signing keys). */
+  private async withSignatures<K extends { signatures?: Signatures }>({ userId, keyId, key }: { userId: string; keyId: string; key: K }) {
     const sigs = await this.hs.db.findMany("key_signatures", {
       where: [
         { field: "user_id", value: userId },
         { field: "key_id", value: keyId },
       ],
     });
-    if (sigs.length === 0) return structuredClone(key);
-    const out = structuredClone(key);
-    out.signatures ??= {};
-    for (const s of sigs) out.signatures[s.signer] = { ...out.signatures[s.signer], [s.signer_key_id]: s.signature };
-    return out;
+    const signatures: Signatures = structuredClone(key.signatures ?? {});
+    for (const s of sigs) signatures[s.signer] = { ...signatures[s.signer], [s.signer_key_id]: s.signature };
+    return { ...structuredClone(key), ...(sigs.length ? { signatures } : {}) };
   }
 
-  async claim(request: Record<string, Record<string, string>>): Promise<Record<string, any>> {
-    const result: Record<string, any> = {};
+  async claim(request: Record<string, Record<string, string>>) {
+    const result: KeysClaimResponse["one_time_keys"] = {};
     for (const [userId, devices] of Object.entries(request ?? {})) {
       for (const [deviceId, algorithm] of Object.entries(devices ?? {})) {
         const base = [
@@ -286,29 +298,24 @@ export class KeyService {
           { field: "algorithm", value: algorithm },
         ];
         // Keys are handed out in upload order (MSC4225).
-        let key: Record<string, any> | null =
-          (
-            await this.hs.db.findMany("one_time_keys", {
-              where: [...base, { field: "fallback", value: false }],
-              sortBy: { field: "seq", direction: "asc" },
-              limit: 1,
-            })
-          )[0] ?? null;
-        if (key) {
-          await this.hs.db.delete("one_time_keys", [...base, { field: "key_id", value: key.key_id }]);
-        } else {
-          key = await this.hs.db.findOne("fallback_keys", base);
-          if (key && !key.used) await this.hs.db.update("fallback_keys", base, { used: true });
-        }
+        const oneTime = (
+          await this.hs.db.findMany("one_time_keys", {
+            where: [...base, { field: "fallback", value: false }],
+            sortBy: { field: "seq", direction: "asc" },
+            limit: 1,
+          })
+        ).at(0);
+        const key = oneTime ?? (await this.hs.db.findOne("fallback_keys", base));
         if (!key) continue;
-        result[userId] ??= {};
-        result[userId][deviceId] = { [key.key_id]: key.key };
+        if (oneTime) await this.hs.db.delete("one_time_keys", [...base, { field: "key_id", value: key.key_id }]);
+        else if (!key.used) await this.hs.db.update("fallback_keys", base, { used: true });
+        (result[userId] ??= {})[deviceId] = { [key.key_id]: key.key };
       }
     }
     return result;
   }
 
-  async uploadCrossSigning(userId: string, body: Record<string, any>): Promise<void> {
+  async uploadCrossSigning(userId: string, body: Record<string, unknown>): Promise<void> {
     for (const type of ["master", "self_signing", "user_signing"]) {
       const key = body[`${type}_key`];
       if (key === undefined) continue;
@@ -321,13 +328,13 @@ export class KeyService {
     await this.hs.federation.onSigningKeyUpdate(userId).catch((err) => this.hs.logger.warn("Signing key update to federation failed", err));
   }
 
-  async uploadSignatures(signer: string, body: Record<string, any>): Promise<Record<string, any>> {
-    const failures: Record<string, any> = {};
+  async uploadSignatures(signer: string, body: Record<string, unknown>) {
+    const failures: Record<string, Record<string, { errcode: string; error: string }>> = {};
     const changed = new Set<string>();
     for (const [userId, keys] of Object.entries(body ?? {})) {
       if (!isObject(keys)) continue;
       for (const [keyId, signed] of Object.entries(keys)) {
-        const sigs = (signed as any)?.signatures?.[signer];
+        const sigs = isObject(signed) && isObject(signed.signatures) ? signed.signatures[signer] : undefined;
         if (!isObject(sigs)) {
           failures[userId] = { ...failures[userId], [keyId]: { errcode: "M_INVALID_SIGNATURE", error: "No signature from signer" } };
           continue;
@@ -415,4 +422,31 @@ export function deviceListChangesQuery(sharing: Set<string>, since: number): Fin
       ...(sharing.size <= 5000 ? [{ field: "user_id", operator: "in" as const, value: [...sharing] }] : []),
     ],
   };
+}
+
+interface RemoteKeys {
+  devices: Record<string, DeviceKeys>;
+  master?: CrossSigningKey;
+  selfSigning?: CrossSigningKey;
+}
+
+/** The well-formed keys of the users asked for, from the answers of their servers to /user/keys/query. */
+function remoteKeys(asked: Record<string, string[]>, answers: Record<string, unknown>[]) {
+  const out: Pick<Required<KeysQueryResponse>, "device_keys" | "master_keys" | "self_signing_keys"> = {
+    device_keys: {},
+    master_keys: {},
+    self_signing_keys: {},
+  };
+  const byUser = (value: unknown) => Object.entries(isObject(value) ? value : {}).filter(([userId]) => asked[userId] !== undefined);
+  for (const answer of answers) {
+    for (const [userId, devices] of byUser(answer.device_keys)) {
+      if (!isObject(devices)) continue;
+      out.device_keys[userId] = Object.fromEntries(
+        Object.entries(devices).filter((entry): entry is [string, DeviceKeys] => isDeviceKeys(entry[1])),
+      );
+    }
+    for (const [userId, key] of byUser(answer.master_keys)) if (isCrossSigningKey(key)) out.master_keys[userId] = key;
+    for (const [userId, key] of byUser(answer.self_signing_keys)) if (isCrossSigningKey(key)) out.self_signing_keys[userId] = key;
+  }
+  return out;
 }
