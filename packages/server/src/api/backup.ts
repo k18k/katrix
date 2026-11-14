@@ -1,6 +1,7 @@
 import { isObject } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row, WhereClause } from "#storage/types.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { v } from "#core/vpm.ts";
@@ -45,7 +46,7 @@ async function countKeys(hs: Homeserver, userId: string, version: number): Promi
   ).length;
 }
 
-async function describe(hs: Homeserver, row: Record<string, any>) {
+async function describe(hs: Homeserver, row: Row) {
   return {
     algorithm: row.algorithm,
     auth_data: row.auth_data,
@@ -55,8 +56,23 @@ async function describe(hs: Homeserver, row: Record<string, any>) {
   };
 }
 
+// https://github.com/k18k/katrix/issues/128: uploaded session keys were compared and stored as Record<string, any>, so a key
+// without its numbers was stored and later compared as NaN. Only keys with the spec's fields are taken now.
+/** A session key of a backup (https://spec.matrix.org/v1.16/client-server-api/#definition-keybackupdata). */
+function isBackupKey(
+  value: unknown,
+): value is { first_message_index: number; forwarded_count: number; is_verified: boolean; session_data: object } {
+  return (
+    isObject(value) &&
+    typeof value.first_message_index === "number" &&
+    typeof value.forwarded_count === "number" &&
+    typeof value.is_verified === "boolean" &&
+    isObject(value.session_data)
+  );
+}
+
 /** Whether `incoming` should replace `existing` according to the spec's key-selection rules. */
-function better(incoming: Record<string, any>, existing: Record<string, any> | null): boolean {
+function better(incoming: { first_message_index: number; forwarded_count: number; is_verified: boolean }, existing: Row | null): boolean {
   if (!existing) return true;
   if (!!incoming.is_verified !== !!existing.is_verified) return !!incoming.is_verified;
   if (incoming.first_message_index !== existing.first_message_index) return incoming.first_message_index < existing.first_message_index;
@@ -169,10 +185,13 @@ export function registerBackupRoutes(r: Router): void {
       throw new MatrixError(403, "M_WRONG_ROOM_KEYS_VERSION", "Wrong backup version", { current_version: String(latest?.version ?? "") });
     }
     const body = await ctx.json();
-    let rooms: Record<string, any>;
-    if (ctx.params.sessionId) rooms = { [ctx.params.roomId]: { sessions: { [ctx.params.sessionId]: body } } };
-    else if (ctx.params.roomId) rooms = { [ctx.params.roomId]: body };
-    else rooms = body.rooms ?? {};
+    const rooms = ctx.params.sessionId
+      ? { [ctx.params.roomId]: { sessions: { [ctx.params.sessionId]: body } } }
+      : ctx.params.roomId
+        ? { [ctx.params.roomId]: body }
+        : isObject(body.rooms)
+          ? body.rooms
+          : {};
     let changed = false;
     for (const [roomId, room] of Object.entries(rooms)) {
       if (!isObject(room) || !isObject(room.sessions)) continue;
@@ -184,7 +203,7 @@ export function registerBackupRoutes(r: Router): void {
           { field: "session_id", value: sessionId },
         ];
         const existing = await hs.db.findOne("backup_keys", where);
-        if (!better(data as Record<string, any>, existing?.data ?? null)) continue;
+        if (!isBackupKey(data) || !better(data, existing?.data ?? null)) continue;
         await hs.db.upsert("backup_keys", { user_id: s.userId, version: row.version, room_id: roomId, session_id: sessionId, data });
         changed = true;
       }
@@ -205,7 +224,7 @@ export function registerBackupRoutes(r: Router): void {
   const getKeys = async (ctx: RequestContext) => {
     const s = await ctx.auth();
     const { row } = await requireCurrentVersion(ctx, s.userId);
-    const where: any[] = [
+    const where: WhereClause[] = [
       { field: "user_id", value: s.userId },
       { field: "version", value: row.version },
     ];
@@ -216,7 +235,7 @@ export function registerBackupRoutes(r: Router): void {
       if (!keys[0]) throw errors.notFound("Key not found");
       return keys[0].data;
     }
-    const rooms: Record<string, any> = {};
+    const rooms: Record<string, { sessions: Record<string, unknown> }> = {};
     for (const k of keys) (rooms[k.room_id] ??= { sessions: {} }).sessions[k.session_id] = k.data;
     if (ctx.params.roomId) return rooms[ctx.params.roomId] ?? { sessions: {} };
     return { rooms };
@@ -225,7 +244,7 @@ export function registerBackupRoutes(r: Router): void {
   const deleteKeys = async (ctx: RequestContext) => {
     const s = await ctx.auth();
     const { row } = await requireCurrentVersion(ctx, s.userId);
-    const where: any[] = [
+    const where: WhereClause[] = [
       { field: "user_id", value: s.userId },
       { field: "version", value: row.version },
     ];
