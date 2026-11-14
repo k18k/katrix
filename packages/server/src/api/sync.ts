@@ -351,8 +351,13 @@ async function changesSince(hs: Homeserver, p: SyncParams, memberships: Row[], s
     kinds.push(kind);
     queries.push(query);
   };
-  for (const chunk of chunks(mayHaveChanged("roomEvents", joined)))
-    add("events", { model: "events", opts: { where: [inRooms(chunk), ...range], fields: ["room_id"] } });
+  // When the log knows every change after the token, a room it names had a new event: asking the database only confirmed
+  // it, once per sync. A room whose event came after `p.to` is built for nothing and sends nothing.
+  const eventRooms = mayHaveChanged("roomEvents", joined);
+  const knownEventRooms = logs?.roomEvents.knowsAfter(since) ? eventRooms : [];
+  if (!knownEventRooms.length)
+    for (const chunk of chunks(eventRooms))
+      add("events", { model: "events", opts: { where: [inRooms(chunk), ...range], fields: ["room_id"] } });
   for (const chunk of chunks(mayHaveChanged("roomReceipts", joined)))
     add("receipts", { model: "receipts", opts: { where: [inRooms(chunk), ...range] } });
   // Rooms whose state became complete are sent again as if newly joined (MSC3902).
@@ -365,7 +370,7 @@ async function changesSince(hs: Homeserver, p: SyncParams, memberships: Row[], s
   for (const chunk of chunks(mayHaveChanged("roomMembers", anyMembership)))
     add("members", { model: "memberships", opts: { where: [inRooms(chunk), { field: "stream", operator: "gt", value: since }] } });
   const results = queries.length ? await readBatch(hs.db, queries) : [];
-  const touched = new Set<string>();
+  const touched = new Set<string>(knownEventRooms);
   const receipts = new Map<string, Row[]>();
   const memberChanges: Row[] = [];
   results.forEach((rows, i) => {

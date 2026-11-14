@@ -103,6 +103,11 @@ export class ChangeLog {
   }
 
   /** The keys among `keys` that may have changed after `pos`. */
+  /** Whether the log knows every change after `pos`, so that a key it names did change. */
+  knowsAfter(pos: number) {
+    return pos >= this.floor;
+  }
+
   filterChanged(keys: Iterable<string>, pos: number) {
     const out: string[] = [];
     for (const k of keys) if (this.changedAfter(k, pos)) out.push(k);
