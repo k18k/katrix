@@ -1,4 +1,4 @@
-import { LOCALPART_RE } from "@katrix/shared";
+import { isObject, LOCALPART_RE, stringOrUndefined } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Session } from "#core/auth.ts";
@@ -18,11 +18,19 @@ export interface OAuthDelegationOptions {
   /** Where users manage their account (advertised to clients). */
   accountManagementUrl?: string;
   /** Map introspection claims to a Matrix localpart. Default: `username`, then `sub`. */
-  localpartFromClaims?: (claims: Record<string, any>) => string | null;
+  localpartFromClaims?: (claims: Record<string, unknown>) => string | null;
   /** Scope granting server admin rights. Default: "urn:synapse:admin:*". */
   adminScope?: string;
   /** How long successful introspections are cached, in ms. Default: 60 000. */
   cacheTtlMs?: number;
+}
+
+// https://github.com/k18k/katrix/issues/128: the discovery document and introspection answers were cast from JSON to
+// Record<string, any>. They are checked here: a token is active only when the answer says `active: true` (RFC 7662), and the
+// claims are unknown values.
+async function jsonObject(res: Response) {
+  const value: unknown = await res.json().catch(() => undefined);
+  return isObject(value) ? value : {};
 }
 
 const API_SCOPES = ["urn:matrix:client:api:*", "urn:matrix:org.matrix.msc2967.client:api:*"];
@@ -31,7 +39,7 @@ const DEVICE_SCOPE_PREFIXES = ["urn:matrix:client:device:", "urn:matrix:org.matr
 export class OAuthDelegation {
   private hs: Homeserver;
   readonly options: OAuthDelegationOptions;
-  private metadata: Record<string, any> | null = null;
+  private metadata: Record<string, unknown> | null = null;
   private metadataFetched = 0;
   private cache = new Map<string, { session: Session; expires: number }>();
 
@@ -41,14 +49,15 @@ export class OAuthDelegation {
   }
 
   /** Authorization server metadata (RFC 8414 / OIDC discovery), cached for an hour. */
-  async serverMetadata(): Promise<Record<string, any>> {
+  async serverMetadata() {
     if (this.metadata && Date.now() - this.metadataFetched < 3600_000) return this.metadata;
     const base = this.options.issuer.replace(/\/$/, "");
     let res = await this.hs.fetch(`${base}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) res = await this.hs.fetch(`${base}/.well-known/oauth-authorization-server`, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`OAuth discovery failed with ${res.status}`);
-    const meta = (await res.json()) as Record<string, any>;
-    if (this.options.accountManagementUrl) meta.account_management_uri = this.options.accountManagementUrl;
+    const discovered = await jsonObject(res);
+    const managed = this.options.accountManagementUrl;
+    const meta = managed ? { ...discovered, account_management_uri: managed } : discovered;
     this.metadata = meta;
     this.metadataFetched = Date.now();
     return meta;
@@ -58,7 +67,7 @@ export class OAuthDelegation {
   async authenticate(token: string): Promise<Session> {
     const cached = this.cache.get(token);
     if (cached && cached.expires > Date.now()) return cached.session;
-    const endpoint = this.options.introspectionEndpoint ?? (await this.serverMetadata()).introspection_endpoint;
+    const endpoint = this.options.introspectionEndpoint ?? stringOrUndefined((await this.serverMetadata()).introspection_endpoint);
     if (!endpoint) throw new Error("Authorization server has no introspection endpoint");
     const res = await this.hs.fetch(endpoint, {
       method: "POST",
@@ -70,20 +79,21 @@ export class OAuthDelegation {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw errors.unknownToken("Token introspection failed");
-    const claims = (await res.json()) as Record<string, any>;
-    if (!claims.active) throw errors.unknownToken();
-    const scopes = String(claims.scope ?? "").split(" ");
+    const claims = await jsonObject(res);
+    if (claims.active !== true) throw errors.unknownToken();
+    const scopes = (stringOrUndefined(claims.scope) ?? "").split(" ");
     if (!scopes.some((s) => API_SCOPES.includes(s))) throw errors.unknownToken("Token lacks the Matrix API scope");
     let deviceId: string | null = null;
     for (const s of scopes) for (const p of DEVICE_SCOPE_PREFIXES) if (s.startsWith(p)) deviceId = s.slice(p.length);
     if (!deviceId) throw errors.unknownToken("Token lacks a device scope");
 
-    const localpart = (this.options.localpartFromClaims?.(claims) ?? claims.username ?? claims.sub ?? "").toLowerCase();
+    const fromClaims = this.options.localpartFromClaims?.(claims) ?? stringOrUndefined(claims.username) ?? stringOrUndefined(claims.sub);
+    const localpart = (fromClaims ?? "").toLowerCase();
     if (!LOCALPART_RE.test(localpart)) throw errors.unknownToken("Token subject cannot be mapped to a Matrix user");
     const userId = `@${localpart}:${this.hs.serverName}`;
     let user = await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]);
     if (!user) {
-      await this.hs.admin.createUser(localpart, { displayname: claims.name ?? localpart });
+      await this.hs.admin.createUser(localpart, { displayname: stringOrUndefined(claims.name) ?? localpart });
       user = await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]);
     }
     if (user!.deactivated) throw errors.userDeactivated();
