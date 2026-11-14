@@ -129,3 +129,23 @@ test("position reads are shared by callers that a read in flight can answer", as
     await streams.stop();
   }
 });
+
+test("the in-process cluster store lists entries by prefix, within a namespace and across them", async () => {
+  const c = localCluster();
+  await c.set("writer:a", 1);
+  await c.set("writer:b", 2, 1);
+  await c.set("writers", 3);
+  await c.set("uia-register:x", 4);
+  await c.set("plain", 5);
+  await sleep(5);
+  assert.deepEqual(await c.entries("writer:"), [["writer:a", 1]], "an expired entry is left out");
+  assert.deepEqual((await c.entries("writer")).sort(), [
+    ["writer:a", 1],
+    ["writers", 3],
+  ]);
+  assert.deepEqual((await c.entries("")).length, 4);
+  await c.delete("writer:a");
+  assert.deepEqual(await c.entries("writer:"), []);
+  assert.equal(await c.setIfAbsent("writer:a", 6), true);
+  assert.deepEqual(await c.entries("writer:a"), [["writer:a", 6]]);
+});

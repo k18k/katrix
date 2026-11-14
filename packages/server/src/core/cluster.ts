@@ -53,11 +53,29 @@ export function localCluster(): ClusterAdapter {
   const locks = new Map<string, Promise<unknown>>();
   const handlers = new Map<string, Set<(m: any) => void>>();
   const kv = new Map<string, { value: unknown; expires: number }>();
+  // Keys by namespace (up to the first ":"). `entries` is called on every stream position read, and scanning every key took
+  // time in proportion to the registration sessions and other entries kept here; it looks only at one namespace now.
+  const namespaces = new Map<string, Set<string>>();
+  const namespaceOf = (key: string) => key.slice(0, key.indexOf(":") + 1);
+  const put = (key: string, entry: { value: unknown; expires: number }) => {
+    kv.set(key, entry);
+    const ns = namespaceOf(key);
+    let keys = namespaces.get(ns);
+    if (!keys) namespaces.set(ns, (keys = new Set()));
+    keys.add(key);
+  };
+  const remove = (key: string) => {
+    kv.delete(key);
+    const ns = namespaceOf(key);
+    const keys = namespaces.get(ns);
+    keys?.delete(key);
+    if (keys?.size === 0) namespaces.delete(ns);
+  };
   const live = (key: string) => {
     const e = kv.get(key);
     if (!e) return undefined;
     if (e.expires && e.expires < Date.now()) {
-      kv.delete(key);
+      remove(key);
       return undefined;
     }
     return e;
@@ -97,24 +115,26 @@ export function localCluster(): ClusterAdapter {
       return (live(key)?.value ?? null) as any;
     },
     async set(key, value, ttlMs) {
-      kv.set(key, { value, expires: ttlMs ? Date.now() + ttlMs : 0 });
+      put(key, { value, expires: ttlMs ? Date.now() + ttlMs : 0 });
     },
     async setIfAbsent(key, value, ttlMs) {
       if (live(key)) return false;
-      kv.set(key, { value, expires: ttlMs ? Date.now() + ttlMs : 0 });
+      put(key, { value, expires: ttlMs ? Date.now() + ttlMs : 0 });
       if (kv.size > 200_000)
         for (const k of kv.keys()) {
-          if (!live(k)) kv.delete(k);
+          if (!live(k)) remove(k);
         }
       return true;
     },
     async delete(key) {
-      kv.delete(key);
+      remove(key);
     },
     async entries(prefix) {
       const out: [string, any][] = [];
+      // A prefix within one namespace looks at that namespace's keys only; a shorter one at every key.
+      const keys = prefix.includes(":") ? (namespaces.get(namespaceOf(prefix)) ?? []) : kv.keys();
       // oxlint-disable-next-line unicorn/no-useless-spread -- copy on purpose: the loop removes entries
-      for (const k of [...kv.keys()])
+      for (const k of [...keys])
         if (k.startsWith(prefix)) {
           const e = live(k);
           if (e) out.push([k, e.value]);
