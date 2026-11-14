@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { testServer } from "../helpers.ts";
+import { loadSigningKey, signJson } from "#core/crypto.ts";
 
 const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 
@@ -224,6 +225,70 @@ test("a remote alias resolves only when the remote server answers with a room ID
     );
     assert.equal((await resolve()).status, 404);
     assert.equal((await resolve()).status, 404);
+  } finally {
+    await t.close();
+  }
+});
+
+// https://github.com/k18k/katrix/issues/136
+test("a server key response is accepted only when every current key signed it", async () => {
+  const t = await testServer({ federation: { enabled: true } });
+  try {
+    const server = "remote.example";
+    const a = loadSigningKey("a");
+    const b = loadSigningKey("b");
+    const response = (verify: Record<string, unknown>, old: Record<string, unknown> = {}) => ({
+      server_name: server,
+      valid_until_ts: Date.now() + 3600_000,
+      verify_keys: verify,
+      old_verify_keys: old,
+    });
+    const signed = (body: Record<string, unknown>, ...keys: ReturnType<typeof loadSigningKey>[]) => {
+      for (const key of keys) signJson(body, server, key);
+      return body;
+    };
+    const old = { "ed25519:old": { key: b.publicKeyBase64, expired_ts: 1 } };
+    const keyring = t.hs.federation.keyring;
+    const stored = async () =>
+      (await t.hs.db.findMany("remote_server_keys", { where: [{ field: "server_name", value: server }] })).map((r) => r.key_id).sort();
+
+    for (const body of [
+      response({}, old),
+      response({ "ed25519:a": { key: 5 } }, old),
+      response({ "ed25519:a": { key: "not a key" } }, old),
+      signed(response({ "ed25519:a": { key: a.publicKeyBase64 }, "ed25519:b": { key: b.publicKeyBase64 } }, old), a),
+      signed(response({ "ed25519:a": { key: a.publicKeyBase64 } }), b),
+      { ...signed(response({ "ed25519:a": { key: a.publicKeyBase64 } }), a), server_name: "other.example" },
+    ])
+      assert.equal(await keyring.ingestServerKeys(server, body), false, JSON.stringify(body.verify_keys));
+    assert.deepEqual(await stored(), []);
+
+    const good = signed(response({ "ed25519:a": { key: a.publicKeyBase64 }, "ed25519:b": { key: b.publicKeyBase64 } }, old), a, b);
+    assert.equal(await keyring.ingestServerKeys(server, good), true);
+    assert.deepEqual(await stored(), ["ed25519:a", "ed25519:b", "ed25519:old"]);
+  } finally {
+    await t.close();
+  }
+});
+
+// https://github.com/k18k/katrix/issues/136
+test("the key notary countersigns only responses it accepted", async (ctx) => {
+  const t = await testServer({ federation: { enabled: true } });
+  try {
+    const server = "remote.example";
+    const key = loadSigningKey("a");
+    const unsigned = {
+      server_name: server,
+      valid_until_ts: Date.now() + 3600_000,
+      verify_keys: { "ed25519:a": { key: key.publicKeyBase64 } },
+    };
+    let answer: Record<string, unknown> = unsigned;
+    ctx.mock.method(t.hs.federation.client, "request", async () => structuredClone(answer));
+    const query = () => t.call("GET", `/_matrix/key/v2/query/${server}`);
+    assert.deepEqual((await query()).json.server_keys, []);
+    answer = signJson(structuredClone(unsigned), server, key);
+    const [countersigned] = (await query()).json.server_keys;
+    assert.deepEqual(Object.keys(countersigned.signatures).sort(), ["localhost", server]);
   } finally {
     await t.close();
   }

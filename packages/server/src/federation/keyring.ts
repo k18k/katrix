@@ -72,24 +72,29 @@ export class KeyRing {
     }
   }
 
-  /** Validate and store a `/_matrix/key/v2/server` response. */
-  async ingestServerKeys(serverName: string, body: Record<string, any>): Promise<void> {
-    if (body.server_name !== serverName || !isObject(body.verify_keys)) return;
+  // Security (https://github.com/k18k/katrix/issues/136): improper verification of a cryptographic signature, CWE-347. Only
+  // current keys whose `key` was a string were checked, so a response without one passed vacuously and its old keys were
+  // stored unverified, and the notary countersigned responses this check had refused. A response is accepted now only when
+  // it has a current key and every current key is a key that signed it; the result tells the notary whether to countersign.
+  /** Validate and store a `/_matrix/key/v2/server` response; resolves whether it was accepted. */
+  async ingestServerKeys(serverName: string, body: Record<string, unknown>) {
+    if (body.server_name !== serverName || !isObject(body.verify_keys)) return false;
+    const current = Object.entries(body.verify_keys);
+    if (current.length === 0) return false;
     const validUntil = Number(body.valid_until_ts) || 0;
     const entries: [string, string, number][] = [];
-    for (const [keyId, v] of Object.entries(body.verify_keys))
-      if (typeof (v as any)?.key === "string") entries.push([keyId, (v as any).key, validUntil]);
-    for (const [keyId, v] of Object.entries(isObject(body.old_verify_keys) ? body.old_verify_keys : {})) {
-      if (typeof (v as any)?.key === "string") entries.push([keyId, (v as any).key, Number((v as any).expired_ts) || 0]);
+    for (const [keyId, v] of current) {
+      if (!isObject(v) || typeof v.key !== "string" || !signedWith(body, serverName, keyId, v.key)) return false;
+      entries.push([keyId, v.key, validUntil]);
     }
-    // The response must be signed by each of its current keys.
-    for (const [keyId, key] of entries.filter(([id]) => id in body.verify_keys)) {
-      if (!verifyJsonSignature(body, serverName, keyId, publicKeyFromBase64(key))) return;
+    for (const [keyId, v] of Object.entries(isObject(body.old_verify_keys) ? body.old_verify_keys : {})) {
+      if (isObject(v) && typeof v.key === "string") entries.push([keyId, v.key, Number(v.expired_ts) || 0]);
     }
     for (const [keyId, key, until] of entries) {
       this.remember(serverName, keyId, key, until);
       await this.hs.db.upsert("remote_server_keys", { server_name: serverName, key_id: keyId, key, valid_until_ts: until });
     }
+    return true;
   }
 
   /** Verify that `obj` carries a valid signature from `serverName`. */
@@ -115,5 +120,14 @@ export class KeyRing {
       until = Math.max(until, r.valid_until_ts);
     }
     return [{ server_name: serverName, valid_until_ts: until, verify_keys, old_verify_keys: {} }];
+  }
+}
+
+/** Whether `body` carries a valid signature by the key `keyId` of `serverName`, given as base64; false for a malformed key. */
+function signedWith(body: Record<string, unknown>, serverName: string, keyId: string, key: string) {
+  try {
+    return verifyJsonSignature(body, serverName, keyId, publicKeyFromBase64(key));
+  } catch {
+    return false; // ts-pro-exception: a key that is not an ed25519 public key signs nothing
   }
 }

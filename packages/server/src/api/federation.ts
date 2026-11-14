@@ -320,8 +320,9 @@ export function registerFederationRoutes(r: Router): void {
       // Fetch the origin's own signed response and countersign it as a notary.
       try {
         const fresh = await ctx.hs.federation.client.request(server, "GET", "/_matrix/key/v2/server", { signed: false, timeoutMs: 10_000 });
-        await ctx.hs.federation.keyring.ingestServerKeys(server, fresh);
-        if (fresh.server_name === server) out.push(signJson(fresh, ctx.hs.serverName, ctx.hs.signingKey));
+        // https://github.com/k18k/katrix/issues/136: only a response the key ring accepted is countersigned.
+        if (await ctx.hs.federation.keyring.ingestServerKeys(server, fresh))
+          out.push(signJson(fresh, ctx.hs.serverName, ctx.hs.signingKey));
       } catch {
         /* unreachable server: nothing to return */
       }
