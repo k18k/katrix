@@ -1,4 +1,4 @@
-import { isValidRoomId, isValidUserId, M, UNSTABLE } from "@katrix/shared";
+import { isValidRoomId, isValidUserId, M, stringOrUndefined, UNSTABLE } from "@katrix/shared";
 import { randomString } from "#core/crypto.ts";
 import { MatrixError } from "#core/errors.ts";
 import type { PDU } from "#core/events.ts";
@@ -151,7 +151,7 @@ export class AdminRoomService {
     const roomId = await this.roomId();
     if (!roomId) return;
     const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const content: Record<string, any> = {
+    const content: Record<string, unknown> = {
       msgtype: M.NOTICE,
       body: text,
       format: UNSTABLE.ORG.MATRIX.CUSTOM.HTML,
@@ -327,7 +327,7 @@ export class AdminRoomService {
             const { rooms, total } = await hs.admin.listRooms({ limit: 200 });
             const lines = await Promise.all(
               rooms.map(async (r) => {
-                const name = (await hs.rooms.currentState(r.room_id)).get("m.room.name\u0000")?.content?.name;
+                const name = stringOrUndefined((await hs.rooms.currentState(r.room_id)).get("m.room.name\u0000")?.content?.name);
                 return `${r.room_id}  ${r.joined_members} member(s)${name ? `  "${name}"` : ""}${r.is_public ? " [public]" : ""}`;
               }),
             );

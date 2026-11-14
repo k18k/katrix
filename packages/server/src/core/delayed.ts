@@ -2,6 +2,7 @@ import { UNSTABLE } from "@katrix/shared";
 import { errors, MatrixError } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
 
 /** When a delayed event whose send failed is tried again. */
 const RETRY_MS = 10_000;
@@ -49,7 +50,7 @@ export class DelayedEventService {
     roomId: string;
     type: string;
     stateKey?: string;
-    content: Record<string, any>;
+    content: Record<string, unknown>;
     delayMs: number;
     txnId?: string;
   }): Promise<string> {
@@ -83,7 +84,7 @@ export class DelayedEventService {
     return delayId;
   }
 
-  async list(userId: string): Promise<Record<string, any>[]> {
+  async list(userId: string): Promise<Record<string, unknown>[]> {
     const rows = await this.hs.db.findMany("delayed_events", {
       where: [{ field: "user_id", value: userId }],
       sortBy: { field: "send_at", direction: "asc" },
@@ -162,7 +163,7 @@ export class DelayedEventService {
     }
   }
 
-  private async send(row: Record<string, any>): Promise<void> {
+  private async send(row: Row): Promise<void> {
     await this.hs.rooms.sendEvent(
       row.room_id,
       row.user_id,

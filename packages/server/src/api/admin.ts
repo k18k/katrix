@@ -243,7 +243,7 @@ export function registerAdminRoutes(r: Router): void {
           before: Number(ctx.query.get("from")) || undefined,
           limit: Number(ctx.query.get("limit")) || 100,
         });
-        const out: Record<string, any> = { entries: rows };
+        const out: Record<string, unknown> = { entries: rows };
         if (rows.length) out.next_token = String(rows[rows.length - 1].id);
         return out;
       },

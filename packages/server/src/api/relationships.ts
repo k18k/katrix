@@ -257,9 +257,9 @@ export async function relationshipsForServer(
   const version = (await hs.rooms.roomVersion(roomId))!;
   const events = [];
   for (const pdu of result.events) {
-    const wire: Record<string, any> = hs.federation.toFederationPdu(pdu, version);
-    wire.unsigned = { ...wire.unsigned, ...(await childrenSummary(hs, pdu.event_id!)) };
-    events.push(wire);
+    const wire = hs.federation.toFederationPdu(pdu, version);
+    const unsigned = isObject(wire.unsigned) ? wire.unsigned : {};
+    events.push({ ...wire, unsigned: { ...unsigned, ...(await childrenSummary(hs, pdu.event_id!)) } });
   }
   const chain = await authChainOf(result.events.map((p) => p.event_id!));
   return { events, limited: result.limited, auth_chain: chain.map((p) => hs.federation.toFederationPdu(p, version)) };

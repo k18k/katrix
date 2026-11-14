@@ -169,7 +169,7 @@ async function relations(ctx: RequestContext) {
     }
     matches.push(stored);
   }
-  const out: Record<string, any> = { chunk: matches.map((e) => hs.rooms.formatEvent(e, { userId: s.userId, deviceId: s.deviceId })) };
+  const out: Record<string, unknown> = { chunk: matches.map((e) => hs.rooms.formatEvent(e, { userId: s.userId, deviceId: s.deviceId })) };
   if (next !== null) out.next_batch = `s${next}`;
   return out;
 }
@@ -209,7 +209,7 @@ async function threads(ctx: RequestContext) {
   const page = roots.filter((r) => from === null || r.stream <= from);
   const chunk = page.slice(0, limit);
   const viewer = { userId: s.userId, deviceId: s.deviceId };
-  const out: Record<string, any> = {
+  const out: Record<string, unknown> = {
     chunk: await Promise.all(
       chunk.map(async (r) => {
         const ev = hs.rooms.formatEvent(r.ev, viewer);
@@ -280,7 +280,7 @@ export function registerTimelineRoutes(r: Router): void {
           if (!fetched) break;
           ({ events, end } = await paginate(hs, s.userId, roomId, { from, to, dir, limit: filter?.limit ?? limit, filter }));
         }
-        const out: Record<string, any> = {
+        const out: Record<string, unknown> = {
           chunk: events.map((e) => hs.rooms.formatEvent(e, viewerOf(s))),
           start: fromRaw ?? (from ? (from.depth === null ? `s${from.stream}` : `t${from.depth}_${from.stream}`) : "t0_0"),
         };

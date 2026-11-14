@@ -2,7 +2,7 @@ import { defaultPushRules, isObject, M, PUSH_RULE_KINDS } from "@katrix/shared";
 import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import type { Homeserver } from "#homeserver.ts";
 
-export type Rule = Record<string, any>;
+export type Rule = Record<string, unknown>;
 export type Ruleset = Record<string, Rule[]>;
 
 export const KINDS: readonly string[] = PUSH_RULE_KINDS;
@@ -113,11 +113,14 @@ async function copyRules(hs: Homeserver, userId: string, oldRoomId: string, newR
       if (rule.default) continue;
       if (kind === "room" && rule.rule_id === oldRoomId) {
         if (!list.some((r) => r.rule_id === newRoomId)) additions.push({ ...structuredClone(rule), rule_id: newRoomId });
-      } else if (Array.isArray(rule.conditions) && rule.conditions.some((c: any) => c?.key === "room_id" && c?.pattern === oldRoomId)) {
+      } else if (
+        Array.isArray(rule.conditions) &&
+        rule.conditions.some((c: unknown) => isObject(c) && c.key === "room_id" && c.pattern === oldRoomId)
+      ) {
         const copy = structuredClone(rule);
         copy.rule_id = `${rule.rule_id}-${newRoomId}`;
-        copy.conditions = copy.conditions.map((c: any) =>
-          c?.key === "room_id" && c?.pattern === oldRoomId ? { ...c, pattern: newRoomId } : c,
+        copy.conditions = rule.conditions.map((c: unknown) =>
+          isObject(c) && c.key === "room_id" && c.pattern === oldRoomId ? { ...c, pattern: newRoomId } : c,
         );
         if (!list.some((r) => r.rule_id === copy.rule_id)) additions.push(copy);
       }

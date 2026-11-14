@@ -3,6 +3,7 @@ import { CLUSTER_RESYNC } from "#core/cluster.ts";
 import { EventEmitter } from "node:events";
 import { eventIdOf, roomVersionFeatures, stateKey } from "#core/events.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
 
 // MSC3902 "faster joins": a remote join with `omit_members=true` returns the room's state
 // without most membership events. The room is usable right away (sending, receiving, lazy
@@ -178,7 +179,7 @@ export class PartialStateService {
     }
   }
 
-  private async tryResync(roomId: string, row: Record<string, any>): Promise<boolean> {
+  private async tryResync(roomId: string, row: Row): Promise<boolean> {
     const version = await this.hs.rooms.roomVersion(roomId);
     const join = await this.hs.rooms.getEvent(row.join_event_id);
     if (!version || !join) {

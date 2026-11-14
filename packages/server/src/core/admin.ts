@@ -2,6 +2,7 @@ import { isValidUserId, LOCALPART_RE, M } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
 import { createUser } from "#api/account.ts";
 import { getState, membershipOf, powerLevels, userLevel } from "#core/authrules.ts";
 
@@ -29,7 +30,7 @@ export class AdminService {
     return createUser(this.hs, lp, opts);
   }
 
-  async getUser(userId: string): Promise<Record<string, any> | null> {
+  async getUser(userId: string): Promise<Record<string, unknown> | null> {
     const row = await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]);
     if (!row) return null;
     const { password_hash, ...rest } = row;
@@ -156,10 +157,10 @@ export class AdminService {
     const page = rows.slice(from, from + (opts.limit ?? 100));
     return {
       rooms: await Promise.all(
-        page.map(async (r): Promise<Record<string, any>> => ({
-          ...r,
-          joined_members: (await this.hs.rooms.joinedMembers(r.room_id)).length,
-        })),
+        page.map(async (r) => {
+          const room: Row = { ...r, joined_members: (await this.hs.rooms.joinedMembers(r.room_id)).length };
+          return room;
+        }),
       ),
       total: rows.length,
     };
@@ -236,7 +237,7 @@ export class AdminService {
   }
 
   /** Send a message to a user in their server notices room, creating or re-inviting as needed. */
-  async sendServerNotice(userId: string, content: Record<string, any>, opts: { type?: string; txnId?: string } = {}): Promise<string> {
+  async sendServerNotice(userId: string, content: Record<string, unknown>, opts: { type?: string; txnId?: string } = {}): Promise<string> {
     if (!isValidUserId(userId) || !this.hs.isLocalUser(userId)) throw errors.invalidParam("Server notices can only be sent to local users");
     if (!(await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]))) throw errors.notFound("Unknown user");
     const txnKey = opts.txnId ? `notice-txn:${userId}|${opts.txnId}` : null;

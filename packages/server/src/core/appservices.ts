@@ -237,7 +237,7 @@ export class AppServiceService {
   }
 
   /** Queue an ephemeral event (typing/receipt/presence) for interested services that asked for them. */
-  async onEphemeral(roomId: string | null, event: Record<string, any>, users: string[]): Promise<void> {
+  async onEphemeral(roomId: string | null, event: object, users: string[]): Promise<void> {
     for (const svc of this.services) {
       const reg = svc.reg;
       if (!reg.url || !(reg.receive_ephemeral || reg[UNSTABLE.DE.SORUNOME.MSC2409.PUSH_EPHEMERAL])) continue;
@@ -253,7 +253,7 @@ export class AppServiceService {
     }
   }
 
-  private async enqueue(reg: AppServiceRegistration, kind: string, payload: Record<string, any>): Promise<void> {
+  private async enqueue(reg: AppServiceRegistration, kind: string, payload: object): Promise<void> {
     const id = await this.hs.cluster.nextId("appservice_outbox");
     await this.hs.db.create("appservice_outbox", { id, as_id: reg.id, kind, payload, created_ts: Date.now() });
     this.schedule(reg.id, 0);
@@ -284,7 +284,7 @@ export class AppServiceService {
           limit: 100,
         });
         if (!rows.length) return;
-        const body: Record<string, any> = { events: rows.filter((r) => r.kind === "event").map((r) => r.payload) };
+        const body: Record<string, unknown> = { events: rows.filter((r) => r.kind === "event").map((r) => r.payload) };
         const ephemeral = rows.filter((r) => r.kind === "ephemeral").map((r) => r.payload);
         if (ephemeral.length) {
           body.ephemeral = ephemeral;

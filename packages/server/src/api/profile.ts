@@ -9,7 +9,7 @@ import { procedure } from "#http/procedure.ts";
 import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
 
-async function remoteProfile(ctx: RequestContext, field?: string): Promise<Record<string, any>> {
+async function remoteProfile(ctx: RequestContext, field?: string): Promise<Record<string, unknown>> {
   if (!isValidUserId(ctx.params.userId)) throw errors.invalidParam("Invalid user ID");
   try {
     const res = await ctx.hs.federation.queryProfile(ctx.params.userId, field);
@@ -212,7 +212,7 @@ export function registerProfileRoutes(r: Router): void {
           if (!(await ctx.hs.db.findOne("users", [{ field: "user_id", value: ctx.params.userId }]))) throw errors.notFound("Unknown user");
           return { presence: "offline" };
         }
-        const out: Record<string, any> = { presence: row.presence, last_active_ago: Date.now() - row.last_active_ts };
+        const out: Record<string, unknown> = { presence: row.presence, last_active_ago: Date.now() - row.last_active_ts };
         if (row.status_msg) out.status_msg = row.status_msg;
         if (row.presence === "online") out.currently_active = true;
         return out;

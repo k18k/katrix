@@ -57,7 +57,7 @@ export class PolicyServers {
 
   private validSignature(pdu: PDU, version: string, policy: RoomPolicy): boolean {
     // Signatures cover the redacted federation form (without our local `event_id`).
-    const wire = this.hs.federation.toFederationPdu(pdu, version) as Record<string, any>;
+    const wire = this.hs.federation.toFederationPdu(pdu, version) as Record<string, unknown>;
     return verifyJsonSignature(redact(wire, version), policy.via, KEY_ID, policy.key);
   }
 

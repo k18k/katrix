@@ -3,6 +3,7 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { randomString } from "#core/crypto.ts";
 import { toMsisdn } from "#core/phone.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
 import { escapeHtml } from "#core/html.ts";
 
 // Third-party identifiers (email addresses and phone numbers) validated by this homeserver: it
@@ -169,7 +170,7 @@ export class ThreepidService {
    * Start (or continue) validating an address: `POST .../{medium}/requestToken`. Repeating a
    * request with the same `client_secret`, address and `send_attempt` does not send again.
    */
-  async requestToken(purpose: ThreepidPurpose, medium: Medium, body: Record<string, any>): Promise<Record<string, unknown>> {
+  async requestToken(purpose: ThreepidPurpose, medium: Medium, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!this.enabled) throw errors.threepidDenied();
     if (!this.canValidate(medium))
       throw new MatrixError(
@@ -179,7 +180,8 @@ export class ThreepidService {
       );
     if (typeof body.client_secret !== "string" || !CLIENT_SECRET_RE.test(body.client_secret))
       throw errors.invalidParam("Invalid client_secret");
-    if (!Number.isInteger(body.send_attempt)) throw errors.invalidParam("send_attempt must be an integer");
+    const sendAttempt = body.send_attempt;
+    if (typeof sendAttempt !== "number" || !Number.isInteger(sendAttempt)) throw errors.invalidParam("send_attempt must be an integer");
     let address: string | null;
     if (medium === "email") {
       if (typeof body.email !== "string") throw errors.missingParam("Missing email");
@@ -201,10 +203,10 @@ export class ThreepidService {
       await this.hs.db.findMany("threepid_sessions", { where: [{ field: "client_secret", value: body.client_secret }] })
     ).find((s) => s.medium === medium && s.address === address && !this.expired(s));
     let session = existing;
-    if (existing && body.send_attempt <= existing.send_attempt) return this.tokenResponse(existing);
+    if (existing && sendAttempt <= existing.send_attempt) return this.tokenResponse(existing);
     if (existing) {
       await this.hs.db.update("threepid_sessions", [{ field: "sid", value: existing.sid }], {
-        send_attempt: body.send_attempt,
+        send_attempt: sendAttempt,
         next_link: nextLink,
       });
     } else {
@@ -213,7 +215,7 @@ export class ThreepidService {
         client_secret: body.client_secret,
         medium,
         address,
-        send_attempt: body.send_attempt,
+        send_attempt: sendAttempt,
         next_link: nextLink,
         token: medium === "email" ? randomString(32) : String(randomInt(0, 1_000_000)).padStart(6, "0"),
         created_ts: Date.now(),
@@ -225,14 +227,14 @@ export class ThreepidService {
     return this.tokenResponse(session!);
   }
 
-  private tokenResponse(session: Record<string, any>): Record<string, unknown> {
+  private tokenResponse(session: Row): Record<string, unknown> {
     const out: Record<string, unknown> = { sid: session.sid };
     if (this.hs.config.publicBaseUrl) out.submit_url = `${this.hs.config.publicBaseUrl.replace(/\/$/, "")}${SUBMIT_PATH}`;
     if (session.medium === "msisdn") Object.assign(out, { msisdn: session.address, intl_fmt: `+${session.address}` });
     return out;
   }
 
-  private async send(purpose: ThreepidPurpose, session: Record<string, any>): Promise<void> {
+  private async send(purpose: ThreepidPurpose, session: Row): Promise<void> {
     const what = PURPOSE_TEXT[purpose];
     try {
       if (session.medium === "email") {
@@ -261,7 +263,7 @@ export class ThreepidService {
     }
   }
 
-  private expired(session: Record<string, any>): boolean {
+  private expired(session: Row): boolean {
     return session.created_ts + (this.options.sessionLifetimeMs ?? 24 * 60 * 60_000) < Date.now();
   }
 

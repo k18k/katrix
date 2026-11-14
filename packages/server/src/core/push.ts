@@ -46,7 +46,7 @@ export class PushService {
     const pl = powerLevels(state, version);
     const senderLevel = userLevel(pl, event.sender);
     const thread = threadIdOf(event);
-    const notified: { userId: string; row: Record<string, unknown>; tweaks: ReturnType<typeof tweaksOf> }[] = [];
+    const notified: { userId: string; row: Row; tweaks: ReturnType<typeof tweaksOf> }[] = [];
     for (const userId of members) {
       if (userId === event.sender || !this.hs.isLocalUser(userId)) continue;
       const rules = await readOnlyRules(this.hs, userId);
@@ -127,7 +127,7 @@ export class PushService {
     return { unthreaded, threads: threadRead };
   }
 
-  isRead(row: Record<string, any>, read: { unthreaded: number; threads: Map<string, number> }): boolean {
+  isRead(row: Row, read: { unthreaded: number; threads: Map<string, number> }): boolean {
     return row.stream <= read.unthreaded || row.stream <= (read.threads.get(row.thread_id) ?? 0);
   }
 
@@ -170,7 +170,7 @@ export class PushService {
       const pusher = row.pusher;
       if (pusher.kind !== "http" || typeof pusher.data?.url !== "string") continue;
       const { url, format, ...data } = pusher.data;
-      const notification: Record<string, any> = {
+      const notification: Record<string, unknown> = {
         event_id: event.event_id,
         room_id: event.room_id,
         counts: { unread },

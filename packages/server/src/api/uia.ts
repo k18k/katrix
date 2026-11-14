@@ -31,7 +31,7 @@ const UIA_TTL_MS = 10 * 60_000;
  */
 export async function requireUia(
   hs: Homeserver,
-  body: Record<string, any>,
+  body: Record<string, unknown>,
   flows: string[][],
   userId: string | null,
   opts: { session?: Session; crossSigningReset?: boolean } = {},

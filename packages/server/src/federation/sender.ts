@@ -43,15 +43,15 @@ export class TransactionSender {
     for (const dest of new Set(rows.map((r) => r.destination))) this.schedule(dest, 0);
   }
 
-  async sendPdu(destinations: Iterable<string>, pdu: Record<string, any>): Promise<void> {
+  async sendPdu(destinations: Iterable<string>, pdu: Record<string, unknown>): Promise<void> {
     await this.enqueue(destinations, "pdu", pdu);
   }
 
-  async sendEdu(destinations: Iterable<string>, eduType: string, content: Record<string, any>, durable = true): Promise<void> {
+  async sendEdu(destinations: Iterable<string>, eduType: string, content: Record<string, unknown>, durable = true): Promise<void> {
     await this.enqueue(destinations, durable ? "edu" : "edu-ephemeral", { edu_type: eduType, content });
   }
 
-  private async enqueue(destinations: Iterable<string>, kind: string, payload: Record<string, any>): Promise<void> {
+  private async enqueue(destinations: Iterable<string>, kind: string, payload: Record<string, unknown>): Promise<void> {
     for (const destination of new Set(destinations)) {
       if (destination === this.hs.serverName) continue;
       const id = await this.hs.cluster.nextId("federation_outbox");

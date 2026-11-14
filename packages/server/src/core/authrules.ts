@@ -123,7 +123,7 @@ const domainOf = (id: string) => id.slice(id.indexOf(":") + 1);
 
 /** The (type, state_key) pairs an event's auth_events may reference (spec "auth events selection"). */
 export function authEventKeys(
-  event: { type: string; sender: string; state_key?: string; content: Record<string, any> },
+  event: { type: string; sender: string; state_key?: string; content: Record<string, unknown> },
   roomVersion: string,
 ): string[] {
   if (event.type === M.ROOM.CREATE) return [];
@@ -132,8 +132,9 @@ export function authEventKeys(
   if (event.type === M.ROOM.MEMBER && typeof event.state_key === "string") {
     keys.push(stateKey(M.ROOM.MEMBER, event.state_key));
     const membership = event.content?.membership;
-    if (["join", "invite", "knock"].includes(membership)) keys.push(stateKey(M.ROOM.JOIN_RULES, ""));
-    const token = event.content?.third_party_invite?.signed?.token;
+    if (membership === "join" || membership === "invite" || membership === "knock") keys.push(stateKey(M.ROOM.JOIN_RULES, ""));
+    const thirdParty = event.content?.third_party_invite;
+    const token = isObject(thirdParty) && isObject(thirdParty.signed) ? thirdParty.signed.token : undefined;
     if (membership === "invite" && typeof token === "string") keys.push(stateKey(M.ROOM.THIRD_PARTY_INVITE, token));
     const via = event.content?.join_authorised_via_users_server;
     if (membership === "join" && typeof via === "string" && roomVersionFeatures(roomVersion).restricted)
@@ -356,11 +357,23 @@ function checkThirdPartyInvite(event: PDU, state: StateMap): boolean {
   return false;
 }
 
+/** The single levels of m.room.power_levels and their defaults (spec, m.room.power_levels). */
+const LEVELS = ["users_default", "events_default", "state_default", "ban", "redact", "kick", "invite"] as const;
+const LEVEL_DEFAULTS = {
+  users_default: 0,
+  events_default: 0,
+  state_default: 50,
+  ban: 50,
+  redact: 50,
+  kick: 50,
+  invite: 0,
+} satisfies Record<(typeof LEVELS)[number], number>;
+
 function checkPowerLevelShape(event: PDU, integerOnly: boolean, deny: (m: string) => never): void {
   if (!integerOnly) return;
   const c = event.content ?? {};
   const isInt = (v: unknown) => typeof v === "number" && Number.isInteger(v);
-  for (const key of ["users_default", "events_default", "state_default", "ban", "redact", "kick", "invite"]) {
+  for (const key of LEVELS) {
     if (key in c && !isInt(c[key])) deny(`${key} must be an integer`);
   }
   for (const map of ["users", "events", "notifications"]) {
@@ -382,20 +395,13 @@ function checkPowerLevelChange(
   if (!integerOnly) {
     for (const map of ["users", "events", "notifications"]) if (map in c && !isObject(c[map])) deny(`${map} must be an object`);
   }
-  const next = {
-    users_default: toInt(c.users_default, 0),
-    events_default: toInt(c.events_default, 0),
-    state_default: toInt(c.state_default, 50),
-    ban: toInt(c.ban, 50),
-    redact: toInt(c.redact, 50),
-    kick: toInt(c.kick, 50),
-    invite: toInt(c.invite, 0),
-  } as Record<string, number>;
-  for (const key of Object.keys(next)) {
-    const old = (current as any)[key] as number;
-    if (old !== next[key] && (old > senderLevel || next[key] > senderLevel)) deny(`Cannot change ${key} beyond your own level`);
+  // https://github.com/k18k/katrix/issues/128: the levels were compared through an any cast of the current power levels.
+  for (const key of LEVELS) {
+    const old = current[key];
+    const now = toInt(c[key], LEVEL_DEFAULTS[key]);
+    if (old !== now && (old > senderLevel || now > senderLevel)) deny(`Cannot change ${key} beyond your own level`);
   }
-  const compareMap = (oldMap: Record<string, number>, newMap: Record<string, any>, isUsers: boolean) => {
+  const compareMap = (oldMap: Record<string, number>, newMap: Record<string, unknown>, isUsers: boolean) => {
     const keys = new Set([...Object.keys(oldMap), ...Object.keys(newMap ?? {})]);
     for (const k of keys) {
       const o = oldMap[k];
@@ -410,8 +416,8 @@ function checkPowerLevelChange(
       }
     }
   };
-  compareMap(current.users, c.users ?? {}, true);
-  compareMap(current.events, c.events ?? {}, false);
+  compareMap(current.users, isObject(c.users) ? c.users : {}, true);
+  compareMap(current.events, isObject(c.events) ? c.events : {}, false);
   if (checkNotifications) {
     const oldNotif = { ...current.notifications };
     // `room` defaults to 50 when unset; only compare explicitly set values.

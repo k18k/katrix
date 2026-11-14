@@ -23,7 +23,7 @@ export const keysClaimBody = body({
 
 const SERVER_MANAGED_TYPES: readonly string[] = [M.FULLY_READ, M.PUSH_RULES];
 
-async function setAccountData(hs: Homeserver, userId: string, roomId: string, type: string, content: Record<string, any>) {
+async function setAccountData(hs: Homeserver, userId: string, roomId: string, type: string, content: Record<string, unknown>) {
   await hs.streams.write((stream) => hs.db.upsert("account_data", { user_id: userId, room_id: roomId, type, content, stream }));
   hs.notifier.notify([userId]);
 }
@@ -121,7 +121,7 @@ export function registerUserRoutes(r: Router): void {
   );
 
   // Tags live in the per-room `m.tag` account data.
-  const readTags = async (hs: Homeserver, userId: string, roomId: string): Promise<Record<string, any>> => {
+  const readTags = async (hs: Homeserver, userId: string, roomId: string): Promise<Record<string, unknown>> => {
     const row = await hs.db.findOne("account_data", [
       { field: "user_id", value: userId },
       { field: "room_id", value: roomId },
@@ -170,7 +170,7 @@ export function registerUserRoutes(r: Router): void {
 
   // --- Devices ---------------------------------------------------------------
 
-  const formatDevice = (d: Record<string, any>) => ({
+  const formatDevice = (d: Record<string, unknown>) => ({
     device_id: d.device_id,
     display_name: d.display_name ?? undefined,
     last_seen_ip: d.last_seen_ip ?? undefined,
@@ -344,7 +344,7 @@ export function registerUserRoutes(r: Router): void {
       input: body({}),
       handler: async (ctx) => {
         const s = ctx.session;
-        const body: Record<string, any> = ctx.input;
+        const body: Record<string, unknown> = ctx.input;
         const existing = await ctx.hs.db.findOne("cross_signing_keys", [
           { field: "user_id", value: s.userId },
           { field: "key_type", value: "master" },

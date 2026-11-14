@@ -149,7 +149,7 @@ export async function checkPasswordLogin(
   return userId;
 }
 
-async function resolveLoginUser(hs: Homeserver, body: Record<string, any>): Promise<string> {
+async function resolveLoginUser(hs: Homeserver, body: Record<string, unknown>): Promise<string> {
   let user: unknown;
   // Third-party identifiers (and the legacy top-level medium/address) log in the account they belong to.
   const id = isObject(body.identifier) ? body.identifier : null;
