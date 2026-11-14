@@ -216,7 +216,9 @@ const GLOBAL = () => "*";
 const RULES: Record<string, Rule[]> = {
   to_device: [{ stream: "toDevice", key: (f) => join(f.user_id, f.device_id) }],
   presence: [
+    // By user too: a sync asks only for the users sharing a room with it that changed.
     { stream: "presence", key: GLOBAL },
+    { stream: "presence", key: (f) => join(f.user_id) },
     { value: "presenceRow", key: (f) => join(f.user_id) },
   ],
   device_list_changes: [{ stream: "deviceLists", key: GLOBAL }],

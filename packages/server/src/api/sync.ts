@@ -648,12 +648,25 @@ async function buildSync(hs: Homeserver, p: SyncParams) {
       limit: RECENT_CHANGES + 1,
     },
   });
-  const presenceQuery: BatchQuery =
-    since === null
-      ? { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: wantPresence ? sharingList : [] }] } }
-      : wantPresence
-        ? recent("presence")
-        : { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: [] }] } };
+  // On a single instance the change log knows whose presence changed after the token (#51): only theirs is read. While
+  // users come online, every sync otherwise read the whole server's recent changes to keep the few it shares a room with.
+  const presenceLog = hs.changes?.logs.presence;
+  const changedUsers = since !== null && presenceLog?.knowsAfter(since) ? presenceLog.filterChanged(sharingList, since) : null;
+  const presenceQuery: BatchQuery = !wantPresence
+    ? { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: [] }] } }
+    : since === null
+      ? { model: "presence", opts: { where: [{ field: "user_id", operator: "in", value: sharingList }] } }
+      : changedUsers
+        ? {
+            model: "presence",
+            opts: {
+              where: [
+                { field: "user_id", operator: "in", value: changedUsers },
+                { field: "stream", operator: "gt", value: since },
+              ],
+            },
+          }
+        : recent("presence");
   // #51: and not at all when the change tracker knows that none happened after the token.
   let [presenceRows = [], newlySharedPresence = [], deviceRows] = await trackedReads(hs.db, hs.changes, [
     since === null ? { query: presenceQuery } : { query: presenceQuery, unlessChanged: { log: "presence", key: "*", after: since } },
