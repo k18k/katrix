@@ -1,4 +1,4 @@
-import { LOCALPART_RE } from "@katrix/shared";
+import { isObject, LOCALPART_RE, stringOrUndefined } from "@katrix/shared";
 import { createHash, randomBytes } from "node:crypto";
 import { errors } from "#core/errors.ts";
 import { randomToken, urlSafeBase64 } from "#core/crypto.ts";
@@ -29,7 +29,7 @@ export interface SsoProvider {
    * display name, or null to refuse login. Default: sanitised `preferred_username`, then `sub`.
    */
   mapUser?: (
-    claims: Record<string, any>,
+    claims: Record<string, unknown>,
   ) => { localpart: string; displayname?: string } | null | Promise<{ localpart: string; displayname?: string } | null>;
   /** Create accounts for unknown users. Default: true. */
   allowRegistration?: boolean;
@@ -87,7 +87,23 @@ function clientMatches(raw: string, entry: string): boolean {
   }
 }
 
-const sameIssuer = (a: unknown, b: string) => typeof a === "string" && a.replace(/\/$/, "") === b.replace(/\/$/, "");
+const sameIssuer = (a: unknown, b: string | undefined) =>
+  b !== undefined && typeof a === "string" && a.replace(/\/$/, "") === b.replace(/\/$/, "");
+
+/** The endpoints of a provider, from its configuration or its OpenID Connect discovery document. */
+interface ProviderMetadata {
+  issuer?: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  userinfo_endpoint?: string;
+}
+
+// https://github.com/k18k/katrix/issues/128: the provider's discovery document, token response, ID token and user info were
+// cast from JSON to Record<string, any>. They are checked here, and claims are unknown values for mapUser to check.
+async function jsonObject(res: Response) {
+  const value: unknown = await res.json().catch(() => undefined);
+  return isObject(value) ? value : undefined;
+}
 
 interface PendingLogin {
   providerId: string;
@@ -104,10 +120,17 @@ export function sanitizeLocalpart(raw: string): string {
     .slice(0, 200);
 }
 
-function decodeJwtPayload(jwt: string): Record<string, any> {
+function decodeJwtPayload(jwt: string) {
   const part = jwt.split(".")[1];
-  if (!part) throw new Error("Malformed ID token");
-  return JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+  if (!part) throw errors.forbidden("Malformed ID token");
+  let claims: unknown;
+  try {
+    claims = JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+  } catch {
+    throw errors.forbidden("Malformed ID token");
+  }
+  if (!isObject(claims)) throw errors.forbidden("Malformed ID token");
+  return claims;
 }
 
 /**
@@ -137,7 +160,12 @@ export function githubProvider(opts: {
     },
     scopes: ["read:user"],
     subjectClaim: "id",
-    mapUser: opts.mapUser ?? ((c) => ({ localpart: sanitizeLocalpart(String(c.login ?? c.id)), displayname: c.name ?? c.login })),
+    mapUser:
+      opts.mapUser ??
+      ((c) => ({
+        localpart: sanitizeLocalpart(String(c.login ?? c.id)),
+        displayname: stringOrUndefined(c.name) ?? stringOrUndefined(c.login),
+      })),
     ...(opts.allowRegistration !== undefined ? { allowRegistration: opts.allowRegistration } : {}),
   };
 }
@@ -150,7 +178,7 @@ export class SsoService {
   private hs: Homeserver;
   readonly providers: SsoProvider[];
   readonly clientAllowlist: string[];
-  private discovery = new Map<string, Record<string, any>>();
+  private discovery = new Map<string, ProviderMetadata>();
 
   constructor(hs: Homeserver, options: SsoOptions) {
     this.hs = hs;
@@ -164,7 +192,7 @@ export class SsoService {
     return `${base.replace(/\/$/, "")}/_matrix/client/v3/login/sso/callback/${encodeURIComponent(provider.id)}`;
   }
 
-  private async discover(provider: SsoProvider): Promise<Record<string, any>> {
+  private async discover(provider: SsoProvider): Promise<ProviderMetadata> {
     if (provider.endpoints) {
       const e = provider.endpoints;
       return { issuer: provider.issuer, authorization_endpoint: e.authorization, token_endpoint: e.token, userinfo_endpoint: e.userinfo };
@@ -176,10 +204,18 @@ export class SsoService {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`OIDC discovery for ${provider.id} failed with ${res.status}`);
-    const meta = (await res.json()) as Record<string, any>;
+    const doc = await jsonObject(res);
     // https://github.com/k18k/katrix/issues/19: OpenID Connect Discovery 4.3,
     // the document must be the configured issuer's. ID tokens are then checked against it.
-    if (!sameIssuer(meta.issuer, provider.issuer!)) throw new Error(`OIDC discovery for ${provider.id} returned another issuer`);
+    if (!sameIssuer(doc?.issuer, provider.issuer)) throw new Error(`OIDC discovery for ${provider.id} returned another issuer`);
+    if (typeof doc?.authorization_endpoint !== "string" || typeof doc.token_endpoint !== "string")
+      throw new Error(`OIDC discovery for ${provider.id} returned no authorization or token endpoint`);
+    const meta = {
+      issuer: stringOrUndefined(doc?.issuer),
+      authorization_endpoint: doc.authorization_endpoint,
+      token_endpoint: doc.token_endpoint,
+      userinfo_endpoint: stringOrUndefined(doc.userinfo_endpoint),
+    };
     this.discovery.set(provider.id, meta);
     return meta;
   }
@@ -244,13 +280,13 @@ export class SsoService {
     }
     const res = await this.hs.fetch(meta.token_endpoint, { method: "POST", headers, body, signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw errors.forbidden("Code exchange failed");
-    const tokens = (await res.json()) as Record<string, any>;
+    const tokens = await jsonObject(res);
     // GitHub reports a failed exchange with status 200 and an `error` field.
-    if (typeof tokens.error === "string") throw errors.forbidden("Code exchange failed");
+    if (!tokens || typeof tokens.error === "string") throw errors.forbidden("Code exchange failed");
 
     // The ID token comes straight from the token endpoint over TLS, so its issuer is
     // authenticated by the connection (OIDC Core 3.1.3.7); we still check the claims.
-    let claims: Record<string, any> = {};
+    let claims: Record<string, unknown> = {};
     // https://github.com/k18k/katrix/issues/19: with the openid scope the token
     // response must carry an ID token (OIDC Core 3.1.3.3); without one, its checks were skipped.
     const openid = this.scopes(provider).includes("openid");
@@ -268,7 +304,8 @@ export class SsoService {
         signal: AbortSignal.timeout(10_000),
       });
       if (info.ok) {
-        const userinfo = (await info.json()) as Record<string, any>;
+        const userinfo = await jsonObject(info);
+        if (!userinfo) throw errors.forbidden("The provider returned no user info");
         if (claims.sub && userinfo.sub !== claims.sub) throw errors.forbidden("Userinfo subject mismatch");
         claims = { ...userinfo, ...claims };
       }
@@ -283,7 +320,7 @@ export class SsoService {
     return { userId, target: pending.target };
   }
 
-  private async resolveUser(provider: SsoProvider, subject: string, claims: Record<string, any>): Promise<string> {
+  private async resolveUser(provider: SsoProvider, subject: string, claims: Record<string, unknown>): Promise<string> {
     const link = await this.hs.db.findOne("sso_identities", [
       { field: "idp_id", value: provider.id },
       { field: "subject", value: subject },
@@ -292,7 +329,10 @@ export class SsoService {
     if (provider.allowRegistration === false) throw errors.forbidden("No account is linked to this identity");
     const mapped = provider.mapUser
       ? await provider.mapUser(claims)
-      : { localpart: sanitizeLocalpart(claims.preferred_username ?? subject), displayname: claims.name };
+      : {
+          localpart: sanitizeLocalpart(stringOrUndefined(claims.preferred_username) ?? subject),
+          displayname: stringOrUndefined(claims.name),
+        };
     if (!mapped || !LOCALPART_RE.test(mapped.localpart)) throw errors.forbidden("Could not map identity to a Matrix user");
     let localpart = mapped.localpart;
     // Avoid taking over existing accounts: pick a free localpart.

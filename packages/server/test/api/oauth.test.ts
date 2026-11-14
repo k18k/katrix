@@ -1,3 +1,4 @@
+import { stringOrUndefined } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -502,7 +503,7 @@ test("an upstream OAuth 2.0 provider without OIDC (like GitHub) logs users in on
           clientSecret: "secret",
           endpoints: { authorization: `${idp.url}/authorize`, token: `${idp.url}/token`, userinfo: `${idp.url}/user` },
           subjectClaim: "id",
-          mapUser: (c) => ({ localpart: String(c.login).toLowerCase(), displayname: c.name }),
+          mapUser: (c) => ({ localpart: String(c.login).toLowerCase(), displayname: stringOrUndefined(c.name) }),
         },
       ],
     },

@@ -41,7 +41,10 @@ function loginProvider(env: NodeJS.ProcessEnv): SsoProvider {
       clientId: required(env, "DEV_IDP_CLIENT_ID"),
       clientSecret: required(env, "DEV_IDP_CLIENT_SECRET"),
       // The dev users' emails are alice@dev.localhost and so on.
-      mapUser: (claims) => ({ localpart: String(claims.email).split("@")[0].toLowerCase(), displayname: claims.name }),
+      mapUser: (claims) => ({
+        localpart: String(claims.email).split("@")[0].toLowerCase(),
+        displayname: typeof claims.name === "string" ? claims.name : undefined,
+      }),
     };
   throw new Error("Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET (production) or DEV_IDP_ISSUER (local development)");
 }

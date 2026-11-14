@@ -1,3 +1,4 @@
+import { stringOrUndefined } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -115,7 +116,7 @@ test("e2e: OAuth 2.0 login through Better Auth as the upstream OpenID Connect pr
           issuer: idp.issuer,
           clientId: idp.client.client_id,
           clientSecret: idp.client.client_secret,
-          mapUser: (claims) => ({ localpart: String(claims.email).split("@")[0], displayname: claims.name }),
+          mapUser: (claims) => ({ localpart: String(claims.email).split("@")[0], displayname: stringOrUndefined(claims.name) }),
         },
       ],
     },
