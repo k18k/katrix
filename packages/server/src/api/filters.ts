@@ -85,13 +85,38 @@ export function roomAllowed(filter: SyncFilter, roomId: string): boolean {
   return true;
 }
 
-function validateEventFilter(f: unknown, name: string): void {
+const LIST_FIELDS = [
+  "types",
+  "not_types",
+  "senders",
+  "not_senders",
+  "rooms",
+  "not_rooms",
+  "rel_types",
+  "not_rel_types",
+  UNSTABLE.ORG.MATRIX.MSC3874.REL_TYPES,
+  UNSTABLE.ORG.MATRIX.MSC3874.NOT_REL_TYPES,
+] as const satisfies readonly (keyof EventFilter)[];
+const FLAG_FIELDS = [
+  "contains_url",
+  "lazy_load_members",
+  "include_redundant_members",
+  "unread_thread_notifications",
+] as const satisfies readonly (keyof EventFilter)[];
+
+/** Throws M_BAD_JSON unless `f` is an event filter (or absent). */
+export function assertEventFilter(f: unknown, name: string): asserts f is EventFilter | undefined {
   if (f === undefined) return;
   if (!isObject(f)) throw errors.badJson(`${name} must be an object`);
-  for (const key of ["types", "not_types", "senders", "not_senders", "rooms", "not_rooms"]) {
+  for (const key of LIST_FIELDS) {
     if (f[key] !== undefined && !isStrings(f[key])) {
       throw errors.badJson(`${name}.${key} must be a list of strings`);
     }
+  }
+  // https://github.com/k18k/katrix/issues/128: the relation lists and flags were not checked, and the filter was cast to
+  // EventFilter; every field of the type is checked here, so the assertion holds.
+  for (const key of FLAG_FIELDS) {
+    if (f[key] !== undefined && typeof f[key] !== "boolean") throw errors.badJson(`${name}.${key} must be a boolean`);
   }
   // https://github.com/k18k/katrix/issues/128: the lists were read as any; they are checked string lists here.
   const allStartWith = (key: string, prefix: string) => {
@@ -110,11 +135,11 @@ function validateEventFilter(f: unknown, name: string): void {
 
 export function validateSyncFilter(f: unknown): SyncFilter {
   if (!isObject(f)) throw errors.badJson("Filter must be an object");
-  for (const k of ["presence", "account_data"]) validateEventFilter(f[k], k);
+  for (const k of ["presence", "account_data"]) assertEventFilter(f[k], k);
   if (f.room !== undefined) {
     if (!isObject(f.room)) throw errors.badJson("room must be an object");
-    for (const k of ["timeline", "state", "ephemeral", "account_data"]) validateEventFilter(f.room[k], `room.${k}`);
-    validateEventFilter({ rooms: f.room.rooms, not_rooms: f.room.not_rooms }, "room");
+    for (const k of ["timeline", "state", "ephemeral", "account_data"]) assertEventFilter(f.room[k], `room.${k}`);
+    assertEventFilter({ rooms: f.room.rooms, not_rooms: f.room.not_rooms }, "room");
   }
   if (f.event_format !== undefined && f.event_format !== "client" && f.event_format !== "federation")
     throw errors.badJson("Invalid event_format");
@@ -131,8 +156,8 @@ export function parseRoomEventFilter(ctx: RequestContext): EventFilter | undefin
   } catch {
     throw errors.badJson("Invalid filter JSON");
   }
-  validateEventFilter(parsed, "filter");
-  return parsed as EventFilter;
+  assertEventFilter(parsed, "filter");
+  return parsed;
 }
 
 /** Member events needed to render `events` when lazy-loading members. */
