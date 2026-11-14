@@ -293,6 +293,9 @@ async function accountData(hs: Homeserver, p: SyncParams, roomId: string, prefet
     .filter((e) => matchesFilter(filter, e));
 }
 
+/** The state events a room summary is computed from: members for the counts and heroes, the name and alias for whether heroes are needed. */
+const SUMMARY_TYPES = new Set<string>([M.ROOM.MEMBER, M.ROOM.NAME, M.ROOM.CANONICAL_ALIAS]);
+
 export async function roomSummary(hs: Homeserver, roomId: string, userId: string) {
   const state = await hs.rooms.currentState(roomId);
   let joined = 0;
@@ -545,11 +548,13 @@ async function buildSync(hs: Homeserver, p: SyncParams) {
     const completedAt = await hs.partialState.completedAt(roomId);
     const initial =
       since === null || p.fullState || m.stream > since || (completedAt !== null && completedAt > since && completedAt <= p.to);
-    const [{ timeline, state, stateAfter, timelineEvents }, ephemeral, roomAccountData, summary, counts] = await Promise.all([
+    // The summary is built from the room's whole state. It is sent with a room's first sync and whenever the events sent
+    // could change it; clients keep the last one (as with Synapse, which sends it only then, and only with lazy loading).
+    const summaryRead = initial ? roomSummary(hs, roomId, userId) : null;
+    const [{ timeline, state, stateAfter, timelineEvents }, ephemeral, roomAccountData, counts] = await Promise.all([
       roomTimeline(hs, p, roomId, initial ? null : since, p.to),
       roomEphemeral(hs, p, roomId, changes ? (changes.receipts.get(roomId) ?? []) : undefined),
       accountData(hs, p, roomId, changes ? (changes.accountData.get(roomId) ?? []) : undefined),
-      roomSummary(hs, roomId, userId),
       hs.push.unreadCounts(userId, roomId),
     ]);
     if (
@@ -564,12 +569,15 @@ async function buildSync(hs: Homeserver, p: SyncParams) {
     const stateSection = p.useStateAfter
       ? { [p.stateAfterKey ?? "state_after"]: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } }
       : { state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) } };
+    const changesSummary = (e: PDU) => e.state_key !== undefined && SUMMARY_TYPES.has(e.type);
+    const summaryChanged = [...state, ...stateAfter, ...timelineEvents.map((e) => e.pdu)].some(changesSummary);
+    const summary = summaryRead ? await summaryRead : summaryChanged ? await roomSummary(hs, roomId, userId) : undefined;
     const room: JoinedRoom = {
       timeline,
       ...stateSection,
       ephemeral: { events: ephemeral },
       account_data: { events: roomAccountData },
-      summary,
+      ...(summary ? { summary } : {}),
     };
     if (p.filter.room?.timeline?.unread_thread_notifications) {
       room.unread_notifications = counts.room;

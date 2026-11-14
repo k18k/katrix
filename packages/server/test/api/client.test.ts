@@ -89,3 +89,30 @@ test("user directory: members of public rooms are found, also right after they j
     await t.close();
   }
 });
+
+test("incremental syncs send a room's summary only when its members, name or alias changed", async () => {
+  const t = await testServer();
+  try {
+    const alice = await t.user("alice");
+    const bob = await t.user("bob");
+    const room = (await t.call("POST", "/_matrix/client/v3/createRoom", { token: alice, body: { preset: "public_chat" } })).json.room_id;
+    const path = (rest: string) => `/_matrix/client/v3/rooms/${encodeURIComponent(room)}${rest}`;
+    const first = await t.call("GET", "/_matrix/client/v3/sync", { token: alice });
+    assert.deepEqual(first.json.rooms.join[room].summary, { "m.joined_member_count": 1, "m.invited_member_count": 0, "m.heroes": [] });
+
+    await t.call("PUT", path("/send/m.room.message/1"), { token: alice, body: { msgtype: "m.text", body: "hi" } });
+    const message = await t.call("GET", `/_matrix/client/v3/sync?since=${first.json.next_batch}`, { token: alice });
+    assert.equal(message.json.rooms.join[room].timeline.events.length, 1);
+    assert.equal(message.json.rooms.join[room].summary, undefined, "nothing in it changed");
+
+    assert.equal((await t.call("POST", path("/join"), { token: bob, body: {} })).status, 200);
+    const joined = await t.call("GET", `/_matrix/client/v3/sync?since=${message.json.next_batch}`, { token: alice });
+    assert.deepEqual(joined.json.rooms.join[room].summary, {
+      "m.joined_member_count": 2,
+      "m.invited_member_count": 0,
+      "m.heroes": ["@bob:localhost"],
+    });
+  } finally {
+    await t.close();
+  }
+});
