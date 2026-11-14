@@ -7,6 +7,11 @@ import { publicGet } from "#core/outbound.ts";
 
 const MAX_BYTES = 1024 * 1024;
 
+// https://github.com/k18k/katrix/issues/128: previews were Record<string, any>; they are Open Graph properties with text or
+// number values (the image's size).
+/** A URL preview: Open Graph properties such as `og:title`, and `og:image:width` and `matrix:image:size` as numbers. */
+type Preview = Record<string, string | number>;
+
 function decodeEntities(s: string): string {
   return s.replace(
     /&(amp|lt|gt|quot|#39|#x27);/g,
@@ -32,7 +37,7 @@ export function parseOpenGraph(html: string): Record<string, string> {
   return og;
 }
 
-async function preview(hs: Homeserver, rawUrl: string): Promise<Record<string, any>> {
+async function preview(hs: Homeserver, rawUrl: string): Promise<Preview> {
   const opts = hs.config.urlPreviews;
   if (!opts) throw errors.notFound("URL previews are disabled");
   let url: URL;
@@ -60,10 +65,11 @@ async function preview(hs: Homeserver, rawUrl: string): Promise<Record<string, a
     return { ...(await storeImage(hs, res.body, type)), "og:url": res.url.href };
   }
   if (!type.includes("html")) return {};
-  const og: Record<string, any> = parseOpenGraph(res.body.subarray(0, MAX_BYTES).toString("utf8"));
-  if (og["og:image"]) {
+  const og: Preview = parseOpenGraph(res.body.subarray(0, MAX_BYTES).toString("utf8"));
+  const image = og["og:image"];
+  if (typeof image === "string" && image) {
     try {
-      const img = await publicGet(get, new URL(og["og:image"], res.url), { maxBytes: MAX_BYTES * 10, timeoutMs: 10_000, headers });
+      const img = await publicGet(get, new URL(image, res.url), { maxBytes: MAX_BYTES * 10, timeoutMs: 10_000, headers });
       const imgType = img.headers.get("content-type") ?? "";
       if (img.status === 200 && imgType.startsWith("image/")) Object.assign(og, await storeImage(hs, img.body, imgType));
     } catch {
@@ -107,7 +113,7 @@ export function imageSize(data: Uint8Array): { width: number; height: number } |
 }
 
 /** Store a fetched image in the media repository and describe it for a preview. */
-async function storeImage(hs: Homeserver, body: Buffer, type: string): Promise<Record<string, any>> {
+async function storeImage(hs: Homeserver, body: Buffer, type: string): Promise<Preview> {
   const data = new Uint8Array(body);
   const mediaId = randomString(24);
   await hs.media.put(mediaId, data, { contentType: type, filename: null, size: data.length });
@@ -132,7 +138,7 @@ async function storeImage(hs: Homeserver, body: Buffer, type: string): Promise<R
 /** How long a preview is reused (`preview:<url>` in the cluster key-value store). */
 const PREVIEW_TTL_MS = 3600_000;
 /** Previews being built on this instance, by URL: concurrent requests for one URL share the work. */
-const building = new WeakMap<Homeserver, Map<string, Promise<Record<string, any>>>>();
+const building = new WeakMap<Homeserver, Map<string, Promise<Preview>>>();
 
 /**
  * https://github.com/k18k/katrix/issues/104 — uncontrolled resource consumption (CWE-400): every
@@ -140,9 +146,9 @@ const building = new WeakMap<Homeserver, Map<string, Promise<Record<string, any>
  * server download and keep any amount of data. Previews are now reused for an hour (across instances), built once
  * for concurrent requests, and rate limited per user (`preview`).
  */
-async function cachedPreview(hs: Homeserver, url: string): Promise<Record<string, any>> {
+async function cachedPreview(hs: Homeserver, url: string): Promise<Preview> {
   const key = `preview:${url}`;
-  const cached = await hs.cluster.get<Record<string, any>>(key);
+  const cached = await hs.cluster.get<Preview>(key);
   if (cached) return cached;
   let inflight = building.get(hs);
   if (!inflight) building.set(hs, (inflight = new Map()));
