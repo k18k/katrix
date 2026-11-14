@@ -3,45 +3,30 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { getState, membershipOf, powerLevels, userLevel } from "#core/authrules.ts";
 import { type Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { Row } from "#storage/types.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 import { body } from "#http/input.ts";
 import { visibleState } from "#api/rooms.ts";
+import { roomDetails } from "#api/spaces.ts";
 
 // Room aliases and the room directory (also for application services), local and over federation.
 
-async function publicRoomChunk(hs: Homeserver, roomId: string): Promise<Record<string, any>> {
-  const state = await hs.rooms.currentState(roomId);
-  const get = (t: string) => getState(state, t)?.content;
-  const chunk: Record<string, any> = {
-    room_id: roomId,
-    num_joined_members: (await hs.rooms.joinedMembers(roomId)).length,
-    world_readable: get(M.ROOM.HISTORY_VISIBILITY)?.history_visibility === "world_readable",
-    guest_can_join: get(M.ROOM.GUEST_ACCESS)?.guest_access === "can_join",
-    join_rule: get(M.ROOM.JOIN_RULES)?.join_rule ?? "invite",
-  };
-  if (typeof get(M.ROOM.NAME)?.name === "string") chunk.name = get(M.ROOM.NAME)!.name;
-  if (typeof get(M.ROOM.TOPIC)?.topic === "string") chunk.topic = get(M.ROOM.TOPIC)!.topic;
-  if (typeof get(M.ROOM.CANONICAL_ALIAS)?.alias === "string") chunk.canonical_alias = get(M.ROOM.CANONICAL_ALIAS)!.alias;
-  if (typeof get(M.ROOM.AVATAR)?.url === "string") chunk.avatar_url = get(M.ROOM.AVATAR)!.url;
-  const roomType = get(M.ROOM.CREATE)?.type;
-  if (typeof roomType === "string") chunk.room_type = roomType;
-  return chunk;
-}
-
-async function publicRooms(ctx: RequestContext, body: Record<string, any>) {
+async function publicRooms(ctx: RequestContext, body: Record<string, unknown>) {
   const hs = ctx.hs;
   const limit = Number(body.limit ?? ctx.query.get("limit") ?? 0) || undefined;
   const since = body.since ?? ctx.query.get("since");
   const offset = since ? Number.parseInt(String(since).replace(/^o/, ""), 10) || 0 : 0;
   const term =
     isObject(body.filter) && typeof body.filter.generic_search_term === "string" ? body.filter.generic_search_term.toLowerCase() : null;
-  const roomTypes = isObject(body.filter) && Array.isArray(body.filter.room_types) ? body.filter.room_types : null;
+  const listed = isObject(body.filter) ? body.filter.room_types : undefined;
+  const roomTypes: unknown[] | null = Array.isArray(listed) ? listed : null;
   const rooms = await hs.db.findMany("rooms", {
     where: [{ field: "is_public", value: true }],
     sortBy: { field: "created_ts", direction: "asc" },
   });
-  let chunks = await Promise.all(rooms.map((r) => publicRoomChunk(hs, r.room_id)));
+  // https://github.com/k18k/katrix/issues/128: a copy of roomDetails (api/spaces.ts) built as Record<string, any> was used here.
+  let chunks = await Promise.all(rooms.map((r) => roomDetails(hs, r.room_id)));
   if (term)
     chunks = chunks.filter((c) =>
       [c.name, c.topic, c.canonical_alias].some((v) => typeof v === "string" && v.toLowerCase().includes(term)),
@@ -49,13 +34,15 @@ async function publicRooms(ctx: RequestContext, body: Record<string, any>) {
   if (roomTypes) chunks = chunks.filter((c) => roomTypes.includes(c.room_type ?? null));
   chunks.sort((a, b) => b.num_joined_members - a.num_joined_members);
   const page = limit ? chunks.slice(offset, offset + limit) : chunks.slice(offset);
-  const out: Record<string, any> = { chunk: page, total_room_count_estimate: chunks.length };
-  if (limit && offset + limit < chunks.length) out.next_batch = `o${offset + limit}`;
-  if (offset > 0) out.prev_batch = `o${Math.max(0, offset - (limit ?? 0))}`;
-  return out;
+  return {
+    chunk: page,
+    total_room_count_estimate: chunks.length,
+    ...(limit && offset + limit < chunks.length ? { next_batch: `o${offset + limit}` } : {}),
+    ...(offset > 0 ? { prev_batch: `o${Math.max(0, offset - (limit ?? 0))}` } : {}),
+  };
 }
 
-async function canDeleteAlias(hs: Homeserver, s: Session, alias: Record<string, any>): Promise<boolean> {
+async function canDeleteAlias(hs: Homeserver, s: Session, alias: Row): Promise<boolean> {
   if (alias.creator === s.userId || s.isAdmin) return true;
   const version = await hs.rooms.roomVersion(alias.room_id);
   if (!version) return false;
@@ -191,13 +178,16 @@ export function registerDirectoryRoutes(r: Router): void {
     }),
   );
 
-  const remoteOrLocal = async (ctx: RequestContext, body: Record<string, any>) => {
+  const remoteOrLocal = async (ctx: RequestContext, body: Record<string, unknown>) => {
     const server = ctx.query.get("server");
     if (server && server !== ctx.hs.serverName) {
-      const query: Record<string, any> = { ...body };
-      if (ctx.query.get("limit")) query.limit = Number(ctx.query.get("limit"));
-      if (ctx.query.get("since")) query.since = ctx.query.get("since");
-      return ctx.hs.federation.queryPublicRooms(server, query);
+      const limit = ctx.query.get("limit");
+      const since = ctx.query.get("since");
+      return ctx.hs.federation.queryPublicRooms(server, {
+        ...body,
+        ...(limit ? { limit: Number(limit) } : {}),
+        ...(since ? { since } : {}),
+      });
     }
     return publicRooms(ctx, body);
   };
