@@ -18,23 +18,23 @@ export class NativeOutboundGroupSession implements OutboundGroupSession {
   }
 
   /** A fresh session: random ratchet at index 0 and a new Ed25519 key, whose public half is the ID. */
-  static create(p: CryptoPrimitives): NativeOutboundGroupSession {
+  static create(p: CryptoPrimitives) {
     return new NativeOutboundGroupSession(p, ratchetFromBytes(p.randomBytes(128), 0), p.ed25519GenerateKeyPair());
   }
 
-  sessionId(): string {
+  sessionId() {
     return encodeBase64(this.signing.publicKey);
   }
 
-  messageIndex(): number {
+  messageIndex() {
     return this.ratchet.counter;
   }
 
-  sessionKey(): string {
+  sessionKey() {
     return encodeSessionKey(this.p, this.ratchet, this.signing);
   }
 
-  encrypt(plaintext: Uint8Array): string {
+  encrypt(plaintext: Uint8Array) {
     const keys = messageKeys(this.p, this.ratchet);
     const ciphertext = this.p.aes256CbcEncrypt(keys.aes, keys.iv, plaintext);
     const body = encodeBody(this.ratchet.counter, ciphertext);
@@ -44,7 +44,7 @@ export class NativeOutboundGroupSession implements OutboundGroupSession {
     return encodeBase64(concatBytes(authenticated, signature));
   }
 
-  pickle(key?: PickleKey): string {
+  pickle(key?: PickleKey) {
     return writePickle(
       this.p,
       "megolm_outbound",
@@ -58,7 +58,7 @@ export class NativeOutboundGroupSession implements OutboundGroupSession {
     );
   }
 
-  static fromPickle(p: CryptoPrimitives, pickle: string, key?: PickleKey): NativeOutboundGroupSession {
+  static fromPickle(p: CryptoPrimitives, pickle: string, key?: PickleKey) {
     const s = readPickle(p, "megolm_outbound", pickle, key);
     return new NativeOutboundGroupSession(p, ratchetFromBytes(field.bytes(s, "ratchet", 128), field.uint(s, "counter")), {
       secretKey: field.bytes(s, "signing_secret_key", 32),

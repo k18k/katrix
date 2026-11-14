@@ -29,7 +29,7 @@ export type UiaCallback = (session: UiaSession) => Promise<AuthenticationData | 
 
 const MAX_ROUNDS = 10;
 
-function uiaSessionOf(e: unknown): UiaSession | undefined {
+function uiaSessionOf(e: unknown) {
   if (!(e instanceof MatrixError) || e.status !== 401 || !Array.isArray(e.data.flows)) return undefined;
   const d = e.data;
   return {
@@ -51,7 +51,7 @@ function uiaSessionOf(e: unknown): UiaSession | undefined {
 export async function withUserInteractiveAuth<T>(
   call: (auth: AuthenticationData | undefined) => Promise<T>,
   onAuth: UiaCallback | undefined,
-): Promise<T> {
+) {
   let auth: AuthenticationData | undefined;
   for (let round = 0; ; round++) {
     try {
@@ -67,7 +67,7 @@ export async function withUserInteractiveAuth<T>(
 }
 
 /** The stages left in the first flow that `can` completes (each of its stages is one `can` knows). */
-export function nextStage(session: UiaSession, can: (stage: string) => boolean): string | undefined {
+export function nextStage(session: UiaSession, can: (stage: string) => boolean) {
   for (const flow of session.flows) {
     if (!flow.stages.every(can)) continue;
     const left = flow.stages.filter((s) => !session.completed.includes(s));

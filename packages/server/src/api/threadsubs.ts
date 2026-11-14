@@ -24,7 +24,7 @@ function key(userId: string, roomId: string, threadId: string) {
 }
 
 /** Whether the user is subscribed to a thread: true, false (explicitly unsubscribed or never subscribed). */
-export async function isSubscribed(hs: Homeserver, userId: string, roomId: string, threadId: string): Promise<boolean> {
+export async function isSubscribed(hs: Homeserver, userId: string, roomId: string, threadId: string) {
   const row = await hs.db.findOne("thread_subscriptions", key(userId, roomId, threadId));
   return !!row?.subscribed;
 }
@@ -43,7 +43,7 @@ async function threadRoot(ctx: RequestContext, userId: string) {
   return root;
 }
 
-export function registerThreadSubscriptionRoutes(r: Router): void {
+export function registerThreadSubscriptionRoutes(r: Router) {
   const path = "/rooms/:roomId/thread/:threadId/subscription";
 
   r.client(

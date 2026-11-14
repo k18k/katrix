@@ -43,7 +43,7 @@ const item = (owner: string, id: number, extra: Record<string, unknown> = {}) =>
 });
 const ids = (rows: Row[]) => rows.map((r) => r.id as number).sort((a, b) => a - b);
 
-async function seed(db: DatabaseAdapter, n: number): Promise<void> {
+async function seed(db: DatabaseAdapter, n: number) {
   for (let i = 1; i <= n; i++) await db.create(T, item("a", i, { label: `item ${i}`, flag: i % 2 === 0 }));
 }
 

@@ -25,7 +25,7 @@ import { registerThreadSubscriptionRoutes } from "#api/threadsubs.ts";
 import { registerRelationshipRoutes } from "#api/relationships.ts";
 import { registerUserRoutes } from "#api/user.ts";
 
-export function registerRoutes(r: Router): void {
+export function registerRoutes(r: Router) {
   registerMiscRoutes(r);
   registerAccountRoutes(r);
   registerOAuthServerRoutes(r);

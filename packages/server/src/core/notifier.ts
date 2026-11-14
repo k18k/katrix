@@ -70,7 +70,7 @@ export class Notifier {
    * Wake `userIds`. `pos` is the stream position of the change; without it, the highest position
    * this instance has allocated stands in, which is never below it.
    */
-  notify(userIds: Iterable<string>, pos?: number): void {
+  notify(userIds: Iterable<string>, pos?: number) {
     const users = [...userIds];
     if (!users.length) return;
     const at = pos ?? this.lastAllocated();
@@ -83,18 +83,18 @@ export class Notifier {
   }
 
   /** The position may have moved (a write of this instance completed): release what it covers. */
-  advanced(): void {
+  advanced() {
     if (this.held.length) this.scheduleRelease(0);
   }
 
   /** Wake now if the change is visible, otherwise once the position reaches it. */
-  private hold(users: string[], pos: number): void {
+  private hold(users: string[], pos: number) {
     if (pos <= this.visible) return this.wakeLocal(users, pos);
     this.held.push({ users, pos });
     this.scheduleRelease(0);
   }
 
-  private scheduleRelease(delay: number): void {
+  private scheduleRelease(delay: number) {
     if (this.release) return;
     this.release = setTimeout(() => {
       this.release = null;
@@ -103,7 +103,7 @@ export class Notifier {
     this.release.unref?.();
   }
 
-  private async releaseHeld(): Promise<void> {
+  private async releaseHeld() {
     const highest = Math.max(...this.held.map((h) => h.pos));
     // The cached position first: it often covers everything held already.
     let pos = await this.position(false);
@@ -116,7 +116,7 @@ export class Notifier {
     if (this.held.length) this.scheduleRelease(RELEASE_RETRY_MS);
   }
 
-  private wakeLocal(userIds: Iterable<string>, pos: number): void {
+  private wakeLocal(userIds: Iterable<string>, pos: number) {
     for (const u of userIds) {
       const previous = this.recent.get(u) ?? 0;
       this.recent.delete(u);
@@ -129,7 +129,7 @@ export class Notifier {
     }
   }
 
-  notifyAll(): void {
+  notifyAll() {
     // Deleting the entry being visited is safe while iterating a Map.
     for (const [u, set] of this.listeners) {
       this.listeners.delete(u);
@@ -178,7 +178,7 @@ export class Notifier {
   }
 
   /** Wait for a wake-up of `userId` (for callers that do not track positions). */
-  async wait(userId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
+  async wait(userId: string, timeoutMs: number, signal?: AbortSignal) {
     await this.listen(userId).wait(timeoutMs, signal);
   }
 }

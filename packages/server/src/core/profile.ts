@@ -9,7 +9,7 @@ export const BUILTIN_FIELDS = new Set(["displayname", "avatar_url"]);
 export const MAX_PROFILE_BYTES = 65536;
 export const MAX_KEY_BYTES = 255;
 
-export async function fullProfile(hs: Homeserver, userId: string): Promise<Record<string, unknown> | null> {
+export async function fullProfile(hs: Homeserver, userId: string) {
   const user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
   if (!user || user.deactivated) return null;
   const out: Record<string, unknown> = {};
@@ -21,12 +21,12 @@ export async function fullProfile(hs: Homeserver, userId: string): Promise<Recor
   return out;
 }
 
-export function profileSize(profile: Record<string, unknown>): number {
+export function profileSize(profile: Record<string, unknown>) {
   return Buffer.byteLength(canonicalJson(profile));
 }
 
 /** Set (or with `null`, clear) one profile field and notify users sharing a room. */
-export async function setProfileField(hs: Homeserver, userId: string, field: string, value: unknown): Promise<void> {
+export async function setProfileField(hs: Homeserver, userId: string, field: string, value: unknown) {
   if (BUILTIN_FIELDS.has(field)) {
     await hs.db.update("users", [{ field: "user_id", value: userId }], { [field]: value || null });
   }

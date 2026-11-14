@@ -47,7 +47,7 @@ import { allowedRoomIds, roomDetails } from "#api/spaces.ts";
 const F = "/_matrix/federation";
 
 /** Authenticate a server-server request; returns the origin server name. */
-async function authenticate(ctx: RequestContext): Promise<string> {
+async function authenticate(ctx: RequestContext) {
   const hs = ctx.hs;
   if (!hs.federation.enabled) throw errors.unrecognized("Federation is disabled");
   const header = ctx.request.headers.get("authorization") ?? "";
@@ -71,26 +71,26 @@ async function authenticate(ctx: RequestContext): Promise<string> {
   return auth.origin;
 }
 
-async function roomOr404(hs: Homeserver, roomId: string): Promise<string> {
+async function roomOr404(hs: Homeserver, roomId: string) {
   const version = await hs.rooms.roomVersion(roomId);
   if (!version) throw errors.notFound("Unknown room");
   return version;
 }
 
-async function checkAcl(hs: Homeserver, roomId: string, origin: string): Promise<StateMap> {
+async function checkAcl(hs: Homeserver, roomId: string, origin: string) {
   const state = await hs.rooms.currentState(roomId);
   if (!serverAllowedByAcl(state, origin)) throw errors.forbidden("Server is denied by the room's ACL");
   return state;
 }
 
 /** A timeline event, when it belongs to `roomId` (events are looked up by ID across all rooms). */
-async function eventInRoom(hs: Homeserver, roomId: string, eventId: string): Promise<StoredEvent | null> {
+async function eventInRoom(hs: Homeserver, roomId: string, eventId: string) {
   const ev = await hs.rooms.getEvent(eventId);
   return ev && ev.pdu.room_id === roomId ? ev : null;
 }
 
 /** Whether `server` may see an event, per history visibility. */
-async function serverCanSee(hs: Homeserver, server: string, ev: StoredEvent): Promise<boolean> {
+async function serverCanSee(hs: Homeserver, server: string, ev: StoredEvent) {
   const ids = await hs.rooms.snapshotIds(ev.snapshot);
   const hvId = ids[stateKey(M.ROOM.HISTORY_VISIBILITY, "")];
   const hv = hvId ? ((await hs.rooms.getPdu(hvId))?.content?.history_visibility ?? "shared") : "shared";
@@ -105,11 +105,11 @@ async function serverCanSee(hs: Homeserver, server: string, ev: StoredEvent): Pr
 }
 
 /** While our state is partial (MSC3902) we cannot vouch for joins or knocks through us. */
-async function rejectIfPartial(hs: Homeserver, roomId: string): Promise<void> {
+async function rejectIfPartial(hs: Homeserver, roomId: string) {
   if (await hs.partialState.isPartial(roomId)) throw errors.notFound("This server does not yet have the full state of the room");
 }
 
-async function authChainOf(hs: Homeserver, ids: string[]): Promise<PDU[]> {
+async function authChainOf(hs: Homeserver, ids: string[]) {
   const seen = new Set<string>();
   const out: PDU[] = [];
   let frontier = ids;
@@ -136,7 +136,7 @@ async function authChainOf(hs: Homeserver, ids: string[]): Promise<PDU[]> {
 }
 
 /** State before an event, as event IDs. */
-async function stateBeforeEvent(hs: Homeserver, roomId: string, version: string, eventId: string): Promise<Record<string, string>> {
+async function stateBeforeEvent(hs: Homeserver, roomId: string, version: string, eventId: string) {
   const pdu = await hs.rooms.getPdu(eventId);
   if (!pdu || pdu.room_id !== roomId) throw errors.notFound("Unknown event");
   return (await hs.rooms.stateBefore(roomId, version, (pdu.prev_events ?? []).map(eventIdOf))).ids;
@@ -184,7 +184,7 @@ async function makeMembership(
 }
 
 /** For restricted rooms: a local user who can authorise a remote join, or why not. */
-async function restrictedAuthoriser(hs: Homeserver, state: StateMap, version: string, userId: string): Promise<string | null> {
+async function restrictedAuthoriser(hs: Homeserver, state: StateMap, version: string, userId: string) {
   const joinRules = getState(state, M.ROOM.JOIN_RULES)?.content;
   const rule = joinRules?.join_rule;
   const f = roomVersionFeatures(version);
@@ -220,13 +220,7 @@ async function restrictedAuthoriser(hs: Homeserver, state: StateMap, version: st
 
 /** Shared send_join / send_leave / send_knock processing. */
 /** Send the invite an m.room.third_party_invite stands for, on behalf of its (local) sender. */
-async function exchangeThirdPartyInvite(
-  hs: Homeserver,
-  roomId: string,
-  sender: string,
-  invitee: string,
-  signed: Record<string, unknown>,
-): Promise<void> {
+async function exchangeThirdPartyInvite(hs: Homeserver, roomId: string, sender: string, invitee: string, signed: Record<string, unknown>) {
   const token = signed.token;
   if (typeof token !== "string") throw errors.badJson("signed.token is required");
   const pending = getState(await hs.rooms.currentState(roomId), M.ROOM.THIRD_PARTY_INVITE, token);
@@ -275,7 +269,7 @@ async function sendMembership(ctx: RequestContext, origin: string, membership: s
   return { pdu, stateBefore, version };
 }
 
-export function registerFederationRoutes(r: Router): void {
+export function registerFederationRoutes(r: Router) {
   // Server-server endpoints: the request's X-Matrix signature is verified before anything else,
   // and the verified origin server is handed to the handler.
   const fed = <S extends v.Schema | undefined = undefined>(
@@ -913,14 +907,14 @@ export function registerFederationRoutes(r: Router): void {
 
 /** Helpers for "is a server in the room" checks. */
 const FederationJoinGuard = {
-  serverInRoom(state: StateMap, server: string): boolean {
+  serverInRoom(state: StateMap, server: string) {
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
       if (type === M.ROOM.MEMBER && domainOf(userId) === server && ev.content?.membership === "join") return true;
     }
     return false;
   },
-  noLocalMembers(hs: Homeserver, state: StateMap): boolean {
+  noLocalMembers(hs: Homeserver, state: StateMap) {
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
       if (type === M.ROOM.MEMBER && hs.isLocalUser(userId) && ev.content?.membership === "join") return false;

@@ -1,7 +1,7 @@
 import type { SyncResponse } from "@katrix/shared";
 import type { MatrixHttpApi } from "../http/api.ts";
 import { isObject, type ClientEvent } from "@katrix/shared";
-import type { JoinedRoomUpdate, LeftRoomUpdate, SyncRequest, SyncResult, SyncTransport, TimelineUpdate } from "./types.ts";
+import type { JoinedRoomUpdate, LeftRoomUpdate, SyncRequest, SyncResult, SyncTransport } from "./types.ts";
 
 /** Options for the /sync filter (https://spec.matrix.org/v1.16/client-server-api/#filtering). */
 export interface V3SyncOptions {
@@ -19,7 +19,7 @@ export interface V3SyncOptions {
   useStateAfter?: boolean;
 }
 
-const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+const arr = <T>(v: unknown) => (Array.isArray(v) ? (v as T[]) : []);
 const obj = (v: unknown) => (isObject(v) ? v : {});
 // https://github.com/k18k/katrix/issues/128: the counts were passed on unchecked (the response was any).
 const numberOrUndefined = (v: unknown) => (typeof v === "number" ? v : undefined);
@@ -27,10 +27,10 @@ const counts = (v: Record<string, unknown>) => ({
   highlight_count: numberOrUndefined(v.highlight_count),
   notification_count: numberOrUndefined(v.notification_count),
 });
-const events = (v: unknown): ClientEvent[] =>
+const events = (v: unknown) =>
   arr<ClientEvent>(obj(v).events).filter((e) => typeof e === "object" && e !== null && typeof e.type === "string");
 
-function timeline(v: unknown): TimelineUpdate {
+function timeline(v: unknown) {
   const t = obj(v);
   return { events: events(t), limited: t.limited === true, prevBatch: typeof t.prev_batch === "string" ? t.prev_batch : undefined };
 }
@@ -59,7 +59,7 @@ export class SyncV3Transport implements SyncTransport {
     }
   }
 
-  async sync(req: SyncRequest): Promise<SyncResult> {
+  async sync(req: SyncRequest) {
     const res = await this.api.endpoint(
       "GET /v3/sync",
       {},

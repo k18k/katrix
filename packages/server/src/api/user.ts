@@ -49,7 +49,7 @@ async function checkRoom(ctx: RequestContext) {
   if (!ctx.params.roomId.startsWith("!")) throw errors.invalidParam("Invalid room ID");
 }
 
-export function registerUserRoutes(r: Router): void {
+export function registerUserRoutes(r: Router) {
   r.client(
     "PUT",
     "/user/:userId/account_data/:type",
@@ -121,7 +121,7 @@ export function registerUserRoutes(r: Router): void {
   );
 
   // Tags live in the per-room `m.tag` account data.
-  const readTags = async (hs: Homeserver, userId: string, roomId: string): Promise<Record<string, unknown>> => {
+  const readTags = async (hs: Homeserver, userId: string, roomId: string) => {
     const row = await hs.db.findOne("account_data", [
       { field: "user_id", value: userId },
       { field: "room_id", value: roomId },

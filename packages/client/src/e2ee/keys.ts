@@ -8,19 +8,14 @@ export const MEGOLM_ALGORITHM = "m.megolm.v1.aes-sha2";
 // https://github.com/k18k/katrix/issues/126: signObject and verifyObject took Record<string, unknown>, which typed key
 // interfaces do not satisfy, so callers double-cast; they take any object now.
 /** Add our device's signature to `obj` (https://spec.matrix.org/v1.16/appendices/#signing-json). */
-export function signObject<T extends object>(
-  account: OlmAccount,
-  userId: string,
-  deviceId: string,
-  obj: T,
-): T & { signatures: Record<string, Record<string, string>> } {
+export function signObject<T extends object>(account: OlmAccount, userId: string, deviceId: string, obj: T) {
   const signature = account.sign(signingJson(obj));
   const existing = (("signatures" in obj ? obj.signatures : undefined) ?? {}) as Record<string, Record<string, string>>;
   return { ...obj, signatures: { ...existing, [userId]: { ...existing[userId], [`ed25519:${deviceId}`]: signature } } };
 }
 
 /** Whether `obj` carries a valid signature by `userId`'s key `ed25519:<keyId>`. Never throws. */
-export function verifyObject(protocol: E2EEProtocol, obj: object, userId: string, keyId: string, publicKey: string): boolean {
+export function verifyObject(protocol: E2EEProtocol, obj: object, userId: string, keyId: string, publicKey: string) {
   const sig = (("signatures" in obj ? obj.signatures : undefined) as Record<string, Record<string, unknown>> | undefined)?.[userId]?.[
     `ed25519:${keyId}`
   ];

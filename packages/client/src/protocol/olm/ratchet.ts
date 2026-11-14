@@ -57,11 +57,11 @@ export interface RatchetState {
   skipped: SkippedKey[];
 }
 
-function advanceChainKey(p: CryptoPrimitives, ck: ChainKey): ChainKey {
+function advanceChainKey(p: CryptoPrimitives, ck: ChainKey) {
   return { key: p.hmacSha256(ck.key, CHAIN_KEY_SEED), index: ck.index + 1 };
 }
 
-function messageKey(p: CryptoPrimitives, ck: ChainKey): Uint8Array {
+function messageKey(p: CryptoPrimitives, ck: ChainKey) {
   return p.hmacSha256(ck.key, MESSAGE_KEY_SEED);
 }
 
@@ -75,7 +75,7 @@ function messageCipherKeys(p: CryptoPrimitives, mk: Uint8Array) {
  * a ProtocolError like any other bad message, so callers treat it as one undecryptable message
  * and not as an internal failure.
  */
-export function ecdh(p: CryptoPrimitives, secretKey: Uint8Array, theirPublicKey: Uint8Array): Uint8Array {
+export function ecdh(p: CryptoPrimitives, secretKey: Uint8Array, theirPublicKey: Uint8Array) {
   try {
     return p.x25519SharedSecret(secretKey, theirPublicKey);
   } catch {
@@ -89,18 +89,18 @@ function kdfRoot(p: CryptoPrimitives, salt: Uint8Array | undefined, ikm: Uint8Ar
   return { rootKey: okm.slice(0, 32), chainKey: { key: okm.slice(32, 64), index: 0 } };
 }
 
-export function initialiseAsAlice(p: CryptoPrimitives, sharedSecret: Uint8Array, ratchet: KeyPair): RatchetState {
+export function initialiseAsAlice(p: CryptoPrimitives, sharedSecret: Uint8Array, ratchet: KeyPair) {
   const { rootKey, chainKey } = kdfRoot(p, undefined, sharedSecret, ROOT_INFO);
   return { rootKey, senderChain: { ratchet, chainKey }, receiverChains: [], skipped: [] };
 }
 
-export function initialiseAsBob(p: CryptoPrimitives, sharedSecret: Uint8Array, theirRatchetKey: Uint8Array): RatchetState {
+export function initialiseAsBob(p: CryptoPrimitives, sharedSecret: Uint8Array, theirRatchetKey: Uint8Array) {
   const { rootKey, chainKey } = kdfRoot(p, undefined, sharedSecret, ROOT_INFO);
   return { rootKey, receiverChains: [{ ratchetKey: theirRatchetKey, chainKey }], skipped: [] };
 }
 
 /** Encrypts and returns the encoded normal message (with MAC). Mutates `state`. */
-export function ratchetEncrypt(p: CryptoPrimitives, state: RatchetState, plaintext: Uint8Array): Uint8Array {
+export function ratchetEncrypt(p: CryptoPrimitives, state: RatchetState, plaintext: Uint8Array) {
   if (!state.senderChain) {
     // First message since we last received: ratchet forward with a new key pair.
     const theirs = state.receiverChains[0];
@@ -120,7 +120,7 @@ export function ratchetEncrypt(p: CryptoPrimitives, state: RatchetState, plainte
   return withMac(body, p.hmacSha256(keys.mac, body));
 }
 
-function decryptWithMessageKey(p: CryptoPrimitives, mk: Uint8Array, message: ReturnType<typeof decodeNormal>): Uint8Array {
+function decryptWithMessageKey(p: CryptoPrimitives, mk: Uint8Array, message: ReturnType<typeof decodeNormal>) {
   const keys = messageCipherKeys(p, mk);
   const mac = p.hmacSha256(keys.mac, message.authenticated).subarray(0, MAC_LENGTH);
   if (!constantTimeEqual(mac, message.mac)) throw new ProtocolError("BAD_MESSAGE_MAC", "Olm message MAC does not match");
@@ -135,11 +135,7 @@ function decryptWithMessageKey(p: CryptoPrimitives, mk: Uint8Array, message: Ret
  * Decrypts an encoded normal message. Works on a copy of the state and returns the new state
  * with the plaintext: a message that fails (wrong MAC, replayed, too far ahead) changes nothing.
  */
-export function ratchetDecrypt(
-  p: CryptoPrimitives,
-  current: RatchetState,
-  bytes: Uint8Array,
-): { state: RatchetState; plaintext: Uint8Array } {
+export function ratchetDecrypt(p: CryptoPrimitives, current: RatchetState, bytes: Uint8Array) {
   const message = decodeNormal(bytes);
   const state = cloneRatchet(current);
   let chain = state.receiverChains.find((c) => bytesEqual(c.ratchetKey, message.ratchetKey));
@@ -181,7 +177,7 @@ export function ratchetDecrypt(
   return { state, plaintext };
 }
 
-export function cloneRatchet(s: RatchetState): RatchetState {
+export function cloneRatchet(s: RatchetState) {
   return {
     rootKey: s.rootKey,
     senderChain: s.senderChain && { ratchet: s.senderChain.ratchet, chainKey: { ...s.senderChain.chainKey } },
@@ -191,9 +187,9 @@ export function cloneRatchet(s: RatchetState): RatchetState {
 }
 
 const chainKeyToJson = (ck: ChainKey) => ({ key: b64(ck.key), index: ck.index });
-const chainKeyFromJson = (j: Pickled): ChainKey => ({ key: field.bytes(j, "key", 32), index: field.uint(j, "index") });
+const chainKeyFromJson = (j: Pickled) => ({ key: field.bytes(j, "key", 32), index: field.uint(j, "index") });
 
-export function ratchetToJson(s: RatchetState): Pickled {
+export function ratchetToJson(s: RatchetState) {
   return {
     root_key: b64(s.rootKey),
     sender_chain: s.senderChain
@@ -208,7 +204,7 @@ export function ratchetToJson(s: RatchetState): Pickled {
   };
 }
 
-export function ratchetFromJson(j: Pickled): RatchetState {
+export function ratchetFromJson(j: Pickled) {
   const sender = field.optional(j, "sender_chain");
   return {
     rootKey: field.bytes(j, "root_key", 32),

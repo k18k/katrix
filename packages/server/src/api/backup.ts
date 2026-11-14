@@ -35,7 +35,7 @@ async function getVersion(hs: Homeserver, userId: string, version: string | null
   return row && !row.deleted ? row : null;
 }
 
-async function countKeys(hs: Homeserver, userId: string, version: number): Promise<number> {
+async function countKeys(hs: Homeserver, userId: string, version: number) {
   return (
     await hs.db.findMany("backup_keys", {
       where: [
@@ -72,7 +72,7 @@ function isBackupKey(
 }
 
 /** Whether `incoming` should replace `existing` according to the spec's key-selection rules. */
-function better(incoming: { first_message_index: number; forwarded_count: number; is_verified: boolean }, existing: Row | null): boolean {
+function better(incoming: { first_message_index: number; forwarded_count: number; is_verified: boolean }, existing: Row | null) {
   if (!existing) return true;
   if (!!incoming.is_verified !== !!existing.is_verified) return !!incoming.is_verified;
   if (incoming.first_message_index !== existing.first_message_index) return incoming.first_message_index < existing.first_message_index;
@@ -88,7 +88,7 @@ async function requireCurrentVersion(ctx: RequestContext, userId: string) {
   return { row, isLatest: latest?.version === row.version };
 }
 
-export function registerBackupRoutes(r: Router): void {
+export function registerBackupRoutes(r: Router) {
   r.client(
     "POST",
     "/room_keys/version",

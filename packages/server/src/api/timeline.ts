@@ -1,5 +1,5 @@
 import { isObject, M } from "@katrix/shared";
-import type { Row, WhereClause } from "#storage/types.ts";
+import type { WhereClause } from "#storage/types.ts";
 import { errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
 import { toClientEvent, type PDU } from "#core/events.ts";
@@ -14,7 +14,7 @@ import { parseToken, requireRoom, viewerOf, visibleState } from "#api/rooms.ts";
 // threads and timestamp_to_event.
 
 /** A gap event reached by backwards pagination (in the page, or anywhere older when the page ran out). */
-async function findGapBefore(hs: Homeserver, roomId: string, events: StoredEvent[], end: string | null): Promise<StoredEvent | null> {
+async function findGapBefore(hs: Homeserver, roomId: string, events: StoredEvent[], end: string | null) {
   if (!hs.federation.enabled) return null;
   const inPage = events.find((e) => e.gap);
   if (inPage) return inPage;
@@ -30,7 +30,7 @@ async function findGapBefore(hs: Homeserver, roomId: string, events: StoredEvent
 }
 
 /** Backfill the history behind a gap event, then clear its gap flag. */
-async function backfillGap(hs: Homeserver, roomId: string, gapEvent: StoredEvent): Promise<boolean> {
+async function backfillGap(hs: Homeserver, roomId: string, gapEvent: StoredEvent) {
   const fetched = await hs.federation.backfill(roomId, [gapEvent.pdu.event_id!], 100);
   await hs.db.update("events", [{ field: "event_id", value: gapEvent.pdu.event_id }], { gap: false });
   hs.rooms.forgetEventCache(gapEvent.pdu.event_id!);
@@ -38,7 +38,7 @@ async function backfillGap(hs: Homeserver, roomId: string, gapEvent: StoredEvent
 }
 
 /** Backfill from other servers when our oldest event has unknown predecessors. Returns whether anything was fetched. */
-async function backfillIfNeeded(hs: Homeserver, roomId: string): Promise<boolean> {
+async function backfillIfNeeded(hs: Homeserver, roomId: string) {
   if (!hs.federation.enabled) return false;
   const oldest = await hs.db.findMany("events", {
     where: [{ field: "room_id", value: roomId }],
@@ -64,7 +64,7 @@ export interface PageToken {
   stream: number;
 }
 
-export function parsePageToken(raw: string | null): PageToken | null {
+export function parsePageToken(raw: string | null) {
   if (raw === null || raw === "") return null;
   const topo = /^t(-?\d+)_(-?\d+)$/.exec(raw);
   if (topo) return { depth: Number(topo[1]), stream: Number(topo[2]) };
@@ -87,7 +87,7 @@ export async function paginate(
   userId: string | null,
   roomId: string,
   opts: { from: PageToken | null; to: PageToken | null; dir: "b" | "f"; limit: number; filter?: EventFilter },
-): Promise<{ events: StoredEvent[]; end: string | null }> {
+) {
   const back = opts.dir === "b";
   const out: StoredEvent[] = [];
   // Position of the last examined event (exclusive bound for the next batch).
@@ -240,7 +240,7 @@ async function threads(ctx: RequestContext) {
  * topologically nearest first). Arrival order (stream) is not timestamp order for federated events (#105).
  * shortcut: reads all of the room's events; an indexed origin_server_ts column would bound it, once old rows get one.
  */
-export async function eventsByTimestamp(hs: Homeserver, roomId: string, dir: "f" | "b"): Promise<Row[]> {
+export async function eventsByTimestamp(hs: Homeserver, roomId: string, dir: "f" | "b") {
   const rows = await hs.db.findMany("events", { where: [{ field: "room_id", value: roomId }] });
   return rows.sort((a, b) =>
     dir === "f"
@@ -249,7 +249,7 @@ export async function eventsByTimestamp(hs: Homeserver, roomId: string, dir: "f"
   );
 }
 
-export function registerTimelineRoutes(r: Router): void {
+export function registerTimelineRoutes(r: Router) {
   // Not bound to the shared endpoint map ("GET /v3/rooms/:roomId/messages") yet: the response is
   // assembled as Record<string, any>.
   r.client(

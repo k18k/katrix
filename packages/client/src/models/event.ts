@@ -1,4 +1,4 @@
-import type { ContentOf, KnownEventType, ClientEvent, RelatesTo, UnsignedData } from "@katrix/shared";
+import type { ContentOf, KnownEventType, ClientEvent, RelatesTo } from "@katrix/shared";
 
 export type DecryptionStatus = "none" | "pending" | "decrypted" | "failed";
 
@@ -62,48 +62,48 @@ export class MatrixEvent<T extends string = string> {
     if (wire.type === "m.room.encrypted") this.decryptionStatus = "pending";
   }
 
-  get eventId(): string | undefined {
+  get eventId() {
     return this.wire.event_id;
   }
 
-  get type(): T {
+  get type() {
     return (this.clear?.type ?? this.wire.type) as T;
   }
 
-  get content(): ContentOf<T> {
+  get content() {
     return (this.clear?.content ?? this.wire.content) as ContentOf<T>;
   }
 
-  get sender(): string | undefined {
+  get sender() {
     return this.wire.sender;
   }
 
-  get roomId(): string | undefined {
+  get roomId() {
     return this.wire.room_id;
   }
 
-  get stateKey(): string | undefined {
+  get stateKey() {
     return this.wire.state_key;
   }
 
-  get originServerTs(): number | undefined {
+  get originServerTs() {
     return this.wire.origin_server_ts;
   }
 
-  get unsigned(): UnsignedData {
+  get unsigned() {
     return this.wire.unsigned ?? {};
   }
 
-  isState(): boolean {
+  isState() {
     return this.wire.state_key !== undefined;
   }
 
   /** Whether the event was sent encrypted (whatever its decryption state). */
-  isEncrypted(): boolean {
+  isEncrypted() {
     return this.wire.type === "m.room.encrypted";
   }
 
-  isRedacted(): boolean {
+  isRedacted() {
     return this.redactedBy !== undefined || this.wire.unsigned?.redacted_because !== undefined;
   }
 
@@ -111,7 +111,7 @@ export class MatrixEvent<T extends string = string> {
    * The content to show: an edit's `m.new_content` once the event was edited, with the
    * original's `m.relates_to` kept (https://spec.matrix.org/v1.19/client-server-api/#applying-mnew_content).
    */
-  get latestContent(): ContentOf<T> {
+  get latestContent() {
     const newContent = this.replacement?.content as { "m.new_content"?: Record<string, unknown> } | undefined;
     if (!newContent?.["m.new_content"] || this.isRedacted()) return this.content;
     const { "m.relates_to": _ignored, ...rest } = newContent["m.new_content"];
@@ -119,12 +119,12 @@ export class MatrixEvent<T extends string = string> {
     return (relatesTo === undefined ? rest : { ...rest, "m.relates_to": relatesTo }) as ContentOf<T>;
   }
 
-  isEdited(): boolean {
+  isEdited() {
     return this.replacement !== undefined && !this.isRedacted();
   }
 
   /** The event this one replies to (rich replies, https://spec.matrix.org/v1.19/client-server-api/#rich-replies). */
-  get replyToEventId(): string | undefined {
+  get replyToEventId() {
     const rel =
       (this.content as { "m.relates_to"?: RelatesTo })["m.relates_to"] ??
       (this.wire.content as { "m.relates_to"?: RelatesTo })["m.relates_to"];
@@ -133,7 +133,7 @@ export class MatrixEvent<T extends string = string> {
   }
 
   /** The thread root this event is in, if it is a thread reply. */
-  get threadRootId(): string | undefined {
+  get threadRootId() {
     const rel =
       (this.content as { "m.relates_to"?: RelatesTo })["m.relates_to"] ??
       (this.wire.content as { "m.relates_to"?: RelatesTo })["m.relates_to"];
@@ -145,20 +145,20 @@ export class MatrixEvent<T extends string = string> {
     return (this.type as string) === type;
   }
 
-  setDecrypted(clear: { type: string; content: Record<string, unknown> }, info: DecryptionInfo): void {
+  setDecrypted(clear: { type: string; content: Record<string, unknown> }, info: DecryptionInfo) {
     this.clear = clear;
     this.decryptionStatus = "decrypted";
     this.decryptionError = undefined;
     this.decryptionInfo = info;
   }
 
-  setDecryptionFailed(code: DecryptionFailureCode): void {
+  setDecryptionFailed(code: DecryptionFailureCode) {
     this.decryptionStatus = "failed";
     this.decryptionError = code;
   }
 
   /** Apply a redaction: content is reduced as the redaction algorithm does for the event's keys. */
-  applyRedaction(redaction: ClientEvent): void {
+  applyRedaction(redaction: ClientEvent) {
     this.redactedBy = redaction.event_id;
     this.clear = undefined;
     this.wire = {
@@ -168,7 +168,7 @@ export class MatrixEvent<T extends string = string> {
     };
   }
 
-  toJSON(): ClientEvent {
+  toJSON() {
     return this.wire;
   }
 }
@@ -187,7 +187,7 @@ const KEPT_CONTENT_KEYS: Record<string, string[]> = {
   "m.room.history_visibility": ["history_visibility"],
 };
 
-export function redactContent(type: string, content: Record<string, unknown>): Record<string, unknown> {
+export function redactContent(type: string, content: Record<string, unknown>) {
   if (type === "m.room.create") return { ...content };
   const keep = KEPT_CONTENT_KEYS[type] ?? [];
   const out: Record<string, unknown> = {};

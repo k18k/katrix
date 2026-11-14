@@ -40,7 +40,7 @@ interface Route {
 export class Router {
   private routes: Route[] = [];
 
-  add(method: HttpMethod, path: string, handler: Handler): void {
+  add(method: HttpMethod, path: string, handler: Handler) {
     this.routes.push({ method, segments: path.split("/").filter(Boolean), handler });
   }
 
@@ -50,11 +50,11 @@ export class Router {
   delete = (path: string, h: Handler) => this.add("DELETE", path, h);
 
   /** Register a client-server API route under both `r0` and `v3` (or the given versions). */
-  client(method: HttpMethod, path: string, handler: Handler, versions = ["r0", "v3"]): void {
+  client(method: HttpMethod, path: string, handler: Handler, versions = ["r0", "v3"]) {
     for (const v of versions) this.add(method, `/_matrix/client/${v}${path}`, handler);
   }
 
-  match(method: string, pathname: string): { handler: Handler; params: Record<string, string> } | "method" | null {
+  match(method: string, pathname: string) {
     const parts = pathname.split("/").filter(Boolean);
     let methodMismatch = false;
     for (const route of this.routes) {
@@ -70,7 +70,7 @@ export class Router {
   }
 }
 
-function matchSegments(segments: string[], parts: string[]): Record<string, string> | null {
+function matchSegments(segments: string[], parts: string[]) {
   const params: Record<string, string> = {};
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
@@ -93,6 +93,6 @@ function matchSegments(segments: string[], parts: string[]): Record<string, stri
   return segments.length === parts.length ? params : null;
 }
 
-export function notFound(): never {
+export function notFound() {
   throw errors.unrecognized();
 }

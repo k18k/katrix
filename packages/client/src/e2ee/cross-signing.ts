@@ -5,7 +5,6 @@ import type { Store } from "../storage/store.ts";
 import type { Logger } from "../util/logger.ts";
 import { withUserInteractiveAuth, type UiaCallback } from "../auth/uia.ts";
 import { decodeBase64, encodeBase64, encodeUtf8, signingJson, type CrossSigningKey, type DeviceKeys } from "@katrix/shared";
-import type { UserDevicesRecord } from "./crypto-store.ts";
 import { publicKeyOf, type DeviceTracker } from "./devices.ts";
 import { verifyObject } from "./keys.ts";
 import type { SecretBox } from "./secret-box.ts";
@@ -93,7 +92,7 @@ export class CrossSigning {
     this.signWithDevice = opts.signWithDevice;
   }
 
-  private sign<T extends object>(seed: Uint8Array, publicKey: string, obj: T): T {
+  private sign<T extends object>(seed: Uint8Array, publicKey: string, obj: T) {
     const signature = encodeBase64(this.primitives.ed25519Sign(seed, encodeUtf8(signingJson(obj as Record<string, unknown>))));
     const existing = ((obj as { signatures?: unknown }).signatures ?? {}) as Record<string, Record<string, string>>;
     return {
@@ -102,7 +101,7 @@ export class CrossSigning {
     };
   }
 
-  private keyObject(usage: "master" | "self_signing" | "user_signing", publicKey: string): CrossSigningKey {
+  private keyObject(usage: "master" | "self_signing" | "user_signing", publicKey: string) {
     return { user_id: this.userId, usage: [usage], keys: { [`ed25519:${publicKey}`]: publicKey } };
   }
 
@@ -112,7 +111,7 @@ export class CrossSigning {
    * any keys the user had: other users see a changed identity, and devices must be verified
    * again. Resolves with the private keys, for the app to put in secret storage.
    */
-  async bootstrap(auth: UiaCallback | undefined): Promise<Required<CrossSigningPrivateKeys>> {
+  async bootstrap(auth: UiaCallback | undefined) {
     const master = this.primitives.ed25519GenerateKeyPair();
     const selfSigning = this.primitives.ed25519GenerateKeyPair();
     const userSigning = this.primitives.ed25519GenerateKeyPair();
@@ -149,14 +148,14 @@ export class CrossSigning {
     return { master: master.secretKey, selfSigning: selfSigning.secretKey, userSigning: userSigning.secretKey };
   }
 
-  private async uploadSignatures(body: Record<string, Record<string, DeviceKeys | CrossSigningKey>>): Promise<void> {
+  private async uploadSignatures(body: Record<string, Record<string, DeviceKeys | CrossSigningKey>>) {
     const res = await this.api.endpoint("POST /v3/keys/signatures/upload", {}, { body });
     const failures = Object.entries(res.failures ?? {}).flatMap(([user, keys]) => Object.keys(keys).map((k) => `${user} ${k}`));
     if (failures.length) throw new Error(`The server rejected signatures for ${failures.join(", ")}`);
   }
 
   /** The self-signing and user-signing private keys this device holds. */
-  async privateKeys(): Promise<CrossSigningPrivateKeys> {
+  async privateKeys() {
     const stored = await this.store.get<StoredCrossSigning>("account", STORE_KEY);
     return {
       selfSigning: stored?.selfSigning ? this.box.open("m.cross_signing.self_signing", stored.selfSigning) : undefined,
@@ -164,7 +163,7 @@ export class CrossSigning {
     };
   }
 
-  private async ownRecord(refresh = false): Promise<UserDevicesRecord | undefined> {
+  private async ownRecord(refresh = false) {
     if (refresh) await this.devices.refresh([this.userId], { force: true });
     return this.devices.getUser(this.userId);
   }
@@ -174,7 +173,7 @@ export class CrossSigning {
    * the user's public key on the server, or it is refused. With the master key, our identity is
    * trusted here; with the self-signing key, this device signs itself.
    */
-  async importPrivateKeys(keys: CrossSigningPrivateKeys): Promise<void> {
+  async importPrivateKeys(keys: CrossSigningPrivateKeys) {
     const rec = await this.ownRecord(true);
     const cs = rec?.crossSigning;
     const matches = (seed: Uint8Array | undefined, key: CrossSigningKey | undefined) =>
@@ -198,14 +197,14 @@ export class CrossSigning {
   }
 
   /** Our master key is trusted here: we made it, restored it, or verified it from another of our devices. */
-  async markOwnIdentityVerified(): Promise<void> {
+  async markOwnIdentityVerified() {
     const master = (await this.ownRecord())?.crossSigning?.master;
     if (!master) throw new Error("The user has no cross-signing keys");
     await this.devices.updateTrust(this.userId, (t) => ({ ...t, verifiedMaster: publicKeyOf(master) }));
   }
 
   /** Whether the user has cross-signing keys on the server, and which private keys this device has. */
-  async status(): Promise<{ publishedOnServer: boolean; trusted: boolean; selfSigning: boolean; userSigning: boolean }> {
+  async status() {
     const rec = await this.ownRecord();
     const priv = await this.privateKeys();
     return {
@@ -218,7 +217,7 @@ export class CrossSigning {
 
   // ─── Trust ────────────────────────────────────────────────────────────────
 
-  async userTrust(userId: string): Promise<UserTrust> {
+  async userTrust(userId: string) {
     const rec = await this.devices.getUser(userId);
     const master = rec?.crossSigning?.master;
     const masterKey = master ? publicKeyOf(master) : undefined;
@@ -235,13 +234,13 @@ export class CrossSigning {
     return { masterKey, verified, identityChanged: !verified && pinned !== undefined && masterKey !== undefined && pinned !== masterKey };
   }
 
-  private async ownIdentityTrusted(): Promise<boolean> {
+  private async ownIdentityTrusted() {
     const rec = await this.ownRecord();
     const master = rec?.crossSigning?.master;
     return master !== undefined && rec?.trust?.verifiedMaster === publicKeyOf(master);
   }
 
-  async deviceTrust(userId: string, deviceId: string): Promise<DeviceTrust> {
+  async deviceTrust(userId: string, deviceId: string) {
     const rec = await this.devices.getUser(userId);
     const device = rec?.devices[deviceId];
     if (!device) return { locallyVerified: false, crossSigned: false, verified: false };
@@ -257,7 +256,7 @@ export class CrossSigning {
   }
 
   /** Accept a user's new identity (master key) after showing the change: it becomes the pinned one. */
-  async acceptIdentityChange(userId: string): Promise<void> {
+  async acceptIdentityChange(userId: string) {
     const master = (await this.devices.getUser(userId))?.crossSigning?.master;
     if (master) await this.devices.updateTrust(userId, (t) => ({ ...t, pinnedMaster: publicKeyOf(master) }));
   }
@@ -265,7 +264,7 @@ export class CrossSigning {
   // ─── Signing (after a verification) ───────────────────────────────────────
 
   /** Mark a device verified on this device (after SAS or QR). */
-  async setDeviceVerified(userId: string, deviceId: string, verified = true): Promise<void> {
+  async setDeviceVerified(userId: string, deviceId: string, verified = true) {
     const device = (await this.devices.getUser(userId))?.devices[deviceId];
     if (!device) throw new Error("Unknown device");
     await this.devices.updateTrust(userId, (t) => {
@@ -277,7 +276,7 @@ export class CrossSigning {
   }
 
   /** Sign one of our own devices with our self-signing key (so our other devices and contacts trust it). */
-  async signOwnDevice(deviceId: string): Promise<void> {
+  async signOwnDevice(deviceId: string) {
     const { selfSigning } = await this.privateKeys();
     if (!selfSigning) throw new Error("This device does not have the self-signing key");
     const pub = encodeBase64(this.primitives.ed25519PublicKey(selfSigning));
@@ -293,7 +292,7 @@ export class CrossSigning {
    * device they sign trusted here and on our other devices. `expectedMasterKey` pins the key
    * seen during the verification (the spec requires the keys not to change during it).
    */
-  async verifyUser(userId: string, expectedMasterKey?: string): Promise<void> {
+  async verifyUser(userId: string, expectedMasterKey?: string) {
     const { userSigning } = await this.privateKeys();
     if (!userSigning) throw new Error("This device does not have the user-signing key");
     const master = (await this.devices.getUser(userId))?.crossSigning?.master;
@@ -309,14 +308,14 @@ export class CrossSigning {
   }
 
   /** A user's master key, if any (for verification: their identity as a "device"). */
-  async masterKey(userId: string): Promise<string | undefined> {
+  async masterKey(userId: string) {
     const master = (await this.devices.getUser(userId))?.crossSigning?.master;
     return master ? publicKeyOf(master) : undefined;
   }
 }
 
 /** Decode a cross-signing seed sent as a secret (unpadded base64), checking its length. */
-export function seedFromSecret(secret: string): Uint8Array {
+export function seedFromSecret(secret: string) {
   const seed = decodeBase64(secret);
   if (seed.length !== 32) throw new Error("A cross-signing key must be 32 bytes");
   return seed;

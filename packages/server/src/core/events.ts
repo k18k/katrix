@@ -164,12 +164,12 @@ export function redactPdu(pdu: PDU, roomVersion: string) {
   return redacted;
 }
 
-export function computeContentHash(pdu: object): string {
+export function computeContentHash(pdu: object) {
   const { unsigned, signatures, hashes, ...rest }: Record<string, unknown> = { ...pdu };
   return unpaddedBase64(sha256(canonicalJson(rest)));
 }
 
-export function computeReferenceHash(pdu: object, roomVersion: string): Buffer {
+export function computeReferenceHash(pdu: object, roomVersion: string) {
   const { signatures, unsigned, event_id, ...rest } = redact(pdu, roomVersion);
   return sha256(canonicalJson(rest));
 }
@@ -187,7 +187,7 @@ export function isPdu(value: unknown): value is PDU {
   ); // ts-pro-exception: a v12 create PDU has no room_id, which the PDU type requires (see core/rooms.ts)
 }
 
-export function finalisePdu(pdu: PDU, roomVersion: string, serverName: string, key: SigningKey): PDU {
+export function finalisePdu(pdu: PDU, roomVersion: string, serverName: string, key: SigningKey) {
   const features = roomVersionFeatures(roomVersion);
   if (features.legacyEventIds) {
     pdu.event_id = `$${randomString(18)}:${serverName}`;
@@ -207,7 +207,7 @@ export function eventIdOf(ref: EventRef) {
 }
 
 /** Convert a stored PDU into the client-server event format. */
-export function toClientEvent(pdu: PDU, opts: { includeRoomId?: boolean } = {}): ClientEvent {
+export function toClientEvent(pdu: PDU, opts: { includeRoomId?: boolean } = {}) {
   const ev: ClientEvent = {
     event_id: pdu.event_id!,
     sender: pdu.sender,
@@ -247,7 +247,7 @@ export function stripState(pdu: PDU) {
 }
 
 export const stateKey = (type: string, key: string) => `${type}\u0000${key}`;
-export const splitStateKey = (k: string): [string, string] => {
+export const splitStateKey = (k: string) => {
   const i = k.indexOf("\u0000");
   return [k.slice(0, i), k.slice(i + 1)];
 };

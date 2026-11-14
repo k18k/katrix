@@ -65,7 +65,7 @@ export interface SsoResult {
 const UNSAFE_SCHEMES = new Set(["javascript:", "data:", "vbscript:", "file:", "blob:", "about:"]);
 
 /** The client's redirect URL, if it is one the server may send a login token to. */
-export function checkRedirectUrl(raw: string | null): string | null {
+export function checkRedirectUrl(raw: string | null) {
   if (!raw) return null;
   try {
     return UNSAFE_SCHEMES.has(new URL(raw).protocol) ? null : raw;
@@ -74,7 +74,7 @@ export function checkRedirectUrl(raw: string | null): string | null {
   }
 }
 
-function clientMatches(raw: string, entry: string): boolean {
+function clientMatches(raw: string, entry: string) {
   try {
     const url = new URL(raw);
     const allowed = new URL(entry);
@@ -113,7 +113,7 @@ interface PendingLogin {
   expires: number;
 }
 
-export function sanitizeLocalpart(raw: string): string {
+export function sanitizeLocalpart(raw: string) {
   return raw
     .toLowerCase()
     .replace(/[^a-z0-9._=\-/+]/g, "_")
@@ -146,7 +146,7 @@ export function githubProvider(opts: {
   name?: string;
   allowRegistration?: boolean;
   mapUser?: SsoProvider["mapUser"];
-}): SsoProvider {
+}) {
   return {
     id: opts.id ?? "github",
     name: opts.name ?? "GitHub",
@@ -186,13 +186,13 @@ export class SsoService {
     this.clientAllowlist = options.clientAllowlist ?? [];
   }
 
-  private callbackUrl(provider: SsoProvider): string {
+  private callbackUrl(provider: SsoProvider) {
     const base = this.hs.config.publicBaseUrl;
     if (!base) throw new Error("publicBaseUrl is required for SSO");
     return `${base.replace(/\/$/, "")}/_matrix/client/v3/login/sso/callback/${encodeURIComponent(provider.id)}`;
   }
 
-  private async discover(provider: SsoProvider): Promise<ProviderMetadata> {
+  private async discover(provider: SsoProvider) {
     if (provider.endpoints) {
       const e = provider.endpoints;
       return { issuer: provider.issuer, authorization_endpoint: e.authorization, token_endpoint: e.token, userinfo_endpoint: e.userinfo };
@@ -220,12 +220,12 @@ export class SsoService {
     return meta;
   }
 
-  private scopes(provider: SsoProvider): string[] {
+  private scopes(provider: SsoProvider) {
     return provider.scopes ?? (provider.endpoints ? [] : ["openid", "profile", "email"]);
   }
 
   /** URL to send the user's browser to. */
-  async startLogin(providerId: string | null, target: SsoTarget): Promise<string> {
+  async startLogin(providerId: string | null, target: SsoTarget) {
     const provider = providerId ? this.providers.find((p) => p.id === providerId) : this.providers[0];
     if (!provider) throw errors.notFound("Unknown identity provider");
     const meta = await this.discover(provider);
@@ -251,7 +251,7 @@ export class SsoService {
   }
 
   /** Handle the provider's redirect: the user who logged in, and what the login was for. */
-  async finishLogin(providerId: string, params: URLSearchParams): Promise<{ userId: string; target: SsoTarget }> {
+  async finishLogin(providerId: string, params: URLSearchParams) {
     const state = params.get("state") ?? "";
     const pending = await this.hs.cluster.get<PendingLogin>(`sso:${state}`);
     await this.hs.cluster.delete(`sso:${state}`);
@@ -320,7 +320,7 @@ export class SsoService {
     return { userId, target: pending.target };
   }
 
-  private async resolveUser(provider: SsoProvider, subject: string, claims: Record<string, unknown>): Promise<string> {
+  private async resolveUser(provider: SsoProvider, subject: string, claims: Record<string, unknown>) {
     const link = await this.hs.db.findOne("sso_identities", [
       { field: "idp_id", value: provider.id },
       { field: "subject", value: subject },
@@ -349,7 +349,7 @@ export class SsoService {
  * The legacy API's last step: the client URL carrying a login token for `userId`, and whether
  * the user confirms the client first (clients not on `sso.clientAllowlist`).
  */
-export async function legacyClientRedirect(hs: Homeserver, userId: string, redirectUrl: string): Promise<SsoResult> {
+export async function legacyClientRedirect(hs: Homeserver, userId: string, redirectUrl: string) {
   const loginToken = await hs.auth.createLoginToken(userId);
   const redirect = new URL(redirectUrl);
   redirect.searchParams.set("loginToken", loginToken);

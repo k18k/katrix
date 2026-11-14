@@ -14,7 +14,7 @@ import { encodeQuery, parseQuery } from "../util/query.ts";
  * into CredentialsTokenProvider as Credentials with `refresh.kind = "oauth"`.
  */
 
-export async function getAuthMetadata(api: MatrixHttpApi): Promise<AuthMetadata> {
+export async function getAuthMetadata(api: MatrixHttpApi) {
   return api.endpoint("GET /v1/auth_metadata", {}, { auth: false });
 }
 
@@ -37,7 +37,7 @@ async function responseObject(res: { text(): Promise<string> }) {
   }
 }
 
-async function tokenRequest(http: HttpAdapter, endpoint: string, form: Record<string, string>): Promise<OAuthTokens> {
+async function tokenRequest(http: HttpAdapter, endpoint: string, form: Record<string, string>) {
   const res = await http.request({
     method: "POST",
     url: endpoint,
@@ -60,12 +60,12 @@ async function tokenRequest(http: HttpAdapter, endpoint: string, form: Record<st
   };
 }
 
-export function refreshOAuthToken(http: HttpAdapter, tokenEndpoint: string, clientId: string, refreshToken: string): Promise<OAuthTokens> {
+export function refreshOAuthToken(http: HttpAdapter, tokenEndpoint: string, clientId: string, refreshToken: string) {
   return tokenRequest(http, tokenEndpoint, { grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId });
 }
 
 /** Dynamic client registration (RFC 7591), as the spec requires clients to do. */
-export async function registerClient(http: HttpAdapter, metadata: AuthMetadata, client: Record<string, unknown>): Promise<string> {
+export async function registerClient(http: HttpAdapter, metadata: AuthMetadata, client: Record<string, unknown>) {
   if (!metadata.registration_endpoint) throw new Error("The server does not support dynamic client registration");
   const res = await http.request({
     method: "POST",
@@ -98,7 +98,7 @@ const DEVICE_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 export function createAuthorizationRequest(
   p: CryptoPrimitives,
   opts: { metadata: AuthMetadata; clientId: string; redirectUri: string; deviceId?: string; responseMode?: "query" | "fragment" },
-): AuthorizationRequest {
+) {
   const deviceId = opts.deviceId ?? [...p.randomBytes(10)].map((b) => DEVICE_ID_ALPHABET[b % 26]).join("");
   const codeVerifier = encodeBase64(p.randomBytes(32), { urlSafe: true });
   const state = encodeBase64(p.randomBytes(16), { urlSafe: true });
@@ -123,7 +123,7 @@ export function createAuthorizationRequest(
 export async function completeAuthorization(
   http: HttpAdapter,
   opts: { metadata: AuthMetadata; clientId: string; request: AuthorizationRequest; callbackUrl: string },
-): Promise<OAuthTokens> {
+) {
   const hash = opts.callbackUrl.indexOf("#");
   const params = { ...parseQuery(opts.callbackUrl), ...(hash >= 0 ? parseQuery(opts.callbackUrl.slice(hash + 1)) : {}) };
   if (params.state !== opts.request.state) throw new Error("OAuth state does not match this login attempt");

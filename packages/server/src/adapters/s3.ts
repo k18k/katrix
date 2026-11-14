@@ -46,7 +46,7 @@ export function s3Media(options: S3MediaOptions): MediaAdapter {
   const prefix = options.prefix ?? "";
   const timeoutMs = options.timeoutMs ?? 30_000;
 
-  const objectUrl = (mediaId: string): URL => {
+  const objectUrl = (mediaId: string) => {
     const key = prefix + mediaId.replace(/[^A-Za-z0-9_-]/g, "_");
     const url = new URL(endpoint);
     // The path is sent exactly as it is signed (fully percent-encoded).
@@ -60,7 +60,7 @@ export function s3Media(options: S3MediaOptions): MediaAdapter {
     return url;
   };
 
-  const send = async (method: string, url: URL, body?: Uint8Array, extra: Record<string, string> = {}): Promise<Response> => {
+  const send = async (method: string, url: URL, body?: Uint8Array, extra: Record<string, string> = {}) => {
     const now = new Date();
     const amzDate = now
       .toISOString()
@@ -102,7 +102,7 @@ export function s3Media(options: S3MediaOptions): MediaAdapter {
     });
   };
 
-  const fail = async (what: string, res: Response): Promise<never> => {
+  const fail = async (what: string, res: Response) => {
     const text = await res.text().catch(() => "");
     const code = /<Code>([^<]*)<\/Code>/.exec(text)?.[1];
     throw new Error(`S3 ${what} failed: ${res.status}${code ? ` ${code}` : ""}`);

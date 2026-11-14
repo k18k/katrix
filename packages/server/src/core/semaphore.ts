@@ -8,7 +8,7 @@ export class Semaphore {
     this.limit = limit;
   }
 
-  async run<T>(fn: () => Promise<T>): Promise<T> {
+  async run<T>(fn: () => Promise<T>) {
     if (this.active >= this.limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
     else this.active++;
     try {

@@ -72,7 +72,7 @@ export class RateLimits {
   }
 
   /** Throw M_LIMIT_EXCEEDED when `key` exceeded the limit for `action`. Exempt keys are never limited. */
-  async check(action: RateLimitAction, key: string): Promise<void> {
+  async check(action: RateLimitAction, key: string) {
     if (!this.limiter) return;
     const wait = await this.limiter.consume(`${action}:${key}`, this.rules[action]);
     if (wait > 0) throw new MatrixError(429, "M_LIMIT_EXCEEDED", "Too many requests", { retry_after_ms: wait });

@@ -14,7 +14,7 @@ const SHARE_VERSION = 0x02;
 const EXPORT_VERSION = 0x01;
 const BODY_LENGTH = 1 + 4 + RATCHET_LENGTH + 32;
 
-function body(version: number, r: MegolmRatchet, signingKey: Uint8Array): Uint8Array {
+function body(version: number, r: MegolmRatchet, signingKey: Uint8Array) {
   const out = new Uint8Array(BODY_LENGTH);
   out[0] = version;
   writeUint32BE(r.counter, out, 1);
@@ -23,16 +23,16 @@ function body(version: number, r: MegolmRatchet, signingKey: Uint8Array): Uint8A
   return out;
 }
 
-export function encodeSessionKey(p: CryptoPrimitives, r: MegolmRatchet, signing: { secretKey: Uint8Array; publicKey: Uint8Array }): string {
+export function encodeSessionKey(p: CryptoPrimitives, r: MegolmRatchet, signing: { secretKey: Uint8Array; publicKey: Uint8Array }) {
   const b = body(SHARE_VERSION, r, signing.publicKey);
   return encodeBase64(concatBytes(b, p.ed25519Sign(signing.secretKey, b)));
 }
 
-export function encodeExport(r: MegolmRatchet, signingKey: Uint8Array): string {
+export function encodeExport(r: MegolmRatchet, signingKey: Uint8Array) {
   return encodeBase64(body(EXPORT_VERSION, r, signingKey));
 }
 
-function decode(input: string): Uint8Array {
+function decode(input: string) {
   try {
     return decodeBase64(input);
   } catch {
@@ -47,7 +47,7 @@ function parts(bytes: Uint8Array) {
   };
 }
 
-export function decodeSessionKey(p: CryptoPrimitives, input: string): { ratchet: MegolmRatchet; signingKey: Uint8Array } {
+export function decodeSessionKey(p: CryptoPrimitives, input: string) {
   const bytes = decode(input);
   if (bytes.length !== BODY_LENGTH + 64 || bytes[0] !== SHARE_VERSION)
     throw new ProtocolError("BAD_SESSION_KEY", "Not a Megolm session key");
@@ -60,7 +60,7 @@ export function decodeSessionKey(p: CryptoPrimitives, input: string): { ratchet:
   return { ratchet, signingKey };
 }
 
-export function decodeExport(input: string): { ratchet: MegolmRatchet; signingKey: Uint8Array } {
+export function decodeExport(input: string) {
   const bytes = decode(input);
   if (bytes.length !== BODY_LENGTH || bytes[0] !== EXPORT_VERSION)
     throw new ProtocolError("BAD_SESSION_KEY", "Not an exported Megolm session");

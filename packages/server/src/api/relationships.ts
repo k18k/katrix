@@ -43,7 +43,7 @@ function parseRequest(body: unknown): WalkRequest {
   };
 }
 
-export function relationshipOf(pdu: PDU): { event_id: string; rel_type: string } | null {
+export function relationshipOf(pdu: PDU) {
   const rel = pdu.content?.[M.RELATIONSHIP];
   return isObject(rel) && typeof rel.event_id === "string" && typeof rel.rel_type === "string"
     ? { event_id: rel.event_id, rel_type: rel.rel_type }
@@ -51,7 +51,7 @@ export function relationshipOf(pdu: PDU): { event_id: string; rel_type: string }
 }
 
 /** Index an event's `m.relationship` edge (idempotent). */
-export async function recordEdge(hs: Homeserver, pdu: PDU): Promise<void> {
+export async function recordEdge(hs: Homeserver, pdu: PDU) {
   const rel = relationshipOf(pdu);
   if (!rel || !pdu.event_id) return;
   await hs.db.upsert("event_edges", {
@@ -70,7 +70,7 @@ async function children(hs: Homeserver, eventId: string, recentFirst: boolean) {
   return rows;
 }
 
-async function childrenSummary(hs: Homeserver, eventId: string): Promise<{ children: Record<string, number>; children_hash: string }> {
+async function childrenSummary(hs: Homeserver, eventId: string) {
   const rows = await children(hs, eventId, false);
   const counts: Record<string, number> = {};
   for (const r of rows) counts[r.rel_type] = (counts[r.rel_type] ?? 0) + 1;
@@ -83,7 +83,7 @@ async function walk(hs: Homeserver, req: WalkRequest, canSee: (pdu: PDU) => Prom
   const out: PDU[] = [];
   const seen = new Set<string>();
   let limited = false;
-  const push = async (id: string): Promise<boolean> => {
+  const push = async (id: string) => {
     if (seen.has(id)) return false;
     seen.add(id);
     const pdu = await hs.rooms.getPdu(id);
@@ -138,12 +138,12 @@ async function walk(hs: Homeserver, req: WalkRequest, canSee: (pdu: PDU) => Prom
   return { events: out, limited, root };
 }
 
-async function withChildren(hs: Homeserver, pdu: PDU): Promise<PDU> {
+async function withChildren(hs: Homeserver, pdu: PDU) {
   return { ...pdu, unsigned: { ...pdu.unsigned, ...(await childrenSummary(hs, pdu.event_id!)) } };
 }
 
 /** Ask the room's other servers for part of the tree and store what they return. */
-async function fetchRemote(hs: Homeserver, roomId: string, req: WalkRequest, remoteHashes: Map<string, string>): Promise<boolean> {
+async function fetchRemote(hs: Homeserver, roomId: string, req: WalkRequest, remoteHashes: Map<string, string>) {
   const version = await hs.rooms.roomVersion(roomId);
   if (!version || !hs.federation.enabled) return false;
   const servers = [...hs.federation.serversInRoom(await hs.rooms.currentState(roomId))].filter((s) => s !== hs.serverName);
@@ -173,7 +173,7 @@ async function fetchRemote(hs: Homeserver, roomId: string, req: WalkRequest, rem
   return false;
 }
 
-export function registerRelationshipRoutes(r: Router): void {
+export function registerRelationshipRoutes(r: Router) {
   // The request is checked by parseRequest, shared with the federation endpoint.
   r.post(
     "/_matrix/client/unstable/event_relationships",

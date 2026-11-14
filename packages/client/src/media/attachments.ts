@@ -42,7 +42,7 @@ export function encryptAttachment(
  * Decrypt a downloaded attachment. The SHA-256 of the ciphertext is checked first, so a file
  * swapped on the server is rejected instead of being decrypted into garbage.
  */
-export function decryptAttachment(primitives: CryptoPrimitives, ciphertext: Uint8Array, file: EncryptedFile): Uint8Array {
+export function decryptAttachment(primitives: CryptoPrimitives, ciphertext: Uint8Array, file: EncryptedFile) {
   const info = file as Partial<EncryptedFile> | undefined;
   const k = info?.key;
   if (

@@ -7,7 +7,7 @@ import { ProtocolError } from "./protocol.ts";
  * value. Truncated input and integers that do not fit in 32 bits are errors.
  */
 
-export function encodeVarint(n: number): number[] {
+export function encodeVarint(n: number) {
   if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) throw new RangeError("varint out of range");
   const out: number[] = [];
   while (n >= 0x80) {
@@ -21,23 +21,23 @@ export function encodeVarint(n: number): number[] {
 export class WireWriter {
   private parts: number[] = [];
 
-  byte(b: number): this {
+  byte(b: number) {
     this.parts.push(b);
     return this;
   }
 
-  varintField(tag: number, value: number): this {
+  varintField(tag: number, value: number) {
     this.parts.push(tag, ...encodeVarint(value));
     return this;
   }
 
-  bytesField(tag: number, value: Uint8Array): this {
+  bytesField(tag: number, value: Uint8Array) {
     this.parts.push(tag, ...encodeVarint(value.length));
     for (const b of value) this.parts.push(b);
     return this;
   }
 
-  finish(): Uint8Array {
+  finish() {
     return Uint8Array.from(this.parts);
   }
 }
@@ -45,10 +45,10 @@ export class WireWriter {
 export type WireFields = Map<number, number | Uint8Array>;
 
 /** Reads the fields of `bytes` (after the version byte), keyed by tag byte. */
-export function readFields(bytes: Uint8Array): WireFields {
+export function readFields(bytes: Uint8Array) {
   const fields: WireFields = new Map();
   let i = 0;
-  const varint = (): number => {
+  const varint = () => {
     let result = 0,
       shift = 0;
     for (;;) {
@@ -80,7 +80,7 @@ export function readFields(bytes: Uint8Array): WireFields {
   return fields;
 }
 
-export function bytesField(fields: WireFields, tag: number, length?: number): Uint8Array | undefined {
+export function bytesField(fields: WireFields, tag: number, length?: number) {
   const v = fields.get(tag);
   if (v === undefined) return undefined;
   if (!(v instanceof Uint8Array) || (length !== undefined && v.length !== length)) {
@@ -89,7 +89,7 @@ export function bytesField(fields: WireFields, tag: number, length?: number): Ui
   return v;
 }
 
-export function intField(fields: WireFields, tag: number): number | undefined {
+export function intField(fields: WireFields, tag: number) {
   const v = fields.get(tag);
   if (v === undefined) return undefined;
   if (typeof v !== "number") throw new ProtocolError("BAD_MESSAGE_FORMAT", "Malformed field");

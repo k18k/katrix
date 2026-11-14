@@ -7,24 +7,24 @@ import type { StorageAdapter, StoreName, WriteOp } from "./adapter.ts";
 export class MemoryStorage implements StorageAdapter {
   private stores = new Map<StoreName, Map<string, string>>();
 
-  private store(name: StoreName): Map<string, string> {
+  private store(name: StoreName) {
     let s = this.stores.get(name);
     if (!s) this.stores.set(name, (s = new Map()));
     return s;
   }
 
-  async get(store: StoreName, key: string): Promise<string | undefined> {
+  async get(store: StoreName, key: string) {
     return this.stores.get(store)?.get(key);
   }
 
-  async list(store: StoreName, prefix: string): Promise<Array<[string, string]>> {
+  async list(store: StoreName, prefix: string) {
     const out: Array<[string, string]> = [];
     for (const entry of this.stores.get(store) ?? []) if (entry[0].startsWith(prefix)) out.push(entry);
     return out.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   }
 
   /** Synchronous inside, so no other operation can see half of a batch. */
-  async write(batch: readonly WriteOp[]): Promise<void> {
+  async write(batch: readonly WriteOp[]) {
     for (const op of batch) {
       if (op.type === "put") this.store(op.store).set(op.key, op.value);
       else this.stores.get(op.store)?.delete(op.key);
@@ -32,6 +32,6 @@ export class MemoryStorage implements StorageAdapter {
   }
 }
 
-export function memoryStorage(): MemoryStorage {
+export function memoryStorage() {
   return new MemoryStorage();
 }

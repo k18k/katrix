@@ -12,7 +12,7 @@ export interface TrackedRead {
 }
 
 /** Rows kept in a cache are shared between requests: freeze them, so a change fails loudly. */
-export function freeze<T>(value: T): T {
+export function freeze<T>(value: T) {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
     for (const v of Object.values(value)) freeze(v);
@@ -24,7 +24,7 @@ export function freeze<T>(value: T): T {
  * Run `reads` like `readBatch`, but answer from the change tracker what it can (#51); the others
  * still go to the database together. Without a tracker (in a cluster), all go to the database.
  */
-export async function trackedReads(db: DatabaseAdapter, tracker: ChangeTracker | null, reads: TrackedRead[]): Promise<Row[][]> {
+export async function trackedReads(db: DatabaseAdapter, tracker: ChangeTracker | null, reads: TrackedRead[]) {
   if (!tracker)
     return readBatch(
       db,
@@ -76,7 +76,7 @@ export class ChangeLog {
   }
 
   /** `key` changed at `pos`. */
-  record(key: string, pos: number): void {
+  record(key: string, pos: number) {
     const previous = this.latest.get(key);
     this.latest.delete(key);
     this.latest.set(key, previous === undefined ? pos : Math.max(previous, pos));
@@ -88,22 +88,22 @@ export class ChangeLog {
   }
 
   /** Every key may have changed at or below `pos` (for writes whose keys are not known). */
-  raiseFloor(pos: number): void {
+  raiseFloor(pos: number) {
     if (pos > this.floor) this.floor = pos;
   }
 
   /** Set the floor (also lower it: from "nothing is known" to a starting position). */
-  setFloor(pos: number): void {
+  setFloor(pos: number) {
     this.floor = pos;
   }
 
   /** Whether `key` may have changed after `pos`; false only when it is known not to have. */
-  changedAfter(key: string, pos: number): boolean {
+  changedAfter(key: string, pos: number) {
     return pos < this.floor || (this.latest.get(key) ?? Number.NEGATIVE_INFINITY) > pos;
   }
 
   /** The keys among `keys` that may have changed after `pos`. */
-  filterChanged(keys: Iterable<string>, pos: number): string[] {
+  filterChanged(keys: Iterable<string>, pos: number) {
     const out: string[] = [];
     for (const k of keys) if (this.changedAfter(k, pos)) out.push(k);
     return out;
@@ -128,7 +128,7 @@ export class ValueCache<V> {
   }
 
   /** A write to `key` (or, without a key, to any) has started or finished at `tick`. */
-  written(key: string | null, tick: number): void {
+  written(key: string | null, tick: number) {
     if (key === null) {
       this.writes.raiseFloor(tick);
       this.values.clear();
@@ -139,7 +139,7 @@ export class ValueCache<V> {
   }
 
   /** The kept value of `key`, if there is one and no write has changed it since it was read. */
-  peek(key: string): V | undefined {
+  peek(key: string) {
     const hit = this.values.get(key);
     if (!hit) return undefined;
     if (this.writes.changedAfter(key, hit.readAt)) {
@@ -155,14 +155,14 @@ export class ValueCache<V> {
    * Keep `value`, read by a read that began at `readAt` (the clock then): unless a write to `key`
    * began since, which may or may not be in `value`.
    */
-  store(key: string, value: V, readAt: number): void {
+  store(key: string, value: V, readAt: number) {
     if (this.writes.changedAfter(key, readAt)) return;
     this.values.delete(key);
     this.values.set(key, { value, readAt });
     if (this.values.size > this.max) this.values.delete(this.values.keys().next().value!);
   }
 
-  async get(key: string, load: () => Promise<V>): Promise<V> {
+  async get(key: string, load: () => Promise<V>) {
     const hit = this.peek(key);
     if (hit !== undefined) return hit;
     const readAt = this.clock();
@@ -236,7 +236,7 @@ const RULES: Record<string, Rule[]> = {
 };
 
 /** The fields a where clause pins to one value. */
-function pinned(where: WhereClause[]): Record<string, unknown> {
+function pinned(where: WhereClause[]) {
   const out: Record<string, unknown> = {};
   for (const w of where) if ((w.operator ?? "eq") === "eq") out[w.field] = w.value;
   return out;
@@ -277,18 +277,18 @@ export class ChangeTracker {
    * write after the adapter was wrapped is noted, so the logs know all changes after `position`
    * if it was read after wrapping.
    */
-  start(position: number): void {
+  start(position: number) {
     // The floor was +∞ (nothing known); now it is the position up to which writes predate us.
     for (const log of Object.values(this.logs)) log.setFloor(position);
   }
 
   /** The clock to pass to `ValueCache.store` for a read that begins now. */
-  now(): number {
+  now() {
     return this.tick;
   }
 
   /** Note a write to `model`: `rows` written, or rows matching `where` changed or deleted. */
-  private note(model: string, rows: Row[] | null, where: WhereClause[] | null, data?: Row): string[] {
+  private note(model: string, rows: Row[] | null, where: WhereClause[] | null, data?: Row) {
     const rules = RULES[model];
     if (!rules) return [];
     const tick = ++this.tick;
@@ -314,7 +314,7 @@ export class ChangeTracker {
   }
 
   /** Mark cached values written again (after a transaction committed). */
-  private rewritten(touched: string[]): void {
+  private rewritten(touched: string[]) {
     const tick = ++this.tick;
     for (const t of touched) {
       const [name, key] = t.split("\0") as [ValueName, string];
@@ -323,14 +323,14 @@ export class ChangeTracker {
   }
 
   /** An adapter that notes every write before passing it on to `db`. */
-  wrap(db: DatabaseAdapter): DatabaseAdapter {
+  wrap(db: DatabaseAdapter) {
     return this.wrapWith(db, null);
   }
 
-  private wrapWith(db: DatabaseAdapter, inTx: string[] | null): DatabaseAdapter {
+  private wrapWith(db: DatabaseAdapter, inTx: string[] | null) {
     // Outside a transaction a write is marked before and after it runs; inside, the keys are kept
     // and marked again after the commit.
-    const around = async <T>(touched: string[], run: () => Promise<T>): Promise<T> => {
+    const around = async <T>(touched: string[], run: () => Promise<T>) => {
       try {
         return await run();
       } finally {
@@ -353,7 +353,7 @@ export class ChangeTracker {
       ...(db.migrate ? { migrate: (schema) => db.migrate!(schema) } : {}),
     };
     if (db.transaction) {
-      adapter.transaction = async <T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T> => {
+      adapter.transaction = async <T>(fn: (tx: DatabaseAdapter) => Promise<T>) => {
         if (inTx) return db.transaction!((tx) => fn(this.wrapWith(tx, inTx)));
         const touched: string[] = [];
         try {

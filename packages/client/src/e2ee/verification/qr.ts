@@ -24,7 +24,7 @@ export interface QrData {
 
 const PREFIX = encodeUtf8("MATRIX");
 
-export function encodeQr(d: QrData): Uint8Array {
+export function encodeQr(d: QrData) {
   if (d.firstKey.length !== 32 || d.secondKey.length !== 32) throw new Error("QR code keys are 32 bytes");
   const id = encodeUtf8(d.transactionId);
   if (id.length > 0xffff) throw new Error("Transaction ID too long");

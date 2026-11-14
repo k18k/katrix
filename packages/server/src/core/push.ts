@@ -10,7 +10,7 @@ import { upsertMany } from "#storage/batch.ts";
 import { freeze } from "#core/changes.ts";
 
 /** Thread an event belongs to for notification purposes ("main" for the main timeline). */
-export function threadIdOf(event: PDU): string {
+export function threadIdOf(event: PDU) {
   const rel = event.content?.[M.RELATES_TO];
   return isObject(rel) && rel.rel_type === M.THREAD && typeof rel.event_id === "string" ? rel.event_id : "main";
 }
@@ -32,7 +32,7 @@ export class PushService {
     this.hs = hs;
   }
 
-  async onEvent(ev: StoredEvent, state: StateMap, version: string): Promise<void> {
+  async onEvent(ev: StoredEvent, state: StateMap, version: string) {
     const event = ev.pdu;
     const members: string[] = [];
     for (const [key, member] of state) {
@@ -105,7 +105,7 @@ export class PushService {
 
   /** Unread notification counts since the user's read receipts. */
   /** Stream positions up to which the user has read the room (unthreaded) and each thread. */
-  private async readPositions(userId: string, roomId: string): Promise<{ unthreaded: number; threads: Map<string, number> }> {
+  private async readPositions(userId: string, roomId: string) {
     const receipts = await this.hs.db.findMany("receipts", {
       where: [
         { field: "room_id", value: roomId },
@@ -127,7 +127,7 @@ export class PushService {
     return { unthreaded, threads: threadRead };
   }
 
-  isRead(row: Row, read: { unthreaded: number; threads: Map<string, number> }): boolean {
+  isRead(row: Row, read: { unthreaded: number; threads: Map<string, number> }) {
     return row.stream <= read.unthreaded || row.stream <= (read.threads.get(row.thread_id) ?? 0);
   }
 
@@ -139,7 +139,7 @@ export class PushService {
     return changes.values.unreadCounts.get(`${userId}|${roomId}`, async () => freeze(await this.countUnread(userId, roomId)));
   }
 
-  private async countUnread(userId: string, roomId: string): Promise<UnreadCounts> {
+  private async countUnread(userId: string, roomId: string) {
     const read = await this.readPositions(userId, roomId);
     const unthreaded = read.unthreaded;
     const rows = await this.hs.db.findMany("notifications", {
@@ -163,7 +163,7 @@ export class PushService {
     return { room, threads };
   }
 
-  private async deliver(userId: string, ev: StoredEvent, state: StateMap, tweaks: Record<string, unknown>, pushers: Row[]): Promise<void> {
+  private async deliver(userId: string, ev: StoredEvent, state: StateMap, tweaks: Record<string, unknown>, pushers: Row[]) {
     const event = ev.pdu;
     const unread = (await this.unreadCounts(userId, event.room_id)).room.notification_count;
     for (const row of pushers) {

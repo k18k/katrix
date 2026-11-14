@@ -42,7 +42,7 @@ export interface AccountDataAccess {
 const RECOVERY_KEY_PREFIX = [0x8b, 0x01];
 
 /** A 32-byte key as a recovery key (https://spec.matrix.org/v1.19/appendices/#cryptographic-key-representation). */
-export function encodeRecoveryKey(key: Uint8Array): string {
+export function encodeRecoveryKey(key: Uint8Array) {
   const bytes = new Uint8Array(35);
   bytes.set(RECOVERY_KEY_PREFIX, 0);
   bytes.set(key, 2);
@@ -53,7 +53,7 @@ export function encodeRecoveryKey(key: Uint8Array): string {
 }
 
 /** Whitespace is ignored; a wrong prefix, length, character or parity is refused. */
-export function decodeRecoveryKey(text: string): Uint8Array {
+export function decodeRecoveryKey(text: string) {
   let bytes: Uint8Array;
   try {
     bytes = decodeBase58(text.replace(/\s+/g, ""));
@@ -69,7 +69,7 @@ export function decodeRecoveryKey(text: string): Uint8Array {
 
 const ZERO_SALT = new Uint8Array(32);
 
-function decode(value: unknown): Uint8Array {
+function decode(value: unknown) {
   if (typeof value !== "string") throw new SecretStorageError("UNSUPPORTED", "Malformed encrypted secret");
   try {
     return decodeBase64(value);
@@ -80,13 +80,7 @@ function decode(value: unknown): Uint8Array {
 }
 
 /** m.secret_storage.v1.aes-hmac-sha2, as the spec describes it step by step. */
-export function encryptSecret(
-  primitives: CryptoPrimitives,
-  key: Uint8Array,
-  name: string,
-  plaintext: Uint8Array,
-  iv?: Uint8Array,
-): EncryptedSecret {
+export function encryptSecret(primitives: CryptoPrimitives, key: Uint8Array, name: string, plaintext: Uint8Array, iv?: Uint8Array) {
   const okm = primitives.hkdfSha256(key, ZERO_SALT, encodeUtf8(name), 64);
   const theIv = iv ?? primitives.randomBytes(16);
   // "Set bit 63 to 0": the top bit of the counter half, so no AES-CTR implementation overflows it.
@@ -96,7 +90,7 @@ export function encryptSecret(
   return { iv: encodeBase64(theIv), ciphertext: encodeBase64(ciphertext), mac: encodeBase64(mac) };
 }
 
-export function decryptSecret(primitives: CryptoPrimitives, key: Uint8Array, name: string, data: EncryptedSecret): Uint8Array {
+export function decryptSecret(primitives: CryptoPrimitives, key: Uint8Array, name: string, data: EncryptedSecret) {
   const iv = decode(data.iv);
   const ciphertext = decode(data.ciphertext);
   const mac = decode(data.mac);
@@ -116,12 +110,12 @@ export class SecretStorage {
     this.accountData = accountData;
   }
 
-  async defaultKeyId(): Promise<string | undefined> {
+  async defaultKeyId() {
     const key = (await this.accountData.get("m.secret_storage.default_key"))?.key;
     return typeof key === "string" ? key : undefined;
   }
 
-  async keyDescription(keyId?: string): Promise<{ keyId: string; description: SecretStorageKeyDescription } | undefined> {
+  async keyDescription(keyId?: string) {
     const id = keyId ?? (await this.defaultKeyId());
     if (!id) return undefined;
     const description = (await this.accountData.get(`m.secret_storage.key.${id}`)) as SecretStorageKeyDescription | undefined;
@@ -133,9 +127,7 @@ export class SecretStorage {
    * passphrase, the key is derived from it (PBKDF2-SHA-512, 500 000 iterations, as other clients
    * use); either way the returned recovery key opens it too.
    */
-  async createKey(
-    opts: { passphrase?: string; name?: string; setDefault?: boolean } = {},
-  ): Promise<{ keyId: string; key: Uint8Array; recoveryKey: string }> {
+  async createKey(opts: { passphrase?: string; name?: string; setDefault?: boolean } = {}) {
     let key: Uint8Array;
     let passphrase: SecretStorageKeyDescription["passphrase"];
     if (opts.passphrase !== undefined) {
@@ -157,7 +149,7 @@ export class SecretStorage {
     return { keyId, key, recoveryKey: encodeRecoveryKey(key) };
   }
 
-  private deriveKey(passphrase: string, p: NonNullable<SecretStorageKeyDescription["passphrase"]>): Uint8Array {
+  private deriveKey(passphrase: string, p: NonNullable<SecretStorageKeyDescription["passphrase"]>) {
     if (p.algorithm !== "m.pbkdf2") throw new SecretStorageError("UNSUPPORTED", `Unsupported passphrase algorithm ${p.algorithm}`);
     const bits = p.bits ?? 256;
     if (bits !== 256) throw new SecretStorageError("UNSUPPORTED", "Only 256-bit passphrase keys are supported");
@@ -165,14 +157,14 @@ export class SecretStorage {
   }
 
   /** The key a passphrase stands for, by the key's description. */
-  async keyFromPassphrase(passphrase: string, keyId?: string): Promise<Uint8Array> {
+  async keyFromPassphrase(passphrase: string, keyId?: string) {
     const found = await this.keyDescription(keyId);
     if (!found?.description.passphrase) throw new SecretStorageError("NO_KEY", "The key has no passphrase");
     return this.deriveKey(passphrase, found.description.passphrase);
   }
 
   /** Whether `key` is the key with this ID (by its check MAC; a key description without one accepts any key). */
-  async checkKey(key: Uint8Array, keyId?: string): Promise<boolean> {
+  async checkKey(key: Uint8Array, keyId?: string) {
     const found = await this.keyDescription(keyId);
     if (!found) throw new SecretStorageError("NO_KEY", "No such secret storage key");
     const d = found.description;
@@ -183,7 +175,7 @@ export class SecretStorage {
   }
 
   /** Encrypt a secret (a string, as the spec has them) under a key and store it in account data. */
-  async store(name: string, secret: string, key: Uint8Array, keyId?: string): Promise<void> {
+  async store(name: string, secret: string, key: Uint8Array, keyId?: string) {
     const id = keyId ?? (await this.defaultKeyId());
     if (!id) throw new SecretStorageError("NO_KEY", "No default secret storage key");
     if (!(await this.checkKey(key, id))) throw new SecretStorageError("BAD_KEY", "That is not the secret storage key");
@@ -197,7 +189,7 @@ export class SecretStorage {
   }
 
   /** A stored secret, decrypted; undefined when it is not stored under that key. */
-  async get(name: string, key: Uint8Array, keyId?: string): Promise<string | undefined> {
+  async get(name: string, key: Uint8Array, keyId?: string) {
     const id = keyId ?? (await this.defaultKeyId());
     if (!id) throw new SecretStorageError("NO_KEY", "No default secret storage key");
     const encrypted = (await this.accountData.get(name))?.encrypted as Record<string, EncryptedSecret> | undefined;
@@ -207,7 +199,7 @@ export class SecretStorage {
   }
 
   /** The key IDs a secret is stored under. */
-  async storedUnder(name: string): Promise<string[]> {
+  async storedUnder(name: string) {
     const encrypted = (await this.accountData.get(name))?.encrypted;
     return typeof encrypted === "object" && encrypted !== null ? Object.keys(encrypted) : [];
   }

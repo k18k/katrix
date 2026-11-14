@@ -52,7 +52,7 @@ export class AuthService {
     hs.cluster.subscribe(CLUSTER_RESYNC, () => this.cache.clear());
   }
 
-  async authenticate(token: string, ip: string | null): Promise<Session> {
+  async authenticate(token: string, ip: string | null) {
     const cached = this.cache.get(token);
     if (cached && cached.expires > Date.now()) return cached.session;
     const row = await this.hs.db.findOne("access_tokens", [{ field: "token", value: token }]);
@@ -111,7 +111,7 @@ export class AuthService {
       /** OAuth 2.0 API: the scope granted. */
       scope?: string;
     } = {},
-  ): Promise<CreatedSession> {
+  ) {
     // A locked account cannot obtain new access tokens.
     if ((await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]))?.locked) throw errors.userLocked();
     const deviceId = opts.deviceId || generateDeviceId();
@@ -143,7 +143,7 @@ export class AuthService {
   }
 
   /** Create a device without tokens (also used by application services, MSC4190). */
-  async createDevice(userId: string, deviceId: string, displayName?: string): Promise<void> {
+  async createDevice(userId: string, deviceId: string, displayName?: string) {
     await this.hs.db.create("devices", {
       user_id: userId,
       device_id: deviceId,
@@ -160,7 +160,7 @@ export class AuthService {
     deviceId: string,
     withRefresh: boolean,
     opts: { clientId?: string | null; lifetimeMs?: number; parent?: string; scope?: string | null } = {},
-  ): Promise<CreatedSession> {
+  ) {
     const token = `mat_${randomToken()}`;
     const lifetime = opts.lifetimeMs ?? this.hs.config.accessTokenLifetimeMs;
     const refresh = withRefresh ? `mar_${randomToken()}` : null;
@@ -194,7 +194,7 @@ export class AuthService {
    * retry before that replaces the unused tokens. Once the new token was used, the old refresh
    * token is spent, and presenting it again means it leaked, so the device is logged out.
    */
-  async refresh(refreshToken: string, opts: { clientId?: string | null; lifetimeMs?: number } = {}): Promise<CreatedSession> {
+  async refresh(refreshToken: string, opts: { clientId?: string | null; lifetimeMs?: number } = {}) {
     return this.hs.cluster.lock(`refresh:${refreshToken}`, async () => {
       const row = await this.hs.db.findOne("access_tokens", [{ field: "refresh_token", value: refreshToken }]);
       if (!row) throw errors.unknownToken("Unknown refresh token");
@@ -223,20 +223,20 @@ export class AuthService {
   }
 
   /** Drop cached sessions of a user (after admin/deactivation changes). */
-  async invalidateUser(userId: string): Promise<void> {
+  async invalidateUser(userId: string) {
     for (const [token, e] of this.cache) if (e.session.userId === userId) this.cache.delete(token);
     await this.hs.cluster.publish("auth", { from: this.hs.instanceId, userId });
   }
 
   /** Issue a short-lived single-use `m.login.token` for a user (SSO, or host-app sign-in). */
-  async createLoginToken(userId: string, ttlMs = 2 * 60_000): Promise<string> {
+  async createLoginToken(userId: string, ttlMs = 2 * 60_000) {
     const token = `mlt_${randomToken()}`;
     await this.hs.db.create("login_tokens", { token, user_id: userId, expires_ts: Date.now() + ttlMs });
     return token;
   }
 
   /** Redeem a login token; returns the user ID or throws. */
-  async consumeLoginToken(token: string): Promise<string> {
+  async consumeLoginToken(token: string) {
     const row = await this.hs.db.findOne("login_tokens", [{ field: "token", value: token }]);
     // https://github.com/k18k/katrix/issues/56 — race condition (CWE-362): two concurrent
     // logins could both read the token before either deleted it, and both got a session. The delete is atomic
@@ -247,19 +247,19 @@ export class AuthService {
     return row.user_id;
   }
 
-  async revokeToken(token: string): Promise<void> {
+  async revokeToken(token: string) {
     this.hs.oauth?.forget(token);
     await this.hs.cluster.publish("auth", { from: this.hs.instanceId, token });
     this.cache.delete(token);
     await this.hs.db.delete("access_tokens", [{ field: "token", value: token }]);
   }
 
-  async revokeDeviceTokens(userId: string, deviceId: string): Promise<void> {
+  async revokeDeviceTokens(userId: string, deviceId: string) {
     const rows = await this.hs.db.findMany("access_tokens", { where: [{ field: "user_id", value: userId }] });
     for (const row of rows) if (row.device_id === deviceId) await this.revokeToken(row.token);
   }
 
-  async deleteDevice(userId: string, deviceId: string): Promise<void> {
+  async deleteDevice(userId: string, deviceId: string) {
     await this.revokeDeviceTokens(userId, deviceId);
     const where = [
       { field: "user_id", value: userId },
@@ -281,7 +281,7 @@ export class AuthService {
     await this.hs.keys.markDeviceListChanged(userId);
   }
 
-  async deleteAllDevices(userId: string, except?: string): Promise<void> {
+  async deleteAllDevices(userId: string, except?: string) {
     const devices = await this.hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
     for (const d of devices) if (d.device_id !== except) await this.deleteDevice(userId, d.device_id);
   }
@@ -292,7 +292,7 @@ export class AuthService {
  * keys and devices, but not join, invite, send or change their profile. Rooms used to talk to the
  * server administration (the admin room, server notices) stay writable.
  */
-export async function assertNotSuspended(hs: Homeserver, session: Session, roomId?: string): Promise<void> {
+export async function assertNotSuspended(hs: Homeserver, session: Session, roomId?: string) {
   if (!session.suspended) return;
   if (roomId && (roomId === (await hs.adminRoom?.roomId()) || (await hs.admin.isNoticeRoom(roomId)))) return;
   throw errors.userSuspended();

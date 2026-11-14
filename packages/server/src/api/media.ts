@@ -25,7 +25,7 @@ const MEDIA_HEADERS = {
   "cache-control": "public, max-age=86400, immutable",
 };
 
-async function storeUpload(ctx: RequestContext, mediaId: string): Promise<void> {
+async function storeUpload(ctx: RequestContext, mediaId: string) {
   const hs = ctx.hs;
   // ctx.bytes() enforces the upload limit while the body arrives (#77).
   const data = await ctx.bytes();
@@ -43,13 +43,13 @@ async function storeUpload(ctx: RequestContext, mediaId: string): Promise<void> 
   }));
 }
 
-function contentDisposition(contentType: string | null, filename: string | null): string {
+function contentDisposition(contentType: string | null, filename: string | null) {
   const type = INLINE_TYPES.test(contentType ?? "") ? "inline" : "attachment";
   return filename ? `${type}; filename*=utf-8''${encodeURIComponent(filename)}` : type;
 }
 
 /** Fetch (and cache) media from another server. */
-async function remoteMedia(ctx: RequestContext): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
+async function remoteMedia(ctx: RequestContext) {
   const hs = ctx.hs;
   const { serverName, mediaId } = ctx.params;
   if (ctx.query.get("allow_remote") === "false") throw errors.notFound("Remote media not allowed");
@@ -83,7 +83,7 @@ async function remoteMedia(ctx: RequestContext): Promise<{ data: Uint8Array; con
   return fetched;
 }
 
-async function download(ctx: RequestContext): Promise<Response> {
+async function download(ctx: RequestContext) {
   const hs = ctx.hs;
   const { serverName, mediaId } = ctx.params;
   if (serverName !== hs.serverName) {
@@ -115,7 +115,7 @@ async function download(ctx: RequestContext): Promise<Response> {
 }
 
 /** Serve a thumbnail, generating and caching it with the configured thumbnailer. */
-async function thumbnail(ctx: RequestContext): Promise<Response> {
+async function thumbnail(ctx: RequestContext) {
   const hs = ctx.hs;
   const width = Number.parseInt(ctx.query.get("width") ?? "", 10);
   const height = Number.parseInt(ctx.query.get("height") ?? "", 10);
@@ -164,7 +164,7 @@ async function thumbnail(ctx: RequestContext): Promise<Response> {
   });
 }
 
-export function registerMediaRoutes(r: Router): void {
+export function registerMediaRoutes(r: Router) {
   const config = (ctx: RequestContext) => ({ [M.UPLOAD.SIZE]: maxUpload(ctx.hs) });
   r.get(
     "/_matrix/media/v3/config",

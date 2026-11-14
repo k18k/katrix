@@ -1,7 +1,7 @@
 import type { CryptoPrimitives } from "../../crypto/primitives.ts";
 import { bytesEqual, constantTimeEqual, decodeBase64, encodeBase64 } from "@katrix/shared";
 import { b64, field, readPickle, writePickle } from "../pickle.ts";
-import { ProtocolError, type InboundGroupSession, type PickleKey, type SessionOrdering } from "../protocol.ts";
+import { ProtocolError, type InboundGroupSession, type PickleKey } from "../protocol.ts";
 import { decodeMessage } from "./message.ts";
 import { advanceTo, copyRatchet, messageKeys, ratchetBytes, ratchetFromBytes, type MegolmRatchet } from "./ratchet.ts";
 import { decodeExport, decodeSessionKey, encodeExport } from "./session-key.ts";
@@ -25,37 +25,37 @@ export class NativeInboundGroupSession implements InboundGroupSession {
     this.signingKeyVerified = verified;
   }
 
-  static fromSessionKey(p: CryptoPrimitives, sessionKey: string): NativeInboundGroupSession {
+  static fromSessionKey(p: CryptoPrimitives, sessionKey: string) {
     const { ratchet, signingKey } = decodeSessionKey(p, sessionKey);
     return new NativeInboundGroupSession(p, ratchet, copyRatchet(ratchet), signingKey, true);
   }
 
-  static fromExport(p: CryptoPrimitives, exported: string): NativeInboundGroupSession {
+  static fromExport(p: CryptoPrimitives, exported: string) {
     const { ratchet, signingKey } = decodeExport(exported);
     return new NativeInboundGroupSession(p, ratchet, copyRatchet(ratchet), signingKey, false);
   }
 
-  sessionId(): string {
+  sessionId() {
     return encodeBase64(this.signingKey);
   }
 
-  firstKnownIndex(): number {
+  firstKnownIndex() {
     return this.initial.counter;
   }
 
-  isSigningKeyVerified(): boolean {
+  isSigningKeyVerified() {
     return this.signingKeyVerified;
   }
 
   /** The ratchet at `index`, from the closest known state at or before it. */
-  private ratchetAt(index: number): MegolmRatchet | undefined {
+  private ratchetAt(index: number) {
     if (index < this.initial.counter) return undefined;
     const r = copyRatchet(this.latest.counter <= index ? this.latest : this.initial);
     advanceTo(this.p, r, index);
     return r;
   }
 
-  decrypt(ciphertext: string): { plaintext: Uint8Array; messageIndex: number } {
+  decrypt(ciphertext: string) {
     let bytes: Uint8Array;
     try {
       bytes = decodeBase64(ciphertext);
@@ -84,12 +84,12 @@ export class NativeInboundGroupSession implements InboundGroupSession {
     return { plaintext, messageIndex: m.index };
   }
 
-  exportAt(index: number): string | undefined {
+  exportAt(index: number) {
     const r = this.ratchetAt(index);
     return r ? encodeExport(r, this.signingKey) : undefined;
   }
 
-  compare(other: InboundGroupSession): SessionOrdering {
+  compare(other: InboundGroupSession) {
     if (other.sessionId() !== this.sessionId()) return "unconnected";
     const theirIndex = other.firstKnownIndex();
     const mine = this.initial.counter;
@@ -101,7 +101,7 @@ export class NativeInboundGroupSession implements InboundGroupSession {
     return mine < theirIndex ? "better" : mine === theirIndex ? "equal" : "worse";
   }
 
-  pickle(key?: PickleKey): string {
+  pickle(key?: PickleKey) {
     return writePickle(
       this.p,
       "megolm_inbound",
@@ -117,7 +117,7 @@ export class NativeInboundGroupSession implements InboundGroupSession {
     );
   }
 
-  static fromPickle(p: CryptoPrimitives, pickle: string, key?: PickleKey): NativeInboundGroupSession {
+  static fromPickle(p: CryptoPrimitives, pickle: string, key?: PickleKey) {
     const s = readPickle(p, "megolm_inbound", pickle, key);
     const initial = ratchetFromBytes(field.bytes(s, "initial", 128), field.uint(s, "initial_counter"));
     const latest = ratchetFromBytes(field.bytes(s, "latest", 128), field.uint(s, "latest_counter"));

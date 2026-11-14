@@ -66,12 +66,12 @@ export class AuditService {
     this.options = options;
   }
 
-  get enabled(): boolean {
+  get enabled() {
     return !!this.options.enabled;
   }
 
   /** Record an entry. Never throws: auditing must not break the action being audited. */
-  async record(entry: AuditEntry): Promise<void> {
+  async record(entry: AuditEntry) {
     if (!this.options.enabled) return;
     if (this.options.actions && !this.options.actions.includes(entry.action)) return;
     try {
@@ -109,7 +109,7 @@ export class AuditService {
     });
   }
 
-  async prune(): Promise<void> {
+  async prune() {
     const days = this.options.retentionDays ?? 365;
     if (!this.options.enabled || days <= 0) return;
     await this.hs.db.delete("audit_log", [{ field: "ts", operator: "lt", value: Date.now() - days * 86_400_000 }]);

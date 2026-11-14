@@ -20,12 +20,12 @@ export class Timeline {
     this.maxEvents = maxEvents;
   }
 
-  find(eventId: string): MatrixEvent | undefined {
+  find(eventId: string) {
     return this.byId.get(eventId);
   }
 
   /** Append live events. Returns those that were new (not already present by event ID). */
-  append(events: MatrixEvent[]): MatrixEvent[] {
+  append(events: MatrixEvent[]) {
     const added: MatrixEvent[] = [];
     for (const e of events) {
       if (e.eventId && this.byId.has(e.eventId)) continue;
@@ -44,7 +44,7 @@ export class Timeline {
   }
 
   /** Prepend older events (from back-pagination, given newest first as /messages returns them). */
-  prepend(newestFirst: MatrixEvent[], nextBackToken: string | undefined): MatrixEvent[] {
+  prepend(newestFirst: MatrixEvent[], nextBackToken: string | undefined) {
     const added: MatrixEvent[] = [];
     for (const e of newestFirst) {
       if (e.eventId && this.byId.has(e.eventId)) continue;
@@ -58,7 +58,7 @@ export class Timeline {
   }
 
   /** A gap: start over with a new segment. */
-  reset(backToken: string | undefined): void {
+  reset(backToken: string | undefined) {
     this.events = [];
     this.byId.clear();
     this.backToken = backToken;
@@ -66,11 +66,11 @@ export class Timeline {
   }
 
   /** Replace a local echo by its event ID once the server confirmed it. */
-  index(event: MatrixEvent): void {
+  index(event: MatrixEvent) {
     if (event.eventId) this.byId.set(event.eventId, event);
   }
 
-  remove(event: MatrixEvent): void {
+  remove(event: MatrixEvent) {
     const i = this.events.indexOf(event);
     if (i >= 0) this.events.splice(i, 1);
     if (event.eventId) this.byId.delete(event.eventId);

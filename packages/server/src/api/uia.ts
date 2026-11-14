@@ -35,7 +35,7 @@ export async function requireUia(
   flows: string[][],
   userId: string | null,
   opts: { session?: Session; crossSigningReset?: boolean } = {},
-): Promise<{ threepids: ValidatedThreepid[]; registrationToken?: string }> {
+) {
   // With OAuth (this server's or a delegated one) there are no passwords to ask for.
   const viaOAuth = !!opts.session?.oauth || (!!hs.oauth && flows.some((f) => f.includes(M.LOGIN.PASSWORD)));
   let oauthUrl: string | undefined;

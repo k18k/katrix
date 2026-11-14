@@ -21,7 +21,7 @@ export class IdentityServers {
     this.hs = hs;
   }
 
-  private base(idServer: string): string {
+  private base(idServer: string) {
     if (!/^[A-Za-z0-9.-]+(:\d+)?$/.test(idServer)) throw new MatrixError(400, "M_INVALID_PARAM", "Invalid id_server");
     return `${this.hs.config.threepid.identityServerProtocol}://${idServer}`;
   }
@@ -60,7 +60,7 @@ export class IdentityServers {
   }
 
   /** The Matrix user ID bound to a 3PID, if any. */
-  async lookup(idServer: string, token: string, medium: string, address: string): Promise<string | null> {
+  async lookup(idServer: string, token: string, medium: string, address: string) {
     const details = await this.call(idServer, "GET", "/_matrix/identity/v2/hash_details", { token });
     const algorithms = isStrings(details.algorithms) ? details.algorithms : [];
     let query: string, algorithm: string;
@@ -81,7 +81,7 @@ export class IdentityServers {
     return typeof mxid === "string" ? mxid : null;
   }
 
-  async storeInvite(idServer: string, token: string, invite: Record<string, unknown>): Promise<StoredInvite> {
+  async storeInvite(idServer: string, token: string, invite: Record<string, unknown>) {
     const res = await this.call(idServer, "POST", "/_matrix/identity/v2/store-invite", { token, body: invite });
     const keys: unknown[] = Array.isArray(res.public_keys) ? res.public_keys : [];
     const publicKeys = keys.flatMap((k) =>
@@ -100,7 +100,7 @@ export class IdentityServers {
   }
 
   /** Remove a binding; resolves false when the identity server does not support unbinding. */
-  async unbind(idServer: string, mxid: string, medium: string, address: string): Promise<boolean> {
+  async unbind(idServer: string, mxid: string, medium: string, address: string) {
     try {
       await this.call(idServer, "POST", "/_matrix/identity/v2/3pid/unbind", {
         signed: true,

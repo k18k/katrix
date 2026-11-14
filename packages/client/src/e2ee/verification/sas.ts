@@ -80,7 +80,7 @@ export const SAS_EMOJI: ReadonlyArray<readonly [emoji: string, description: stri
 ];
 
 /** The commitment in m.key.verification.accept: the hash of the accepter's public key and the canonical start content. */
-export function sasCommitment(primitives: CryptoPrimitives, publicKey: string, startContent: Record<string, unknown>): string {
+export function sasCommitment(primitives: CryptoPrimitives, publicKey: string, startContent: Record<string, unknown>) {
   return encodeBase64(primitives.sha256(encodeUtf8(publicKey + canonicalJson(startContent))));
 }
 
@@ -93,11 +93,11 @@ export function sasInfo(p: {
   acceptDevice: string;
   acceptKey: string;
   transactionId: string;
-}): string {
+}) {
   return `MATRIX_KEY_VERIFICATION_SAS|${p.startUser}|${p.startDevice}|${p.startKey}|${p.acceptUser}|${p.acceptDevice}|${p.acceptKey}|${p.transactionId}`;
 }
 
-export function sasBytes(primitives: CryptoPrimitives, sharedSecret: Uint8Array, info: string): Uint8Array {
+export function sasBytes(primitives: CryptoPrimitives, sharedSecret: Uint8Array, info: string) {
   return primitives.hkdfSha256(sharedSecret, undefined, encodeUtf8(info), 6);
 }
 
@@ -111,7 +111,7 @@ export function sasDecimals(b: Uint8Array): [number, number, number] {
 }
 
 /** Seven emoji from the first 42 bits, 6 bits each, most significant first. */
-export function sasEmoji(b: Uint8Array): Array<{ emoji: string; description: string }> {
+export function sasEmoji(b: Uint8Array) {
   const out: Array<{ emoji: string; description: string }> = [];
   for (let i = 0; i < 7; i++) {
     let index = 0;
@@ -131,7 +131,7 @@ export function sasMac(
   sharedSecret: Uint8Array,
   p: { senderUser: string; senderDevice: string; otherUser: string; otherDevice: string; transactionId: string; keyId: string },
   value: string,
-): string {
+) {
   const info = `MATRIX_KEY_VERIFICATION_MAC${p.senderUser}${p.senderDevice}${p.otherUser}${p.otherDevice}${p.transactionId}${p.keyId}`;
   const key = primitives.hkdfSha256(sharedSecret, undefined, encodeUtf8(info), 32);
   return encodeBase64(primitives.hmacSha256(key, encodeUtf8(value)));

@@ -10,7 +10,7 @@ export class MatrixError extends Error {
     this.extra = extra;
   }
 
-  toJSON(): Record<string, unknown> {
+  toJSON() {
     return { errcode: this.errcode, error: this.message, ...this.extra };
   }
 }

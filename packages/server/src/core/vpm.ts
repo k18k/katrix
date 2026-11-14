@@ -48,7 +48,7 @@ export type output<S> = S extends { readonly _types?: { output: infer O } } ? O 
 export type input<S> = S extends { readonly _types?: { input: infer I } } ? I : never;
 export type Shape = Record<string, Schema<any, any>>;
 
-const issue = (issues: Issue[], path: Path, input: unknown, message: string, code: Issue["code"]): undefined => {
+const issue = (issues: Issue[], path: Path, input: unknown, message: string, code: Issue["code"]) => {
   issues.push({ path, message, code, input });
   return undefined;
 };
@@ -98,7 +98,7 @@ function make<O, I = O>(check: Check): Schema<O, I> {
 }
 
 /** A type check: `ok` decides, and the options can give the message (as a Matrix error, see http/input.ts). */
-function typed<O>(expected: string, ok: (value: unknown) => boolean, options?: Options, inner?: Check): Schema<O> {
+function typed<O>(expected: string, ok: (value: unknown) => boolean, options?: Options, inner?: Check) {
   return make<O>((value, path, issues) => {
     if (!ok(value)) {
       const message = typeof options?.error === "function" ? options.error({ input: value }) : (options?.error ?? `Expected ${expected}`);

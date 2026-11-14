@@ -53,11 +53,7 @@ function backupKeys(primitives: CryptoPrimitives, sharedSecret: Uint8Array) {
  * The MAC is of the empty string, not the ciphertext: a bug in libolm every implementation now
  * shares (the spec's warning, MSC4048), so it only shows that the keys were derived right.
  */
-export function encryptBackupSession(
-  primitives: CryptoPrimitives,
-  backupPublicKey: Uint8Array,
-  session: BackedUpSession,
-): EncryptedSessionData {
+export function encryptBackupSession(primitives: CryptoPrimitives, backupPublicKey: Uint8Array, session: BackedUpSession) {
   const ephemeral = primitives.x25519GenerateKeyPair();
   const k = backupKeys(primitives, primitives.x25519SharedSecret(ephemeral.secretKey, backupPublicKey));
   const ciphertext = primitives.aes256CbcEncrypt(k.aes, k.iv, encodeUtf8(JSON.stringify(session)));
@@ -68,11 +64,7 @@ export function encryptBackupSession(
   };
 }
 
-export function decryptBackupSession(
-  primitives: CryptoPrimitives,
-  backupPrivateKey: Uint8Array,
-  data: EncryptedSessionData,
-): BackedUpSession {
+export function decryptBackupSession(primitives: CryptoPrimitives, backupPrivateKey: Uint8Array, data: EncryptedSessionData) {
   const k = backupKeys(primitives, primitives.x25519SharedSecret(backupPrivateKey, decodeBase64(data.ephemeral)));
   if (!constantTimeEqual(primitives.hmacSha256(k.mac, EMPTY).subarray(0, 8), decodeBase64(data.mac)))
     throw new Error("The backed-up session does not decrypt with this key");
@@ -154,7 +146,7 @@ export class KeyBackup {
   }
 
   /** The server's current backup, if there is one. */
-  async serverInfo(): Promise<BackupVersionResponse | undefined> {
+  async serverInfo() {
     try {
       return await this.api.endpoint("GET /v3/room_keys/version", {}, {});
     } catch (e) {
@@ -164,13 +156,13 @@ export class KeyBackup {
   }
 
   /** The backup this device uploads to, if any. */
-  async active(): Promise<{ version: string; publicKey: string; hasPrivateKey: boolean } | undefined> {
+  async active() {
     const s = await this.store.get<StoredBackup>("account", STORE_KEY);
     return s ? { version: s.version, publicKey: s.publicKey, hasPrivateKey: s.privateKey !== undefined } : undefined;
   }
 
   /** The backup's private key, if this device has it (to put it in secret storage). */
-  async privateKey(): Promise<Uint8Array | undefined> {
+  async privateKey() {
     const s = await this.store.get<StoredBackup>("account", STORE_KEY);
     return s?.privateKey ? this.box.open("m.megolm_backup.v1", s.privateKey) : undefined;
   }
@@ -181,7 +173,7 @@ export class KeyBackup {
    * key when given. Records the user's choice in m.key_backup (v1.19). Resolves with the
    * private key, for the app to put in secret storage.
    */
-  async create(opts: { masterKey?: Uint8Array } = {}): Promise<{ version: string; privateKey: Uint8Array }> {
+  async create(opts: { masterKey?: Uint8Array } = {}) {
     const pair = this.primitives.x25519GenerateKeyPair();
     let authData: BackupAuthData = { public_key: encodeBase64(pair.publicKey) };
     authData = await this.signWithDevice(authData);
@@ -209,7 +201,7 @@ export class KeyBackup {
    * Use the server's current backup with its private key (from secret storage, secret sharing,
    * or typed in by the user). The key must match the backup's public key.
    */
-  async enableWithPrivateKey(privateKey: Uint8Array): Promise<string> {
+  async enableWithPrivateKey(privateKey: Uint8Array) {
     const info = await this.serverInfo();
     if (!info || info.algorithm !== BACKUP_ALGORITHM) throw new Error("There is no supported key backup on the server");
     const publicKey = this.primitives.x25519PublicKey(privateKey);
@@ -220,14 +212,14 @@ export class KeyBackup {
   }
 
   /** Upload to the server's current backup without its private key, if its auth_data is trusted. Resolves whether it is. */
-  async enableIfTrusted(): Promise<boolean> {
+  async enableIfTrusted() {
     const info = await this.serverInfo();
     if (!info || info.algorithm !== BACKUP_ALGORITHM || !(await this.isTrusted(info))) return false;
     await this.activate(info.version, decodeBase64(info.auth_data.public_key), undefined);
     return true;
   }
 
-  private async activate(version: string, publicKey: Uint8Array, privateKey: Uint8Array | undefined): Promise<void> {
+  private async activate(version: string, publicKey: Uint8Array, privateKey: Uint8Array | undefined) {
     await this.store.transaction(async (tx) => {
       const previous = await tx.get<StoredBackup>("account", STORE_KEY);
       tx.put("account", STORE_KEY, {
@@ -243,12 +235,12 @@ export class KeyBackup {
   }
 
   /** Stop uploading (the backup stays on the server). */
-  async disable(): Promise<void> {
+  async disable() {
     await this.store.transaction(async (tx) => tx.delete("account", STORE_KEY));
   }
 
   /** Delete a backup version on the server (and stop using it here, if it was the active one). */
-  async deleteVersion(version: string): Promise<void> {
+  async deleteVersion(version: string) {
     await this.api.endpoint("DELETE /v3/room_keys/version/:version", { version }, {});
     if ((await this.active())?.version === version) await this.disable();
   }
@@ -258,7 +250,7 @@ export class KeyBackup {
    * verified devices (spec: "Clients must only store keys in backups after they have ensured
    * that the auth_data is trusted").
    */
-  async isTrusted(info: BackupVersionResponse): Promise<boolean> {
+  async isTrusted(info: BackupVersionResponse) {
     const authData = info.auth_data;
     const sigs = (info.auth_data.signatures?.[this.userId] ?? {}) as Record<string, string>;
     const own = await this.devices.getUser(this.userId);
@@ -283,7 +275,7 @@ export class KeyBackup {
    * Upload the room keys not yet in the active backup, in batches. A backup replaced on the
    * server (M_WRONG_ROOM_KEYS_VERSION) stops the uploads until the app enables the new one.
    */
-  backupPending(): Promise<number> {
+  backupPending() {
     return this.uploadMutex.run(async () => {
       const active = await this.store.get<StoredBackup>("account", STORE_KEY);
       if (!active) return 0;
@@ -322,7 +314,7 @@ export class KeyBackup {
   }
 
   /** One session or one room goes to its own endpoint (a smaller request); more go to PUT /room_keys/keys. */
-  private async upload(version: string, rooms: Record<string, { sessions: Record<string, KeyBackupData> }>): Promise<void> {
+  private async upload(version: string, rooms: Record<string, { sessions: Record<string, KeyBackupData> }>) {
     const query = { version };
     const roomIds = Object.keys(rooms);
     if (roomIds.length === 1) {
@@ -344,7 +336,7 @@ export class KeyBackup {
   }
 
   /** One backup version's information. */
-  async versionInfo(version: string): Promise<BackupVersionResponse | undefined> {
+  async versionInfo(version: string) {
     try {
       return await this.api.endpoint("GET /v3/room_keys/version/:version", { version }, {});
     } catch (e) {
@@ -357,7 +349,7 @@ export class KeyBackup {
    * Add the master key's signature to the current backup's auth_data (after cross-signing was
    * set up or reset, so other devices trust the backup through the identity).
    */
-  async signWithMasterKey(masterKey: Uint8Array): Promise<void> {
+  async signWithMasterKey(masterKey: Uint8Array) {
     const active = await this.active();
     const info = active ? await this.versionInfo(active.version) : undefined;
     if (!info) throw new Error("No active key backup");
@@ -376,7 +368,7 @@ export class KeyBackup {
   }
 
   /** Delete backed-up keys on the server: all of them, one room's, or one session. */
-  async deleteKeys(opts: { roomId?: string; sessionId?: string } = {}): Promise<void> {
+  async deleteKeys(opts: { roomId?: string; sessionId?: string } = {}) {
     const active = await this.active();
     const version = active?.version ?? (await this.serverInfo())?.version;
     if (!version) return;
@@ -391,7 +383,7 @@ export class KeyBackup {
     else await this.api.endpoint("DELETE /v3/room_keys/keys", {}, { query });
   }
 
-  private async sessionData(record: InboundGroupSessionRecord, publicKey: Uint8Array): Promise<KeyBackupData | undefined> {
+  private async sessionData(record: InboundGroupSessionRecord, publicKey: Uint8Array) {
     const session = this.pickler.inbound(record);
     const exported = session.exportAt(session.firstKnownIndex());
     if (!exported) return undefined;
@@ -421,9 +413,7 @@ export class KeyBackup {
    * the private key given or the one this device has. Keys already known from an earlier index
    * are kept. Resolves with the sessions imported, for the client to retry decryption.
    */
-  async restore(
-    opts: { privateKey?: Uint8Array; roomId?: string; sessionId?: string } = {},
-  ): Promise<Array<{ roomId: string; sessionId: string }>> {
+  async restore(opts: { privateKey?: Uint8Array; roomId?: string; sessionId?: string } = {}) {
     const info = await this.serverInfo();
     if (!info || info.algorithm !== BACKUP_ALGORITHM) return [];
     const privateKey = opts.privateKey ?? (await this.privateKey());

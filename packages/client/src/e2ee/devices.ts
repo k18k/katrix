@@ -5,7 +5,7 @@ import type { Logger } from "../util/logger.ts";
 import { Mutex } from "../util/mutex.ts";
 import type { CrossSigningKey, DeviceKeys, KeysQueryResponse } from "@katrix/shared";
 import { isObject } from "@katrix/shared";
-import { deviceKey, type CrossSigningKeys, type DeviceInfo, type UserDevicesRecord, type UserTrustRecord } from "./crypto-store.ts";
+import { deviceKey, type DeviceInfo, type UserDevicesRecord, type UserTrustRecord } from "./crypto-store.ts";
 import { verifyObject } from "./keys.ts";
 
 /**
@@ -32,21 +32,21 @@ export class DeviceTracker {
     this.logger = opts.logger;
   }
 
-  async getUser(userId: string, tx?: Transaction): Promise<UserDevicesRecord | undefined> {
+  async getUser(userId: string, tx?: Transaction) {
     return tx ? tx.get<UserDevicesRecord>("devices", deviceKey(userId)) : this.store.get<UserDevicesRecord>("devices", deviceKey(userId));
   }
 
-  async devices(userId: string, tx?: Transaction): Promise<DeviceInfo[]> {
+  async devices(userId: string, tx?: Transaction) {
     return Object.values((await this.getUser(userId, tx))?.devices ?? {});
   }
 
   /** The device of `userId` with this Curve25519 key, if known. */
-  async deviceByCurveKey(userId: string, curve25519: string, tx?: Transaction): Promise<DeviceInfo | undefined> {
+  async deviceByCurveKey(userId: string, curve25519: string, tx?: Transaction) {
     return (await this.devices(userId, tx)).find((d) => d.curve25519 === curve25519);
   }
 
   /** Start tracking users (newly tracked ones are outdated until queried). */
-  async track(tx: Transaction, userIds: Iterable<string>): Promise<void> {
+  async track(tx: Transaction, userIds: Iterable<string>) {
     for (const userId of userIds) {
       const rec = await tx.get<UserDevicesRecord>("devices", deviceKey(userId));
       if (rec?.tracked) continue;
@@ -55,7 +55,7 @@ export class DeviceTracker {
   }
 
   /** device_lists from /sync. */
-  async handleDeviceLists(tx: Transaction, lists: { changed: string[]; left: string[] }): Promise<void> {
+  async handleDeviceLists(tx: Transaction, lists: { changed: string[]; left: string[] }) {
     for (const userId of lists.changed) {
       const rec = await tx.get<UserDevicesRecord>("devices", deviceKey(userId));
       if (rec?.tracked) tx.put("devices", deviceKey(userId), { ...rec, outdated: rec.outdated + 1 });
@@ -67,13 +67,13 @@ export class DeviceTracker {
     }
   }
 
-  async isOutdated(userId: string): Promise<boolean> {
+  async isOutdated(userId: string) {
     const rec = await this.getUser(userId);
     return !rec || !rec.tracked || rec.outdated > 0;
   }
 
   /** Query keys of the given users that are outdated (all given users if `force`). */
-  async refresh(userIds: string[], opts: { force?: boolean } = {}): Promise<void> {
+  async refresh(userIds: string[], opts: { force?: boolean } = {}) {
     await this.mutex.run(async () => {
       const due: Array<{ userId: string; outdated: number }> = [];
       for (const userId of new Set(userIds)) {
@@ -85,7 +85,7 @@ export class DeviceTracker {
     });
   }
 
-  private async query(batch: Array<{ userId: string; outdated: number }>): Promise<void> {
+  private async query(batch: Array<{ userId: string; outdated: number }>) {
     if (batch.length === 0) return;
     const res = await this.api.endpoint(
       "POST /v3/keys/query",
@@ -138,7 +138,7 @@ export class DeviceTracker {
    * usage and one key, and the self-signing and user-signing keys carry the master key's
    * signature. Keys that fail are dropped (and with a bad master key, all of them).
    */
-  private crossSigningKeys(userId: string, res: KeysQueryResponse): CrossSigningKeys {
+  private crossSigningKeys(userId: string, res: KeysQueryResponse) {
     const valid = (k: CrossSigningKey | undefined, usage: string) =>
       k &&
       typeof k === "object" &&
@@ -164,7 +164,7 @@ export class DeviceTracker {
    * outdated, and their keys queried again before we next encrypt for them. For a client that
    * resumes from an older token than its device lists were last updated at.
    */
-  async changesBetween(from: string, to: string): Promise<{ changed: string[]; left: string[] }> {
+  async changesBetween(from: string, to: string) {
     const res = await this.api.endpoint("GET /v3/keys/changes", {}, { query: { from, to } });
     const lists = { changed: res.changed ?? [], left: res.left ?? [] };
     await this.store.transaction((tx) => this.handleDeviceLists(tx, lists));
@@ -172,14 +172,14 @@ export class DeviceTracker {
   }
 
   /** Change what this device trusts about a user (the record is created if the user is not known yet). */
-  async updateTrust(userId: string, change: (trust: UserTrustRecord) => UserTrustRecord): Promise<void> {
+  async updateTrust(userId: string, change: (trust: UserTrustRecord) => UserTrustRecord) {
     await this.store.transaction(async (tx) => {
       const rec = (await tx.get<UserDevicesRecord>("devices", deviceKey(userId))) ?? { devices: {}, tracked: false, outdated: 1 };
       tx.put("devices", deviceKey(userId), { ...rec, trust: change({ ...rec.trust }) });
     });
   }
 
-  private validate(userId: string, deviceId: string, keys: unknown): DeviceInfo | undefined {
+  private validate(userId: string, deviceId: string, keys: unknown) {
     if (!isObject(keys) || keys.user_id !== userId || keys.device_id !== deviceId) {
       this.logger.warn("device keys name another user or device", { userId, deviceId });
       return undefined;
@@ -207,7 +207,7 @@ export class DeviceTracker {
 }
 
 /** The one Ed25519 public key of a cross-signing key object. */
-export function publicKeyOf(key: CrossSigningKey): string | undefined {
+export function publicKeyOf(key: CrossSigningKey) {
   const entries = Object.entries(key.keys ?? {});
   if (entries.length !== 1) return undefined;
   const [id, value] = entries[0];

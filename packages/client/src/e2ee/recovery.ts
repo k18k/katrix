@@ -40,7 +40,7 @@ export class Recovery {
   }
 
   /** Whether the account has recovery set up (a default secret storage key) and what this device has. */
-  async status(): Promise<{ setUp: boolean; crossSigningTrusted: boolean; backupActive: boolean }> {
+  async status() {
     return {
       setUp: (await this.secretStorage.defaultKeyId()) !== undefined,
       crossSigningTrusted: (await this.crossSigning.status()).trusted,
@@ -55,7 +55,7 @@ export class Recovery {
    * either way. An account that has recovery already is refused unless `reset: true`, which
    * replaces the user's identity (contacts see it change) and starts a new backup.
    */
-  async setUp(opts: { passphrase?: string; auth?: UiaCallback; reset?: boolean } = {}): Promise<{ recoveryKey: string }> {
+  async setUp(opts: { passphrase?: string; auth?: UiaCallback; reset?: boolean } = {}) {
     if (!opts.reset && (await this.secretStorage.defaultKeyId()) !== undefined)
       throw new Error("Recovery is set up already: recover() with the recovery key, or setUp({ reset: true })");
     const keys = await this.crossSigning.bootstrap(opts.auth);
@@ -70,7 +70,7 @@ export class Recovery {
   }
 
   /** The secret storage key from what the user typed: a recovery key, or else a passphrase. */
-  async keyFrom(input: string): Promise<Uint8Array> {
+  async keyFrom(input: string) {
     let key: Uint8Array | undefined;
     try {
       key = decodeRecoveryKey(input);
@@ -87,7 +87,7 @@ export class Recovery {
    * Recover on this device: verify it with the stored cross-signing keys, use the key backup,
    * and download every backed-up room key. Resolves with how many room keys were imported.
    */
-  async recover(recoveryKeyOrPassphrase: string): Promise<{ importedKeys: number }> {
+  async recover(recoveryKeyOrPassphrase: string) {
     const key = await this.keyFrom(recoveryKeyOrPassphrase);
     const get = (name: string) => this.secretStorage.get(name, key);
     const [master, selfSigning, userSigning, backupKey] = await Promise.all([

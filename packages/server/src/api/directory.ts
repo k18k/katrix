@@ -42,7 +42,7 @@ async function publicRooms(ctx: RequestContext, body: Record<string, unknown>) {
   };
 }
 
-async function canDeleteAlias(hs: Homeserver, s: Session, alias: Row): Promise<boolean> {
+async function canDeleteAlias(hs: Homeserver, s: Session, alias: Row) {
   if (alias.creator === s.userId || s.isAdmin) return true;
   const version = await hs.rooms.roomVersion(alias.room_id);
   if (!version) return false;
@@ -52,7 +52,7 @@ async function canDeleteAlias(hs: Homeserver, s: Session, alias: Row): Promise<b
   return membershipOf(state, s.userId) === "join" && userLevel(pl, s.userId) >= needed;
 }
 
-export function registerDirectoryRoutes(r: Router): void {
+export function registerDirectoryRoutes(r: Router) {
   // --- Aliases & directory ---------------------------------------------------
 
   r.client(

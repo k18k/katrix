@@ -1,6 +1,6 @@
 import type { MatrixClient } from "../client.ts";
 import type { MatrixEvent } from "../models/event.ts";
-import type { HierarchyResponse, HierarchyRoom } from "@katrix/shared";
+import type { HierarchyRoom } from "@katrix/shared";
 
 export interface SpaceChild {
   roomId: string;
@@ -10,12 +10,12 @@ export interface SpaceChild {
 }
 
 /** The server name of a user ID, the default `via` for rooms of this user's server. */
-function serverOf(userId: string): string {
+function serverOf(userId: string) {
   return userId.slice(userId.indexOf(":") + 1);
 }
 
 /** The spec's `order`: up to 50 printable ASCII characters (0x20–0x7E); anything else is ignored. */
-function validOrder(order: unknown): string | undefined {
+function validOrder(order: unknown) {
   return typeof order === "string" && order.length <= 50 && /^[\x20-\x7E]*$/.test(order) ? order : undefined;
 }
 
@@ -34,13 +34,7 @@ export class SpacesApi {
    * Create a space. Only moderators can post messages in it (events_default 50): a space is a
    * list of rooms, not a chat, and other clients set them up the same way.
    */
-  create(opts: {
-    name: string;
-    topic?: string;
-    visibility?: "public" | "private";
-    invite?: string[];
-    roomAliasName?: string;
-  }): Promise<string> {
+  create(opts: { name: string; topic?: string; visibility?: "public" | "private"; invite?: string[]; roomAliasName?: string }) {
     return this.client.createRoom({
       name: opts.name,
       topic: opts.topic,
@@ -57,7 +51,7 @@ export class SpacesApi {
    * Add a room to a space. `via` are servers to join the room through (default: this user's
    * server). `order` sorts children (printable ASCII, up to 50 characters).
    */
-  async addChild(spaceId: string, roomId: string, opts: { via?: string[]; order?: string; suggested?: boolean } = {}): Promise<void> {
+  async addChild(spaceId: string, roomId: string, opts: { via?: string[]; order?: string; suggested?: boolean } = {}) {
     if (opts.order !== undefined && validOrder(opts.order) === undefined)
       throw new Error("order must be at most 50 printable ASCII characters");
     await this.client.sendStateEvent(
@@ -73,12 +67,12 @@ export class SpacesApi {
   }
 
   /** Remove a room from a space (its m.space.child is emptied, as the spec says). */
-  async removeChild(spaceId: string, roomId: string): Promise<void> {
+  async removeChild(spaceId: string, roomId: string) {
     await this.client.sendStateEvent(spaceId, "m.space.child", {}, roomId);
   }
 
   /** Point a room at its space. `canonical` marks the main parent. */
-  async setParent(roomId: string, spaceId: string, opts: { via?: string[]; canonical?: boolean } = {}): Promise<void> {
+  async setParent(roomId: string, spaceId: string, opts: { via?: string[]; canonical?: boolean } = {}) {
     await this.client.sendStateEvent(
       roomId,
       "m.space.parent",
@@ -87,7 +81,7 @@ export class SpacesApi {
     );
   }
 
-  async removeParent(roomId: string, spaceId: string): Promise<void> {
+  async removeParent(roomId: string, spaceId: string) {
     await this.client.sendStateEvent(roomId, "m.space.parent", {}, spaceId);
   }
 
@@ -95,7 +89,7 @@ export class SpacesApi {
    * The children of a synced space, in the spec's order: by `order` (rooms without one last),
    * then by when they were added, then by room ID. Children without `via` were removed.
    */
-  children(spaceId: string): SpaceChild[] {
+  children(spaceId: string) {
     const room = this.client.getRoom(spaceId);
     if (!room) return [];
     const events = room.state.getAll("m.space.child") as Array<MatrixEvent<"m.space.child">>;
@@ -122,7 +116,7 @@ export class SpacesApi {
   }
 
   /** The spaces a synced room says it is in (m.space.parent with `via`), canonical first. */
-  parents(roomId: string): Array<{ spaceId: string; via: string[]; canonical: boolean }> {
+  parents(roomId: string) {
     const room = this.client.getRoom(roomId);
     if (!room) return [];
     return (room.state.getAll("m.space.parent") as Array<MatrixEvent<"m.space.parent">>)
@@ -132,10 +126,7 @@ export class SpacesApi {
   }
 
   /** One page of a space's hierarchy from the server, depth first, including rooms not joined. */
-  hierarchy(
-    spaceId: string,
-    opts: { suggestedOnly?: boolean; maxDepth?: number; limit?: number; from?: string } = {},
-  ): Promise<HierarchyResponse> {
+  hierarchy(spaceId: string, opts: { suggestedOnly?: boolean; maxDepth?: number; limit?: number; from?: string } = {}) {
     return this.client.api.endpoint(
       "GET /v1/rooms/:roomId/hierarchy",
       { roomId: spaceId },
@@ -144,10 +135,7 @@ export class SpacesApi {
   }
 
   /** The whole hierarchy (every page, up to `maxRooms`). */
-  async fullHierarchy(
-    spaceId: string,
-    opts: { suggestedOnly?: boolean; maxDepth?: number; maxRooms?: number } = {},
-  ): Promise<HierarchyRoom[]> {
+  async fullHierarchy(spaceId: string, opts: { suggestedOnly?: boolean; maxDepth?: number; maxRooms?: number } = {}) {
     const rooms: HierarchyRoom[] = [];
     const max = opts.maxRooms ?? 1000;
     let from: string | undefined;

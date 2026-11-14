@@ -20,7 +20,7 @@ export async function longPoll<T>(
   timeoutMs: number,
   signal: AbortSignal | undefined,
   build: (to: number) => Promise<{ value: T; done: boolean }>,
-): Promise<{ value: T; to: number; aborted: boolean }> {
+) {
   const deadline = Date.now() + timeoutMs;
   let pending = 0;
   for (;;) {

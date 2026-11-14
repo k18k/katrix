@@ -38,12 +38,12 @@ export const CLUSTER_RESYNC = "__cluster_resync";
 const leases = new AsyncLocalStorage<(() => void)[]>();
 
 /** Run `fn` under a leased lock whose `check` throws once the lease is lost. */
-export function underLease<T>(check: () => void, fn: () => Promise<T>): Promise<T> {
+export function underLease<T>(check: () => void, fn: () => Promise<T>) {
   return leases.run([...(leases.getStore() ?? []), check], fn);
 }
 
 /** Throw when a leased cluster lock the current code runs under has been lost (#57). */
-export function assertLeases(): void {
+export function assertLeases() {
   for (const check of leases.getStore() ?? []) check();
 }
 
@@ -187,7 +187,7 @@ export class StreamManager {
   }
 
   /** Publish this writer's state as it is when the publish starts; concurrent callers share it. */
-  private flush(): Promise<void> {
+  private flush() {
     if (this.nextPublish) return this.nextPublish;
     const run = async () => {
       // From here on, changes need a later publish. The reservations so far are covered by this
@@ -217,7 +217,7 @@ export class StreamManager {
   }
 
   /** Allocate a position. The caller must call `done()` once its writes are committed. */
-  async allocate(): Promise<StreamLease> {
+  async allocate() {
     // Be published as busy (with a position below anything we allocate) before allocating, so
     // readers never overtake us. The publish moves this reservation to `allocating`.
     this.reserving++;
@@ -258,7 +258,7 @@ export class StreamManager {
   }
 
   /** Allocate a position, run `fn` with it, then complete it. */
-  async write<T>(fn: (id: number) => Promise<T>): Promise<T> {
+  async write<T>(fn: (id: number) => Promise<T>) {
     const lease = await this.allocate();
     try {
       return await fn(lease.id);
@@ -268,12 +268,12 @@ export class StreamManager {
   }
 
   /** A fresh decreasing position for backfilled (historical) events. */
-  async backfillId(): Promise<number> {
+  async backfillId() {
     return -(await this.cluster.nextId("backfill"));
   }
 
   /** The highest position this instance has allocated: an upper bound of its changes so far. */
-  get lastAllocated(): number {
+  get lastAllocated() {
     return this.highestAllocated;
   }
 
@@ -281,7 +281,7 @@ export class StreamManager {
    * The highest position below which everything is persisted, cluster-wide. `fresh` skips the
    * 20 ms cache, for a caller that knows a change has completed elsewhere.
    */
-  async position(fresh = false): Promise<number> {
+  async position(fresh = false) {
     if (!fresh && this.positionCache && Date.now() - this.positionCache.at < 20) return this.positionCache.value;
     // Read the global sequence first, then the writers (see class comment).
     const global = await this.cluster.currentId("stream");
@@ -300,7 +300,7 @@ export class StreamManager {
    * (https://github.com/k18k/katrix/issues/50). It checks again at growing
    * intervals: writes finish in milliseconds, and the position may be held by another instance.
    */
-  async waitFor(pos: number, timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
+  async waitFor(pos: number, timeoutMs: number, signal?: AbortSignal) {
     const deadline = Date.now() + timeoutMs;
     let delay = 5;
     for (;;) {
@@ -312,20 +312,20 @@ export class StreamManager {
     }
   }
 
-  async advanceTo(value: number): Promise<void> {
+  async advanceTo(value: number) {
     await this.cluster.advance("stream", value);
   }
 
-  async lowerBackfillTo(value: number): Promise<void> {
+  async lowerBackfillTo(value: number) {
     if (value < 0) await this.cluster.advance("backfill", -value);
   }
 
-  async stop(): Promise<void> {
+  async stop() {
     clearInterval(this.heartbeat);
     await this.cluster.delete(this.key()).catch(() => {}); // ts-pro-exception: the writer key expires after WRITER_TTL_MS when this delete fails
   }
 }
 
-export function newInstanceId(): string {
+export function newInstanceId() {
   return `${process.pid}-${randomString(8)}`;
 }

@@ -21,7 +21,7 @@ export const fail = (errcode: string, message: string, missing?: string) => ({
 export const lenient = <O, I>(schema: v.Schema<O, I>) => schema.optional().catch(undefined);
 
 /** Turn a failed body parse into the Matrix error the client sees. */
-export function inputError(error: { issues: v.Issue[] }): MatrixError {
+export function inputError(error: { issues: v.Issue[] }) {
   const issue = error.issues[0];
   const path = issue?.path.join(".") ?? "";
   const tagged = /^(M_[A-Z_]+): ([\s\S]*)$/.exec(issue?.message ?? "");

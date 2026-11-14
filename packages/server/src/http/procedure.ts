@@ -3,7 +3,7 @@ import type { v } from "#core/vpm.ts";
 import type { Session } from "#core/auth.ts";
 import type { RateLimitAction } from "#core/ratelimit.ts";
 import { inputError } from "#http/input.ts";
-import type { Handler, HandlerResult, RequestContext } from "#http/router.ts";
+import type { HandlerResult, RequestContext } from "#http/router.ts";
 
 // Procedures: an endpoint is declared as what it needs (authentication, a rate limit, a body
 // schema, optionally a response schema) plus a handler. The procedure runs those steps in a fixed
@@ -65,7 +65,7 @@ export function procedure<
   O extends v.Schema | undefined = undefined,
   G extends object = {},
   E extends ClientEndpoint | undefined = undefined,
->(def: ProcedureDef<A, S, O, G, E>): Handler {
+>(def: ProcedureDef<A, S, O, G, E>) {
   return async (ctx: RequestContext) => {
     const session = def.auth === "user" ? await ctx.auth() : def.auth === "optional" ? await ctx.optionalAuth() : undefined;
     const extra = def.guard ? await def.guard(ctx) : ({} as G);

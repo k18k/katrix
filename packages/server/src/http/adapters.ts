@@ -5,7 +5,7 @@ import type { Homeserver } from "#homeserver.ts";
 import { handleRequest, maxRequestBody } from "#http/handler.ts";
 
 /** Paths this library serves. Framework adapters forward only these. */
-export function isMatrixPath(pathname: string): boolean {
+export function isMatrixPath(pathname: string) {
   return pathname.startsWith("/_matrix/") || pathname.startsWith("/.well-known/matrix/") || pathname.startsWith("/_synapse/");
 }
 
@@ -17,7 +17,7 @@ export function getFetchHandler(hs: Homeserver): (request: Request) => Promise<R
 type NodeRequestWithBody = IncomingMessage & { body?: unknown; originalUrl?: string };
 
 /** The body of a Node request as a web stream that reads from the socket only when pulled, so nothing is read ahead. */
-function bodyStream(chunks: AsyncIterator<Buffer>): ReadableStream<Uint8Array> {
+function bodyStream(chunks: AsyncIterator<Buffer>) {
   return new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
@@ -31,7 +31,7 @@ function bodyStream(chunks: AsyncIterator<Buffer>): ReadableStream<Uint8Array> {
 }
 
 /** Read and drop what is left of a request body; false when more than `budget` bytes are left. */
-async function drain(req: IncomingMessage, chunks: AsyncIterator<Buffer>, budget: number, timeoutMs: number): Promise<boolean> {
+async function drain(req: IncomingMessage, chunks: AsyncIterator<Buffer>, budget: number, timeoutMs: number) {
   if (Number(req.headers["content-length"]) > budget) return false;
   let dropped = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -54,7 +54,7 @@ async function drain(req: IncomingMessage, chunks: AsyncIterator<Buffer>, budget
 /** How long a response waits, after it was sent, for the rest of a body nobody read (#103). */
 const DRAIN_MS = 5_000;
 
-async function toWebRequest(req: NodeRequestWithBody): Promise<{ request: Request; unread?: AsyncIterator<Buffer> }> {
+async function toWebRequest(req: NodeRequestWithBody) {
   // https://github.com/k18k/katrix/issues/128: the framework objects here were any; they have structural types now, so that
   // no framework is a dependency and each property read is one the type declares.
   const socket = req.socket;
@@ -91,7 +91,7 @@ async function toWebRequest(req: NodeRequestWithBody): Promise<{ request: Reques
   return { request: new Request(url, { method, headers, body, duplex: "half" } as RequestInit), unread };
 }
 
-async function writeWebResponse(res: ServerResponse, response: Response): Promise<void> {
+async function writeWebResponse(res: ServerResponse, response: Response) {
   res.statusCode = response.status;
   response.headers.forEach((value, key) => res.setHeader(key, value));
   if (!response.body) {
@@ -145,7 +145,7 @@ export function getNodeHandler(hs: Homeserver): NodeHandler {
 }
 
 /** Express / Connect middleware. Mount with `app.use(getExpressHandler(hs))`. */
-export function getExpressHandler(hs: Homeserver): (req: IncomingMessage, res: ServerResponse, next: (err?: unknown) => void) => void {
+export function getExpressHandler(hs: Homeserver) {
   return getNodeHandler(hs);
 }
 

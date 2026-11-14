@@ -1,5 +1,5 @@
 import { MatrixEvent } from "./event.ts";
-import { Relations, type ReactionGroup, type ThreadSummary } from "./relations.ts";
+import { Relations } from "./relations.ts";
 import { RoomState } from "./room-state.ts";
 import { Timeline } from "./timeline.ts";
 import type { Membership } from "@katrix/shared";
@@ -49,7 +49,7 @@ export class Room {
    * (for a target that just arrived) the edits that came before it. Returns the event whose
    * relations changed, if it is loaded.
    */
-  applyRelations(event: MatrixEvent): MatrixEvent | undefined {
+  applyRelations(event: MatrixEvent) {
     if (event.eventId) this.refreshReplacement(event);
     const targetId = this.relations.add(event);
     if (!targetId) return undefined;
@@ -59,14 +59,14 @@ export class Room {
   }
 
   /** Forget a redacted or dropped event's relation. Returns the event it related to, if loaded. */
-  removeRelations(event: MatrixEvent): MatrixEvent | undefined {
+  removeRelations(event: MatrixEvent) {
     const targetId = this.relations.remove(event);
     const target = targetId ? this.timeline.find(targetId) : undefined;
     if (target) this.refreshReplacement(target);
     return target;
   }
 
-  private refreshReplacement(original: MatrixEvent): void {
+  private refreshReplacement(original: MatrixEvent) {
     const bundled = original.unsigned["m.relations"] as { "m.replace"?: unknown } | undefined;
     const raw = bundled?.["m.replace"];
     let bundledEvent: MatrixEvent | undefined;
@@ -79,14 +79,14 @@ export class Room {
   }
 
   /** The server's bundled edit of an event, to decrypt when it is encrypted. */
-  bundledReplacement(original: MatrixEvent): MatrixEvent | undefined {
+  bundledReplacement(original: MatrixEvent) {
     this.refreshReplacement(original);
     return this.bundled.get(original);
   }
 
   private readonly bundled = new WeakMap<MatrixEvent, MatrixEvent>();
 
-  reactions(eventId: string): ReactionGroup[] {
+  reactions(eventId: string) {
     return this.relations.reactions(eventId);
   }
 
@@ -94,7 +94,7 @@ export class Room {
    * A thread's summary: the server's bundled count and latest event (on the root's unsigned
    * m.relations), updated with the replies that arrived here since.
    */
-  threadSummary(rootId: string): ThreadSummary | undefined {
+  threadSummary(rootId: string) {
     const root = this.timeline.find(rootId);
     const bundled = (
       root?.unsigned["m.relations"] as
@@ -122,45 +122,45 @@ export class Room {
   }
 
   /** The thread roots seen in this room (fetch the full list with MatrixClient.fetchThreads). */
-  threadRoots(): string[] {
+  threadRoots() {
     return this.relations.threadRoots();
   }
 
   /** The events of the main timeline: without thread replies (those that are not in a thread). */
-  mainTimeline(): MatrixEvent[] {
+  mainTimeline() {
     return this.timeline.events.filter((e) => !e.threadRootId);
   }
 
   /** The room this one was upgraded to (m.room.tombstone), if any. */
-  successor(): { roomId: string; reason?: string } | undefined {
+  successor() {
     const t = this.state.get("m.room.tombstone")?.content;
     return typeof t?.replacement_room === "string" ? { roomId: t.replacement_room, reason: t.body } : undefined;
   }
 
   /** The room this one replaced (m.room.create's predecessor), if any. */
-  predecessor(): { roomId: string; eventId?: string } | undefined {
+  predecessor() {
     const p = this.state.get("m.room.create")?.content.predecessor;
     return typeof p?.room_id === "string" ? { roomId: p.room_id, eventId: p.event_id } : undefined;
   }
 
   /** The room type from m.room.create: "m.space" for spaces. */
-  type(): string | undefined {
+  type() {
     return this.state.get("m.room.create")?.content.type;
   }
 
-  isSpace(): boolean {
+  isSpace() {
     return this.type() === "m.space";
   }
 
   /** Whether this user's member event marks the room as a direct chat (is_direct, set by the invite). */
-  isDirect(): boolean {
+  isDirect() {
     const own = this.state.get("m.room.member", this.myUserId)?.content.is_direct;
     const invite = this.inviteState.find((e) => e.type === "m.room.member" && e.state_key === this.myUserId)?.content.is_direct;
     return own === true || invite === true;
   }
 
   /** When something last happened in the room (its newest event), for sorting room lists. */
-  lastActivity(): number {
+  lastActivity() {
     for (let i = this.timeline.events.length - 1; i >= 0; i--) {
       const ts = this.timeline.events[i].originServerTs;
       if (ts !== undefined) return ts;
@@ -168,7 +168,7 @@ export class Room {
     return 0;
   }
 
-  isEncrypted(): boolean {
+  isEncrypted() {
     return this.state.isEncrypted();
   }
 
@@ -177,7 +177,7 @@ export class Room {
    * m.room.name, else the canonical alias, else built from the heroes (or, without a summary,
    * from the other members), else "Empty Room".
    */
-  name(): string {
+  name() {
     const fromInvite = (type: string, key: string) => this.inviteState.find((e) => e.type === type)?.content[key];
     const name = this.state.get("m.room.name")?.content.name ?? fromInvite("m.room.name", "name");
     if (typeof name === "string" && name.trim()) return name;
@@ -224,7 +224,7 @@ export class Room {
   }
 
   /** Members we encrypt for: joined, and invited when history visibility lets them read. */
-  encryptionTargets(): string[] {
+  encryptionTargets() {
     const visibility = this.state.get("m.room.history_visibility")?.content.history_visibility ?? "shared";
     // Invited users get the keys unless the room hides history from them until they join
     // (history_visibility "joined"), as matrix-js-sdk and matrix-rust-sdk do.
@@ -236,11 +236,11 @@ export class Room {
   }
 
   /** The newest event of the live timeline. */
-  lastEvent(): MatrixEvent | undefined {
+  lastEvent() {
     return this.timeline.events[this.timeline.events.length - 1];
   }
 
-  readReceipt(userId: string, type = "m.read"): Receipt | undefined {
+  readReceipt(userId: string, type = "m.read") {
     return this.receipts.get(type)?.get(userId);
   }
 }

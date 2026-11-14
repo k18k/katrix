@@ -7,11 +7,7 @@ import { refreshOAuthToken } from "./oauth.ts";
 import type { Credentials, CredentialsStore, TokenProvider } from "./types.ts";
 import { dummyAuth, withUserInteractiveAuth, type UiaCallback } from "./uia.ts";
 import type {
-  LoginFlow,
   LoginRequest,
-  RequestTokenResponse,
-  VersionsResponse,
-  WellKnownSupport,
   LoginResponse,
   RefreshResponse,
   RegisterRequest,
@@ -52,19 +48,19 @@ export class Auth {
   }
 
   /** The login types the server offers (GET /v3/login), with SSO identity providers. */
-  async loginFlows(): Promise<LoginFlow[]> {
+  async loginFlows() {
     const res = await this.api.endpoint("GET /v3/login", {}, { auth: false });
     return res.flows ?? [];
   }
 
   /** `user` is a localpart or a full user ID, or a full identifier for a third-party ID. */
-  loginWithPassword(user: string | UserIdentifier, password: string, opts: LoginOptions = {}): Promise<Credentials> {
+  loginWithPassword(user: string | UserIdentifier, password: string, opts: LoginOptions = {}) {
     const identifier: UserIdentifier = typeof user === "string" ? { type: "m.id.user", user } : user;
     return this.login({ type: "m.login.password", identifier, password }, opts);
   }
 
   /** The token an SSO redirect returns (m.login.token). */
-  loginWithToken(token: string, opts: LoginOptions = {}): Promise<Credentials> {
+  loginWithToken(token: string, opts: LoginOptions = {}) {
     return this.login({ type: "m.login.token", token }, opts);
   }
 
@@ -74,7 +70,7 @@ export class Auth {
    * own; for others (CAPTCHA, email, terms, registration tokens) pass `auth`, or the server's 401
    * is thrown as a MatrixError whose `data` holds the flows and session.
    */
-  async register(username: string, password: string, opts: LoginOptions & { auth?: UiaCallback } = {}): Promise<Credentials> {
+  async register(username: string, password: string, opts: LoginOptions & { auth?: UiaCallback } = {}) {
     const body: RegisterRequest = {
       username,
       password,
@@ -90,7 +86,7 @@ export class Auth {
   }
 
   /** Register a guest account (`kind=guest`): limited access, no password. */
-  async registerGuest(opts: LoginOptions = {}): Promise<Credentials> {
+  async registerGuest(opts: LoginOptions = {}) {
     const res = await this.api.endpoint(
       "POST /v3/register",
       {},
@@ -105,7 +101,7 @@ export class Auth {
   }
 
   /** Whether a username is free to register; false when taken, throws M_INVALID_USERNAME or M_EXCLUSIVE when not allowed. */
-  async isUsernameAvailable(username: string): Promise<boolean> {
+  async isUsernameAvailable(username: string) {
     try {
       const res = await this.api.endpoint("GET /v3/register/available", {}, { auth: false, query: { username } });
       return res.available === true;
@@ -116,7 +112,7 @@ export class Auth {
   }
 
   /** Whether a registration token (m.login.registration_token) is still valid. */
-  async isRegistrationTokenValid(token: string): Promise<boolean> {
+  async isRegistrationTokenValid(token: string) {
     const res = await this.api.endpoint("GET /v1/register/m.login.registration_token/validity", {}, { auth: false, query: { token } });
     return res.valid === true;
   }
@@ -130,7 +126,7 @@ export class Auth {
   requestEmailToken(
     purpose: "register" | "password",
     req: { clientSecret: string; email: string; sendAttempt: number; nextLink?: string },
-  ): Promise<RequestTokenResponse> {
+  ) {
     const body = { client_secret: req.clientSecret, email: req.email, send_attempt: req.sendAttempt, next_link: req.nextLink };
     return purpose === "register"
       ? this.api.endpoint("POST /v3/register/email/requestToken", {}, { auth: false, body })
@@ -140,7 +136,7 @@ export class Auth {
   requestMsisdnToken(
     purpose: "register" | "password",
     req: { clientSecret: string; country: string; phoneNumber: string; sendAttempt: number; nextLink?: string },
-  ): Promise<RequestTokenResponse> {
+  ) {
     const body = {
       client_secret: req.clientSecret,
       country: req.country,
@@ -157,7 +153,7 @@ export class Auth {
    * Reset a forgotten password: `auth` completes the m.login.email.identity (or msisdn) stage
    * with the `threepid_creds` of requestEmailToken("password", …).
    */
-  async resetPassword(newPassword: string, auth: UiaCallback, opts: { logoutDevices?: boolean } = {}): Promise<void> {
+  async resetPassword(newPassword: string, auth: UiaCallback, opts: { logoutDevices?: boolean } = {}) {
     await withUserInteractiveAuth(
       (a) =>
         this.api.endpoint(
@@ -170,12 +166,12 @@ export class Auth {
   }
 
   /** The spec versions and unstable features the server supports. */
-  versions(): Promise<VersionsResponse> {
+  versions() {
     return this.api.endpoint("GET /versions", {}, { auth: false });
   }
 
   /** The server's support contacts (/.well-known/matrix/support); undefined when it publishes none. */
-  async support(): Promise<WellKnownSupport | undefined> {
+  async support() {
     try {
       return await this.api.endpoint("GET /.well-known/matrix/support", {}, { auth: false });
     } catch (e) {
@@ -189,7 +185,7 @@ export class Auth {
    * The server sends the browser back to `redirectUrl` with a `loginToken` for loginWithToken.
    * `action` hints whether the user means to log in or to sign up.
    */
-  ssoRedirectUrl(redirectUrl: string, idpId?: string, action?: "login" | "register"): string {
+  ssoRedirectUrl(redirectUrl: string, idpId?: string, action?: "login" | "register") {
     const path = `/_matrix/client/v3/login/sso/redirect${idpId ? `/${encodeURIComponent(idpId)}` : ""}`;
     return this.api.url(path, { redirectUrl, action });
   }
@@ -198,7 +194,7 @@ export class Auth {
    * Log in as a user of an application service (m.login.application_service): the request
    * carries the appservice's `as_token`, which the caller passes.
    */
-  async loginAsApplicationService(asToken: string, user: string, opts: LoginOptions = {}): Promise<Credentials> {
+  async loginAsApplicationService(asToken: string, user: string, opts: LoginOptions = {}) {
     const api = new MatrixHttpApi({ baseUrl: this.api.baseUrl, http: this.http, tokens: { accessToken: () => asToken } });
     const res = await api.endpoint(
       "POST /v3/login",
@@ -220,7 +216,7 @@ export class Auth {
   private async login(
     body: { type: "m.login.password"; identifier: UserIdentifier; password: string } | { type: "m.login.token"; token: string },
     opts: LoginOptions,
-  ): Promise<Credentials> {
+  ) {
     const res = await this.api.endpoint(
       "POST /v3/login",
       {},
@@ -240,7 +236,7 @@ export class Auth {
   }
 
   /** The base URL from /.well-known/matrix/client, checked against /versions (spec "Server Discovery"). */
-  static async discover(serverName: string, http: HttpAdapter): Promise<string> {
+  static async discover(serverName: string, http: HttpAdapter) {
     const wellKnown = new MatrixHttpApi({ baseUrl: `https://${serverName}`, http });
     let baseUrl = `https://${serverName}`;
     try {
@@ -276,15 +272,15 @@ export class CredentialsTokenProvider implements TokenProvider {
     this.store = opts.store;
   }
 
-  current(): Credentials {
+  current() {
     return this.credentials;
   }
 
-  accessToken(): string {
+  accessToken() {
     return this.credentials.accessToken;
   }
 
-  refresh(): Promise<boolean> {
+  refresh() {
     const before = this.credentials.accessToken;
     return this.mutex.run(async () => {
       // Someone else refreshed while we waited.

@@ -21,7 +21,7 @@ export class TypingService {
     hs.cluster.subscribe("typing", (msg: TypingMessage) => this.apply(msg));
   }
 
-  async setTyping(roomId: string, userId: string, typing: boolean, timeoutMs = 30000): Promise<void> {
+  async setTyping(roomId: string, userId: string, typing: boolean, timeoutMs = 30000) {
     const room = this.rooms.get(roomId);
     const wasTyping = !!room?.users.has(userId);
     if (!typing && !wasTyping) return;
@@ -39,7 +39,7 @@ export class TypingService {
     }
   }
 
-  private apply(msg: TypingMessage): void {
+  private apply(msg: TypingMessage) {
     let room = this.rooms.get(msg.roomId);
     if (!room) this.rooms.set(msg.roomId, (room = { users: new Map(), stream: 0 }));
     const existing = room.users.get(msg.userId);
@@ -67,7 +67,7 @@ export class TypingService {
   }
 
   /** Typing users in a room if they changed after `since` (or always when `since` is null). */
-  typingSince(roomId: string, since: number | null): string[] | null {
+  typingSince(roomId: string, since: number | null) {
     const room = this.rooms.get(roomId);
     if (!room) return since === null ? [] : null;
     if (since !== null && room.stream <= since) return null;

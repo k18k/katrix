@@ -8,13 +8,9 @@ import {
   isObject,
   type LooseRule,
   pushTweaks,
-  type NotificationsResponse,
   type PushAction,
   type PushCondition,
-  type PushRule,
   type PushRuleKind,
-  type PushRuleset,
-  type Pusher,
   type SetPusherRequest,
 } from "@katrix/shared";
 
@@ -49,7 +45,7 @@ export class PushApi {
 
   // ─── Pushers ──────────────────────────────────────────────────────────────
 
-  async pushers(): Promise<Pusher[]> {
+  async pushers() {
     return (await this.api.endpoint("GET /v3/pushers", {}, {})).pushers ?? [];
   }
 
@@ -58,23 +54,23 @@ export class PushApi {
    * /_matrix/push/v1/notify. `append: false` (the default) replaces pushers with the same
    * pushkey for other users.
    */
-  async setPusher(pusher: Omit<SetPusherRequest, "kind"> & { kind: string }): Promise<void> {
+  async setPusher(pusher: Omit<SetPusherRequest, "kind"> & { kind: string }) {
     await this.api.endpoint("POST /v3/pushers/set", {}, { body: pusher });
   }
 
-  async removePusher(appId: string, pushkey: string): Promise<void> {
+  async removePusher(appId: string, pushkey: string) {
     await this.api.endpoint("POST /v3/pushers/set", {}, { body: { app_id: appId, pushkey, kind: null } });
   }
 
   // ─── Push rules ───────────────────────────────────────────────────────────
 
   /** The user's push rules, from GET /pushrules/ (`scope: "global"` asks for /pushrules/global/ directly). */
-  async rules(opts: { scope?: "all" | "global" } = {}): Promise<PushRuleset> {
+  async rules(opts: { scope?: "all" | "global" } = {}) {
     if (opts.scope === "global") return this.api.endpoint("GET /v3/pushrules/global/", {}, {});
     return (await this.api.endpoint("GET /v3/pushrules/", {}, {})).global ?? {};
   }
 
-  getRule(kind: PushRuleKind, ruleId: string): Promise<PushRule> {
+  getRule(kind: PushRuleKind, ruleId: string) {
     return this.api.endpoint("GET /v3/pushrules/global/:kind/:ruleId", { kind, ruleId }, {});
   }
 
@@ -88,7 +84,7 @@ export class PushApi {
     ruleId: string,
     rule: { actions: PushAction[]; conditions?: PushCondition[]; pattern?: string },
     opts: { before?: string; after?: string } = {},
-  ): Promise<void> {
+  ) {
     await this.api.endpoint(
       "PUT /v3/pushrules/global/:kind/:ruleId",
       { kind, ruleId },
@@ -96,23 +92,23 @@ export class PushApi {
     );
   }
 
-  async deleteRule(kind: PushRuleKind, ruleId: string): Promise<void> {
+  async deleteRule(kind: PushRuleKind, ruleId: string) {
     await this.api.endpoint("DELETE /v3/pushrules/global/:kind/:ruleId", { kind, ruleId }, {});
   }
 
-  async isRuleEnabled(kind: PushRuleKind, ruleId: string): Promise<boolean> {
+  async isRuleEnabled(kind: PushRuleKind, ruleId: string) {
     return (await this.api.endpoint("GET /v3/pushrules/global/:kind/:ruleId/enabled", { kind, ruleId }, {})).enabled;
   }
 
-  async setRuleEnabled(kind: PushRuleKind, ruleId: string, enabled: boolean): Promise<void> {
+  async setRuleEnabled(kind: PushRuleKind, ruleId: string, enabled: boolean) {
     await this.api.endpoint("PUT /v3/pushrules/global/:kind/:ruleId/enabled", { kind, ruleId }, { body: { enabled } });
   }
 
-  async getRuleActions(kind: PushRuleKind, ruleId: string): Promise<PushAction[]> {
+  async getRuleActions(kind: PushRuleKind, ruleId: string) {
     return (await this.api.endpoint("GET /v3/pushrules/global/:kind/:ruleId/actions", { kind, ruleId }, {})).actions;
   }
 
-  async setRuleActions(kind: PushRuleKind, ruleId: string, actions: PushAction[]): Promise<void> {
+  async setRuleActions(kind: PushRuleKind, ruleId: string, actions: PushAction[]) {
     await this.api.endpoint("PUT /v3/pushrules/global/:kind/:ruleId/actions", { kind, ruleId }, { body: { actions } });
   }
 
@@ -121,7 +117,7 @@ export class PushApi {
    * spec evaluates after the override rules for mentions. `mentions: false` mutes everything,
    * with an override rule on the room ID that comes before them.
    */
-  async muteRoom(roomId: string, opts: { mentions?: boolean } = {}): Promise<void> {
+  async muteRoom(roomId: string, opts: { mentions?: boolean } = {}) {
     if (opts.mentions === false) {
       const before = (await this.rules()).override?.find((r) => !r.default)?.rule_id;
       await this.setRule(
@@ -136,7 +132,7 @@ export class PushApi {
   }
 
   /** Undo muteRoom, either kind. */
-  async unmuteRoom(roomId: string): Promise<void> {
+  async unmuteRoom(roomId: string) {
     for (const kind of ["room", "override"] as const) {
       await this.deleteRule(kind, roomId).catch((e) => {
         if (!(e instanceof MatrixError && e.errcode === "M_NOT_FOUND")) throw e;
@@ -145,21 +141,21 @@ export class PushApi {
   }
 
   /** Mute everything: the master rule (.m.rule.master) on. */
-  setMuteAll(muted: boolean): Promise<void> {
+  setMuteAll(muted: boolean) {
     return this.setRuleEnabled("override", ".m.rule.master", muted);
   }
 
   // ─── Notifications ────────────────────────────────────────────────────────
 
   /** The server's list of events that notified this user, newest first. `only: "highlight"` for mentions only. */
-  notifications(opts: { from?: string; limit?: number; only?: "highlight" } = {}): Promise<NotificationsResponse> {
+  notifications(opts: { from?: string; limit?: number; only?: "highlight" } = {}) {
     return this.api.endpoint("GET /v3/notifications", {}, { query: { from: opts.from, limit: opts.limit, only: opts.only } });
   }
 
   // ─── Evaluation ───────────────────────────────────────────────────────────
 
   /** The rules in effect: the synced m.push_rules account data, else the spec's defaults. */
-  currentRules(): Readonly<Record<string, readonly LooseRule[] | undefined>> {
+  currentRules() {
     const global = this.accountData("m.push_rules")?.global;
     return isObject(global) ? (global as Record<string, LooseRule[]>) : defaultPushRules(this.userId);
   }
@@ -169,7 +165,7 @@ export class PushApi {
    * joined member count, this user's display name in it, and the sender's power level. Pass a
    * decrypted event to get what an encrypted one really should do.
    */
-  evaluate(event: MatrixEvent, room: Room): PushOutcome {
+  evaluate(event: MatrixEvent, room: Room) {
     const pl = room.state.powerLevels();
     const senderLevel = event.sender ? room.state.powerLevel(event.sender) : 0;
     const actions =

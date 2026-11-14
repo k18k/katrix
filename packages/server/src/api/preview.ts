@@ -12,14 +12,14 @@ const MAX_BYTES = 1024 * 1024;
 /** A URL preview: Open Graph properties such as `og:title`, and `og:image:width` and `matrix:image:size` as numbers. */
 type Preview = Record<string, string | number>;
 
-function decodeEntities(s: string): string {
+function decodeEntities(s: string) {
   return s.replace(
     /&(amp|lt|gt|quot|#39|#x27);/g,
     (m) => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&#x27;": "'" })[m] ?? m,
   );
 }
 
-export function parseOpenGraph(html: string): Record<string, string> {
+export function parseOpenGraph(html: string) {
   const og: Record<string, string> = {};
   for (const tag of html.match(/<meta\s[^>]*>/gi) ?? []) {
     const attr = (name: string) => new RegExp(`${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(tag);
@@ -37,7 +37,7 @@ export function parseOpenGraph(html: string): Record<string, string> {
   return og;
 }
 
-async function preview(hs: Homeserver, rawUrl: string): Promise<Preview> {
+async function preview(hs: Homeserver, rawUrl: string) {
   const opts = hs.config.urlPreviews;
   if (!opts) throw errors.notFound("URL previews are disabled");
   let url: URL;
@@ -80,7 +80,7 @@ async function preview(hs: Homeserver, rawUrl: string): Promise<Preview> {
 }
 
 /** Read width/height from PNG, GIF, JPEG or WebP headers. */
-export function imageSize(data: Uint8Array): { width: number; height: number } | null {
+export function imageSize(data: Uint8Array) {
   const b = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
   if (b.length >= 24 && b.readUInt32BE(0) === 0x89504e47) return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
   if (b.length >= 10 && b.toString("ascii", 0, 3) === "GIF") return { width: b.readUInt16LE(6), height: b.readUInt16LE(8) };
@@ -113,7 +113,7 @@ export function imageSize(data: Uint8Array): { width: number; height: number } |
 }
 
 /** Store a fetched image in the media repository and describe it for a preview. */
-async function storeImage(hs: Homeserver, body: Buffer, type: string): Promise<Preview> {
+async function storeImage(hs: Homeserver, body: Buffer, type: string) {
   const data = new Uint8Array(body);
   const mediaId = randomString(24);
   await hs.media.put(mediaId, data, { contentType: type, filename: null, size: data.length });
@@ -146,7 +146,7 @@ const building = new WeakMap<Homeserver, Map<string, Promise<Preview>>>();
  * server download and keep any amount of data. Previews are now reused for an hour (across instances), built once
  * for concurrent requests, and rate limited per user (`preview`).
  */
-async function cachedPreview(hs: Homeserver, url: string): Promise<Preview> {
+async function cachedPreview(hs: Homeserver, url: string) {
   const key = `preview:${url}`;
   const cached = await hs.cluster.get<Preview>(key);
   if (cached) return cached;
@@ -165,7 +165,7 @@ async function cachedPreview(hs: Homeserver, url: string): Promise<Preview> {
   return pending;
 }
 
-export function registerPreviewRoutes(r: Router): void {
+export function registerPreviewRoutes(r: Router) {
   const handler = async (ctx: RequestContext) => {
     await ctx.auth();
     await ctx.rateLimit("preview");

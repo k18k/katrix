@@ -99,7 +99,7 @@ async function loadConnection(hs: Homeserver, s: Session, connId: string) {
 }
 
 /** Stream position of the latest "interesting" event in a room. */
-async function bumpStamp(hs: Homeserver, roomId: string, upTo: number): Promise<number> {
+async function bumpStamp(hs: Homeserver, roomId: string, upTo: number) {
   const rows = await hs.db.findMany("events", {
     where: [
       { field: "room_id", value: roomId },
@@ -112,7 +112,7 @@ async function bumpStamp(hs: Homeserver, roomId: string, upTo: number): Promise<
   return rows[rows.length - 1]?.stream ?? 0;
 }
 
-function matchesRequiredState(required: string[][], type: string, key: string, userId: string, lazyMembers: Set<string>): boolean {
+function matchesRequiredState(required: string[][], type: string, key: string, userId: string, lazyMembers: Set<string>) {
   for (const [t, k] of required) {
     if (t !== "*" && t !== type) continue;
     if (k === "*" || k === key) return true;
@@ -122,7 +122,7 @@ function matchesRequiredState(required: string[][], type: string, key: string, u
   return false;
 }
 
-export function registerSlidingSyncRoutes(r: Router): void {
+export function registerSlidingSyncRoutes(r: Router) {
   r.post(
     "/_matrix/client/unstable/org.matrix.simplified_msc3575/sync",
     procedure({ auth: "user", input: slidingSyncBody, handler: slidingSync }),

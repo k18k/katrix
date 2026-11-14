@@ -1,6 +1,6 @@
 import { isObject, isValidAlias, isValidRoomId, isValidUserId, M, UNSTABLE } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
-import { getState, ownerOfStateKey, powerLevels, roomCreators, userLevel, type StateMap } from "#core/authrules.ts";
+import { getState, ownerOfStateKey, powerLevels, roomCreators, userLevel } from "#core/authrules.ts";
 import { validatePowerLevelContent } from "#core/rooms.ts";
 import { SUPPORTED_ROOM_VERSIONS, previousMembership, roomVersionFeatures, splitStateKey, toClientEvent } from "#core/events.ts";
 import { assertNotSuspended, type Session } from "#core/auth.ts";
@@ -11,7 +11,7 @@ import { inviteDecision } from "#core/invitefilter.ts";
 import { v } from "#core/vpm.ts";
 import { body, fail } from "#http/input.ts";
 
-export const parseToken = (token: string | null): number | null => {
+export const parseToken = (token: string | null) => {
   if (token === null || token === "") return null;
   const m = /^[st]?(\d+)/.exec(token);
   if (!m) throw errors.invalidParam("Invalid pagination token");
@@ -20,7 +20,7 @@ export const parseToken = (token: string | null): number | null => {
 
 export const viewerOf = (s: Session) => ({ userId: s.userId, deviceId: s.deviceId });
 
-export async function requireRoom(hs: Homeserver, roomId: string): Promise<string> {
+export async function requireRoom(hs: Homeserver, roomId: string) {
   if (!isValidRoomId(roomId)) throw errors.invalidParam("Invalid room ID");
   const version = await hs.rooms.roomVersion(roomId);
   if (!version) throw errors.forbidden("Room not found or you are not a member");
@@ -31,7 +31,7 @@ export async function requireRoom(hs: Homeserver, roomId: string): Promise<strin
  * State visible to the user: current state when joined (or world readable),
  * otherwise the state at the moment they left.
  */
-export async function visibleState(hs: Homeserver, roomId: string, userId: string): Promise<StateMap> {
+export async function visibleState(hs: Homeserver, roomId: string, userId: string) {
   await requireRoom(hs, roomId);
   const { joined, worldReadable, membership } = await hs.rooms.canPeek(roomId, userId);
   if (joined || worldReadable) return hs.rooms.currentState(roomId);
@@ -50,17 +50,11 @@ export async function visibleState(hs: Homeserver, roomId: string, userId: strin
   throw errors.forbidden("You are not a member of this room");
 }
 
-export async function ownEvent(hs: Homeserver, userId: string, eventId: unknown): Promise<boolean> {
+export async function ownEvent(hs: Homeserver, userId: string, eventId: unknown) {
   return typeof eventId === "string" && (await hs.rooms.getPdu(eventId))?.sender === userId;
 }
 
-async function validateStateEvent(
-  hs: Homeserver,
-  roomId: string,
-  type: string,
-  content: Record<string, unknown>,
-  stateKeyValue = "",
-): Promise<void> {
+async function validateStateEvent(hs: Homeserver, roomId: string, type: string, content: Record<string, unknown>, stateKeyValue = "") {
   if (type === M.ROOM.CREATE) throw errors.badJson("The create event cannot be sent");
   if (
     stateKeyValue.startsWith("@") &&
@@ -86,7 +80,7 @@ async function validateStateEvent(
   }
 }
 
-async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersion: string, additionalCreators?: unknown): Promise<string> {
+async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersion: string, additionalCreators?: unknown) {
   if (!SUPPORTED_ROOM_VERSIONS.includes(newVersion)) throw errors.unsupportedRoomVersion();
   const version = await requireRoom(hs, roomId);
   const state = await hs.rooms.requireJoined(roomId, s.userId);
@@ -185,7 +179,7 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   return newRoomId;
 }
 
-export function registerRoomRoutes(r: Router): void {
+export function registerRoomRoutes(r: Router) {
   // The room service checks the createRoom request in detail.
   r.client(
     "POST",

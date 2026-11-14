@@ -346,12 +346,12 @@ export class Homeserver extends EventEmitter {
     this.ready.catch((err) => this.logger.error("Homeserver failed to start", err));
   }
 
-  get signingKey(): SigningKey {
+  get signingKey() {
     if (!this._signingKey) throw new Error("Homeserver not ready");
     return this._signingKey;
   }
 
-  private async init(options: HomeserverOptions): Promise<void> {
+  private async init(options: HomeserverOptions) {
     // The storage contract (#58, see DatabaseAdapter): without transactions, writes are applied one by one.
     if (!this.db.transaction)
       this.logger.warn("The database adapter has no transaction(): a crash during a write can leave a room event half stored");
@@ -395,7 +395,7 @@ export class Homeserver extends EventEmitter {
   }
 
   /** Remove expired tokens, abandoned uploads and old notifications. */
-  async cleanup(): Promise<void> {
+  async cleanup() {
     const now = Date.now();
     // https://github.com/k18k/katrix/issues/67: every row expired for a week
     // was deleted, with its refresh token, which does not expire; only spent ones go now.
@@ -419,7 +419,7 @@ export class Homeserver extends EventEmitter {
   }
 
   /** Stop background work and release long-polling requests. Call before shutting down your HTTP server. */
-  async close(): Promise<void> {
+  async close() {
     if (this.closed) return;
     this.closed = true;
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
@@ -433,7 +433,7 @@ export class Homeserver extends EventEmitter {
     this.emit("close");
   }
 
-  get isClosed(): boolean {
+  get isClosed() {
     return this.closed;
   }
 
@@ -441,7 +441,7 @@ export class Homeserver extends EventEmitter {
    * Effective registration mode: an admin's runtime setting overrides the configuration.
    * "open" | "token" | "closed".
    */
-  async registrationMode(): Promise<"open" | "token" | "closed"> {
+  async registrationMode() {
     const setting = await this.settings.get<string>("registration");
     if (setting === "open" || setting === "token" || setting === "closed") return setting;
     if (!this.userAuth.registrationEnabled) return "closed";
@@ -449,13 +449,13 @@ export class Homeserver extends EventEmitter {
   }
 
   /** Whether `/register` is allowed right now, including the first-user exception. */
-  async registrationAllowed(): Promise<boolean> {
+  async registrationAllowed() {
     if ((await this.registrationMode()) !== "closed") return true;
     return !!this.adminRoom?.options.firstUserCanRegister && (await this.adminRoom.noUsersYet());
   }
 
   /** Run `fn` atomically when the database adapter supports transactions. */
-  transaction<T>(fn: (db: DatabaseAdapter) => Promise<T>): Promise<T> {
+  transaction<T>(fn: (db: DatabaseAdapter) => Promise<T>) {
     // A transaction under a cluster lock whose lease was lost neither starts nor commits (#57).
     const fenced = async (db: DatabaseAdapter) => {
       assertLeases();
@@ -467,7 +467,7 @@ export class Homeserver extends EventEmitter {
   }
 
   /** The user's current profile, as included in member events. */
-  async profile(userId: string): Promise<{ displayname?: string; avatar_url?: string }> {
+  async profile(userId: string) {
     const user = await this.db.findOne("users", [{ field: "user_id", value: userId }]);
     const out: { displayname?: string; avatar_url?: string } = {};
     if (user?.displayname) out.displayname = user.displayname;
@@ -475,11 +475,11 @@ export class Homeserver extends EventEmitter {
     return out;
   }
 
-  isLocalUser(userId: string): boolean {
+  isLocalUser(userId: string) {
     return userId.endsWith(`:${this.serverName}`);
   }
 }
 
-export function createHomeserver(options: HomeserverOptions): Homeserver {
+export function createHomeserver(options: HomeserverOptions) {
   return new Homeserver(options);
 }

@@ -49,7 +49,7 @@ for (const [net, prefix] of [
 }
 
 /** Whether an IP address is loopback, private, link-local, multicast or otherwise not public. */
-export function isPrivateAddress(address: string): boolean {
+export function isPrivateAddress(address: string) {
   const family = isIP(address);
   return family !== 0 && privateRanges.check(address, family === 6 ? "ipv6" : "ipv4");
 }
@@ -92,12 +92,12 @@ export function addressPolicy(allowPrivate: boolean | string[] | undefined): Add
   };
 }
 
-function privateAddressError(host: string): NodeJS.ErrnoException {
+function privateAddressError(host: string) {
   return Object.assign(new Error(`${host} resolves to a private address`), { code: "EPRIVATE" });
 }
 
 /** Refuse an IP literal the policy does not allow (literals are connected to without a lookup). */
-export function checkLiteral(policy: AddressPolicy, host: string): void {
+export function checkLiteral(policy: AddressPolicy, host: string) {
   const literal = host.replace(/^\[|\]$/g, "");
   if (isIP(literal) && !policy.allows(literal)) throw errors.forbidden("Address is private");
 }
@@ -180,11 +180,7 @@ export interface PublicResponse {
 }
 
 /** GET a URL through a `policyFetch`, following redirects (each one checked again) and capping the body. */
-export async function publicGet(
-  fetchFn: typeof globalThis.fetch,
-  rawUrl: string | URL,
-  options: PublicGetOptions,
-): Promise<PublicResponse> {
+export async function publicGet(fetchFn: typeof globalThis.fetch, rawUrl: string | URL, options: PublicGetOptions) {
   let url = new URL(rawUrl);
   const signal = AbortSignal.timeout(options.timeoutMs ?? 30_000);
   for (let redirects = 0; ; redirects++) {

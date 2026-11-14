@@ -26,7 +26,7 @@ export class PolicyServers {
   }
 
   /** The room's policy server, if the room uses one (valid `m.room.policy` and a joined user on `via`). */
-  async policyOf(roomId: string): Promise<RoomPolicy | null> {
+  async policyOf(roomId: string) {
     const state = await this.hs.rooms.currentState(roomId);
     const content = getState(state, M.ROOM.POLICY, "")?.content;
     const via = content?.via;
@@ -51,18 +51,18 @@ export class PolicyServers {
   }
 
   /** The policy state event itself is never sent to the policy server. */
-  private exempt(pdu: PDU): boolean {
+  private exempt(pdu: PDU) {
     return pdu.type === M.ROOM.POLICY && pdu.state_key === "";
   }
 
-  private validSignature(pdu: PDU, version: string, policy: RoomPolicy): boolean {
+  private validSignature(pdu: PDU, version: string, policy: RoomPolicy) {
     // Signatures cover the redacted federation form (without our local `event_id`).
     const wire = this.hs.federation.toFederationPdu(pdu, version) as Record<string, unknown>;
     return verifyJsonSignature(redact(wire, version), policy.via, KEY_ID, policy.key);
   }
 
   /** Ask the policy server to sign `pdu`; adds the signature to it. Throws the server's error. */
-  private async requestSignature(pdu: PDU, version: string, policy: RoomPolicy): Promise<void> {
+  private async requestSignature(pdu: PDU, version: string, policy: RoomPolicy) {
     const res = await this.hs.federation.client.request(policy.via, "POST", "/_matrix/policy/v1/sign", {
       body: this.hs.federation.toFederationPdu(pdu, version),
       timeoutMs: 10_000,
@@ -78,7 +78,7 @@ export class PolicyServers {
    * policy server's error. If the policy server cannot be reached the event is sent unsigned (other
    * servers may then soft-fail it), so an unavailable policy server does not lock up the room.
    */
-  async signLocal(roomId: string, version: string, pdu: PDU): Promise<void> {
+  async signLocal(roomId: string, version: string, pdu: PDU) {
     if (this.exempt(pdu) || !this.hs.federation.enabled) return;
     const policy = await this.policyOf(roomId);
     if (!policy) return;
@@ -97,7 +97,7 @@ export class PolicyServers {
   }
 
   /** Whether a remote event is recommended for inclusion (otherwise it is soft-failed). */
-  async recommended(roomId: string, version: string, pdu: PDU): Promise<boolean> {
+  async recommended(roomId: string, version: string, pdu: PDU) {
     if (this.exempt(pdu)) return true;
     const policy = await this.policyOf(roomId);
     if (!policy) return true;

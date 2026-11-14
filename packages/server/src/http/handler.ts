@@ -12,18 +12,18 @@ const CORS_HEADERS: Record<string, string> = {
 };
 
 /** JSON response with a canonical (sorted, compact) body, needed where clients verify signatures over the raw bytes. */
-export function canonicalJsonResponse(body: unknown): Response {
+export function canonicalJsonResponse(body: unknown) {
   return new Response(canonicalJson(body), { status: 200, headers: { "content-type": "application/json", ...CORS_HEADERS } });
 }
 
-export function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+export function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json", ...CORS_HEADERS, ...headers },
   });
 }
 
-function withCors(res: Response): Response {
+function withCors(res: Response) {
   // Some responses (e.g. Response.redirect) have immutable headers, so copy before adding CORS.
   const out = new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
   for (const [k, v] of Object.entries(CORS_HEADERS)) if (!out.headers.has(k)) out.headers.set(k, v);
@@ -45,7 +45,7 @@ export const maxRequestBody = (hs: Homeserver) => hs.media.maxUploadSize ?? DEFA
  * The reader is released rather than cancelled: cancelling a Node request stream destroys the socket, and the
  * client would get a reset instead of the 413.
  */
-async function readBody(request: Request, limit: number): Promise<Uint8Array> {
+async function readBody(request: Request, limit: number) {
   if (Number(request.headers.get("content-length")) > limit) throw errors.tooLarge("Request body too large");
   if (!request.body) return new Uint8Array();
   const reader = request.body.getReader();
@@ -76,7 +76,7 @@ export interface HandleOptions {
 }
 
 /** Turn a web-standard Request into a Response. */
-export async function handleRequest(hs: Homeserver, request: Request, options: HandleOptions = {}): Promise<Response> {
+export async function handleRequest(hs: Homeserver, request: Request, options: HandleOptions = {}) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   const url = new URL(request.url);
   const started = performance.now();
@@ -98,7 +98,7 @@ export async function handleRequest(hs: Homeserver, request: Request, options: H
   return response;
 }
 
-async function dispatch(hs: Homeserver, request: Request, url: URL, options: HandleOptions): Promise<Response> {
+async function dispatch(hs: Homeserver, request: Request, url: URL, options: HandleOptions) {
   try {
     if (hs.isClosed) throw new MatrixError(503, "M_UNKNOWN", "Server is shutting down");
     await hs.ready;
@@ -200,13 +200,13 @@ const NETWORK_CODES = new Set([
   "CERT_HAS_EXPIRED",
 ]);
 
-function isNetworkError(err: unknown): boolean {
+function isNetworkError(err: unknown) {
   if (!(err instanceof Error)) return false;
   const code = (err as NodeJS.ErrnoException).code;
   return (code !== undefined && NETWORK_CODES.has(code)) || /^(Connection timed out|Federation request timed out)$/.test(err.message);
 }
 
-function extractToken(request: Request, url: URL): string | null {
+function extractToken(request: Request, url: URL) {
   const header = request.headers.get("authorization");
   if (header) {
     const m = /^Bearer\s+(.+)$/i.exec(header);

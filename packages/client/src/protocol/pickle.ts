@@ -29,7 +29,7 @@ function keys(p: CryptoPrimitives, key: PickleKey) {
   return { aes: okm.slice(0, 32), mac: okm.slice(32) };
 }
 
-export function writePickle(p: CryptoPrimitives, kind: string, state: Pickled, key?: PickleKey): string {
+export function writePickle(p: CryptoPrimitives, kind: string, state: Pickled, key?: PickleKey) {
   const json = JSON.stringify({ format: FORMAT, kind, ...state });
   if (!key) return json;
   const k = keys(p, key);
@@ -39,7 +39,7 @@ export function writePickle(p: CryptoPrimitives, kind: string, state: Pickled, k
   return "e1:" + encodeBase64(concatBytes(iv, ciphertext, mac));
 }
 
-export function readPickle(p: CryptoPrimitives, kind: string, pickle: string, key?: PickleKey): Pickled {
+export function readPickle(p: CryptoPrimitives, kind: string, pickle: string, key?: PickleKey) {
   let json: string;
   if (pickle.startsWith("e1:")) {
     if (!key) throw new ProtocolError("BAD_PICKLE_KEY", "This pickle is encrypted; a pickle key is needed");
@@ -76,7 +76,7 @@ export function readPickle(p: CryptoPrimitives, kind: string, pickle: string, ke
 
 /** Field readers for unpickling: a missing or malformed field is a corrupted pickle. */
 export const field = {
-  bytes(state: Pickled, name: string, length?: number): Uint8Array {
+  bytes(state: Pickled, name: string, length?: number) {
     const v = state[name];
     if (typeof v !== "string") throw new ProtocolError("BAD_PICKLE", "Corrupted pickle");
     let bytes: Uint8Array;
@@ -88,22 +88,22 @@ export const field = {
     if (length !== undefined && bytes.length !== length) throw new ProtocolError("BAD_PICKLE", "Corrupted pickle");
     return bytes;
   },
-  uint(state: Pickled, name: string): number {
+  uint(state: Pickled, name: string) {
     const v = state[name];
     if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 0xffffffff) throw new ProtocolError("BAD_PICKLE", "Corrupted pickle");
     return v;
   },
-  bool(state: Pickled, name: string): boolean {
+  bool(state: Pickled, name: string) {
     const v = state[name];
     if (typeof v !== "boolean") throw new ProtocolError("BAD_PICKLE", "Corrupted pickle");
     return v;
   },
-  array(state: Pickled, name: string): Pickled[] {
+  array(state: Pickled, name: string) {
     const v = state[name];
     if (!Array.isArray(v) || v.some((x) => typeof x !== "object" || x === null)) throw new ProtocolError("BAD_PICKLE", "Corrupted pickle");
     return v as Pickled[];
   },
-  optional(state: Pickled, name: string): Pickled | undefined {
+  optional(state: Pickled, name: string) {
     const v = state[name];
     if (v === undefined || v === null) return undefined;
     if (typeof v !== "object") throw new ProtocolError("BAD_PICKLE", "Corrupted pickle");
@@ -114,7 +114,7 @@ export const field = {
 export const b64 = (bytes: Uint8Array) => encodeBase64(bytes);
 
 /** Decode a Base64 key from the wire, as a protocol error (not echoing it) when malformed. */
-export function decodeKey(value: string, length: number): Uint8Array {
+export function decodeKey(value: string, length: number) {
   let bytes: Uint8Array;
   try {
     bytes = decodeBase64(value);

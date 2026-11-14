@@ -64,7 +64,7 @@ export class OAuthDelegation {
   }
 
   /** Validate an access token by introspection, provisioning the user and device on first use. */
-  async authenticate(token: string): Promise<Session> {
+  async authenticate(token: string) {
     const cached = this.cache.get(token);
     if (cached && cached.expires > Date.now()) return cached.session;
     const endpoint = this.options.introspectionEndpoint ?? stringOrUndefined((await this.serverMetadata()).introspection_endpoint);
@@ -126,7 +126,7 @@ export class OAuthDelegation {
     return session;
   }
 
-  forget(token: string): void {
+  forget(token: string) {
     this.cache.delete(token);
   }
 }

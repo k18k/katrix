@@ -32,7 +32,7 @@ export interface RawResponse {
   body: Buffer;
 }
 
-function splitHostPort(name: string): { host: string; port: number | null } {
+function splitHostPort(name: string) {
   const ipv6 = /^\[([^\]]+)\](?::(\d+))?$/.exec(name);
   if (ipv6) return { host: ipv6[1], port: ipv6[2] ? Number(ipv6[2]) : null };
   const idx = name.lastIndexOf(":");
@@ -53,7 +53,7 @@ export class FederationClient {
     this.rejectUnauthorized = opts.rejectUnauthorized ?? true;
   }
 
-  private agentFor(key: string): Agent {
+  private agentFor(key: string) {
     let agent = this.agents.get(key);
     if (!agent) {
       agent = new Agent({ keepAlive: true, maxSockets: 16, rejectUnauthorized: this.rejectUnauthorized });
@@ -63,7 +63,7 @@ export class FederationClient {
   }
 
   /** Drop pooled connections to a destination (after errors, the peer may have restarted). */
-  resetConnections(destination: string): void {
+  resetConnections(destination: string) {
     const agent = this.agents.get(destination);
     if (agent) {
       agent.destroy();
@@ -73,7 +73,7 @@ export class FederationClient {
   }
 
   /** Build the X-Matrix Authorization header value for a request. */
-  authHeader(destination: string, method: string, uri: string, content?: unknown): string {
+  authHeader(destination: string, method: string, uri: string, content?: unknown) {
     const key = this.hs.signingKey;
     const toSign: Record<string, unknown> = { method, uri, origin: this.hs.serverName, destination };
     if (content !== undefined) toSign.content = content;
@@ -81,7 +81,7 @@ export class FederationClient {
     return `X-Matrix origin="${this.hs.serverName}",destination="${destination}",key="ed25519:${key.keyId}",sig="${sig}"`;
   }
 
-  async resolve(serverName: string): Promise<Resolved> {
+  async resolve(serverName: string) {
     const cached = this.resolved.get(serverName);
     if (cached && cached.expires > Date.now()) return cached;
     const r = await this.discover(serverName);
@@ -89,7 +89,7 @@ export class FederationClient {
     return r;
   }
 
-  private async discover(serverName: string): Promise<Resolved> {
+  private async discover(serverName: string) {
     const day = Date.now() + 24 * 3600_000;
     const { host, port } = splitHostPort(serverName);
     // 1/2. IP literals and explicit ports are used as-is.
@@ -111,7 +111,7 @@ export class FederationClient {
     return { host, port: 8448, hostHeader: host, tlsName: host, expires: Date.now() + 3600_000 };
   }
 
-  private async wellKnown(host: string): Promise<string | null> {
+  private async wellKnown(host: string) {
     try {
       const res = await this.raw(
         { host, port: 443, hostHeader: host, tlsName: host, expires: 0 },
@@ -129,7 +129,7 @@ export class FederationClient {
     }
   }
 
-  private async srv(host: string): Promise<{ host: string; port: number } | null> {
+  private async srv(host: string) {
     for (const name of [`_matrix-fed._tcp.${host}`, `_matrix._tcp.${host}`]) {
       try {
         const records = await resolveSrv(name);
@@ -216,7 +216,7 @@ export class FederationClient {
     });
   }
 
-  private pathWithQuery(path: string, query?: FederationRequestOptions["query"]): string {
+  private pathWithQuery(path: string, query?: FederationRequestOptions["query"]) {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(query ?? {})) {
       if (v === undefined) continue;
@@ -227,7 +227,7 @@ export class FederationClient {
   }
 
   /** Send a request and return the raw response (used for media). */
-  async requestRaw(destination: string, method: string, path: string, opts: FederationRequestOptions = {}): Promise<RawResponse> {
+  async requestRaw(destination: string, method: string, path: string, opts: FederationRequestOptions = {}) {
     if (destination === this.hs.serverName) throw new Error("Refusing to send a federation request to ourselves");
     const uri = this.pathWithQuery(path, opts.query);
     const body = opts.body === undefined ? undefined : Buffer.from(JSON.stringify(opts.body));
@@ -267,7 +267,7 @@ export class FederationClient {
 }
 
 /** Parse an `Authorization: X-Matrix ...` header. */
-export function parseXMatrix(header: string): { origin: string; destination?: string; key: string; sig: string } | null {
+export function parseXMatrix(header: string) {
   const m = /^X-Matrix\s+(.*)$/i.exec(header.trim());
   if (!m) return null;
   const params: Record<string, string> = {};

@@ -6,7 +6,7 @@ import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
 export type StateMap = Map<string, PDU>;
 
 /** MSC3757: the user owning a state key of the form "@user:server" or "@user:server_suffix". */
-export function ownerOfStateKey(stateKeyValue: string): string | null {
+export function ownerOfStateKey(stateKeyValue: string) {
   const key: string = stateKeyValue;
   if (!key.startsWith("@")) return null;
   if (isValidUserId(stateKeyValue)) return stateKeyValue;
@@ -18,21 +18,21 @@ export function ownerOfStateKey(stateKeyValue: string): string | null {
   return isValidUserId(owner) ? owner : null;
 }
 
-export function getState(state: StateMap, type: string, key = ""): PDU | undefined {
+export function getState(state: StateMap, type: string, key = "") {
   return state.get(stateKey(type, key));
 }
 
-export function membershipOf(state: StateMap, userId: string): string {
+export function membershipOf(state: StateMap, userId: string) {
   return stringOrUndefined(getState(state, M.ROOM.MEMBER, userId)?.content?.membership) ?? "leave";
 }
 
-export function roomCreator(state: StateMap, roomVersion: string): string | undefined {
+export function roomCreator(state: StateMap, roomVersion: string) {
   const create = getState(state, M.ROOM.CREATE);
   if (!create) return undefined;
   return roomVersionFeatures(roomVersion).v11 ? create.sender : (stringOrUndefined(create.content.creator) ?? create.sender);
 }
 
-const toInt = (v: unknown, fallback: number): number => {
+const toInt = (v: unknown, fallback: number) => {
   if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
   if (typeof v === "string" && /^\s*[+-]?\d+\s*$/.test(v)) return Number.parseInt(v, 10);
   return fallback;
@@ -64,7 +64,7 @@ export interface PowerLevels {
   notifications: Record<string, number>;
 }
 
-export function powerLevels(state: StateMap, roomVersion: string): PowerLevels {
+export function powerLevels(state: StateMap, roomVersion: string) {
   const pl = getState(state, M.ROOM.POWER_LEVELS)?.content;
   const creators = roomCreators(state, roomVersion);
   if (!pl) {
@@ -104,12 +104,12 @@ export function powerLevels(state: StateMap, roomVersion: string): PowerLevels {
   };
 }
 
-export function userLevel(pl: PowerLevels, userId: string): number {
+export function userLevel(pl: PowerLevels, userId: string) {
   if (pl.creators.has(userId)) return Infinity;
   return pl.users[userId] ?? pl.users_default;
 }
 
-export function requiredLevel(pl: PowerLevels, type: string, isState: boolean): number {
+export function requiredLevel(pl: PowerLevels, type: string, isState: boolean) {
   return pl.events[type] ?? (isState ? pl.state_default : pl.events_default);
 }
 
@@ -125,7 +125,7 @@ const domainOf = (id: string) => id.slice(id.indexOf(":") + 1);
 export function authEventKeys(
   event: { type: string; sender: string; state_key?: string; content: Record<string, unknown> },
   roomVersion: string,
-): string[] {
+) {
   if (event.type === M.ROOM.CREATE) return [];
   const keys = [stateKey(M.ROOM.POWER_LEVELS, ""), stateKey(M.ROOM.MEMBER, event.sender)];
   if (!roomVersionFeatures(roomVersion).v12) keys.unshift(stateKey(M.ROOM.CREATE, ""));
@@ -148,7 +148,7 @@ export function authEventKeys(
  * authorization rules (no duplicates, only expected types). For v12 the create event
  * (identified by the room ID) must be supplied separately.
  */
-export function authStateFromAuthEvents(event: PDU, authEvents: PDU[], roomVersion: string, createEvent?: PDU): StateMap {
+export function authStateFromAuthEvents(event: PDU, authEvents: PDU[], roomVersion: string, createEvent?: PDU) {
   const allowed = new Set(authEventKeys(event, roomVersion));
   const state: StateMap = new Map();
   for (const ev of authEvents) {
@@ -168,10 +168,10 @@ export function authStateFromAuthEvents(event: PDU, authEvents: PDU[], roomVersi
  * The Matrix authorization rules: throws M_FORBIDDEN if `event` is not allowed
  * given `state` (either its auth events or the state before it).
  */
-export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts: AuthCheckOptions = {}): void {
+export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts: AuthCheckOptions = {}) {
   const features = roomVersionFeatures(roomVersion);
   const n = versionNum(roomVersion);
-  const deny = (msg: string): never => {
+  const deny = (msg: string) => {
     throw errors.forbidden(msg);
   };
 
@@ -330,7 +330,7 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
   }
 }
 
-function checkThirdPartyInvite(event: PDU, state: StateMap): boolean {
+function checkThirdPartyInvite(event: PDU, state: StateMap) {
   const thirdPartyInvite = event.content?.third_party_invite;
   const signed = isObject(thirdPartyInvite) ? thirdPartyInvite.signed : undefined;
   if (!isObject(signed) || typeof signed.mxid !== "string" || typeof signed.token !== "string") return false;
@@ -369,7 +369,7 @@ const LEVEL_DEFAULTS = {
   invite: 0,
 } satisfies Record<(typeof LEVELS)[number], number>;
 
-function checkPowerLevelShape(event: PDU, integerOnly: boolean, deny: (m: string) => never): void {
+function checkPowerLevelShape(event: PDU, integerOnly: boolean, deny: (m: string) => never) {
   if (!integerOnly) return;
   const c = event.content ?? {};
   const isInt = (v: unknown) => typeof v === "number" && Number.isInteger(v);
@@ -389,7 +389,7 @@ function checkPowerLevelChange(
   integerOnly: boolean,
   checkNotifications: boolean,
   deny: (m: string) => never,
-): void {
+) {
   const c = event.content ?? {};
   checkPowerLevelShape(event, integerOnly, deny);
   if (!integerOnly) {

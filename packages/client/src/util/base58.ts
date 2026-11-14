@@ -7,7 +7,7 @@
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const INDEX = new Map([...ALPHABET].map((c, i) => [c, i]));
 
-export function encodeBase58(bytes: Uint8Array): string {
+export function encodeBase58(bytes: Uint8Array) {
   const digits: number[] = [];
   for (const byte of bytes) {
     let carry = byte;
@@ -31,7 +31,7 @@ export function encodeBase58(bytes: Uint8Array): string {
 }
 
 /** Throws on a character outside the alphabet. */
-export function decodeBase58(text: string): Uint8Array {
+export function decodeBase58(text: string) {
   const bytes: number[] = [];
   for (const c of text) {
     const value = INDEX.get(c);

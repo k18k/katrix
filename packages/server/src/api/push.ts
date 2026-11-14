@@ -19,7 +19,7 @@ const pusherBody = body({
   append: v.unknown().optional(),
 });
 
-function findRule(rules: Ruleset, kind: string, ruleId: string): Rule {
+function findRule(rules: Ruleset, kind: string, ruleId: string) {
   if (!KINDS.includes(kind)) throw errors.invalidParam("Unknown rule kind");
   const rule = rules[kind]?.find((r) => r.rule_id === ruleId);
   if (!rule) throw errors.notFound("Unknown push rule");
@@ -32,7 +32,7 @@ async function ruleCtx(ctx: RequestContext) {
   return { s, rules: await loadRules(ctx.hs, s.userId) };
 }
 
-export function registerPushRoutes(r: Router): void {
+export function registerPushRoutes(r: Router) {
   r.client(
     "GET",
     "/pushrules",

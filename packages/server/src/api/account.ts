@@ -40,7 +40,7 @@ const sharedSecretRegisterBody = body({
   displayname: lenient(v.string()),
 });
 
-function loginFlows(hs: Homeserver): LoginFlow[] {
+function loginFlows(hs: Homeserver) {
   // With delegated OAuth, clients must use the authorization server instead.
   if (hs.oauth) return [];
   // The spec: a server without the legacy API answers 404 M_UNRECOGNIZED.
@@ -61,7 +61,7 @@ function loginFlows(hs: Homeserver): LoginFlow[] {
 }
 
 /** Endpoints that manage passwords are unavailable when an OAuth provider owns the accounts. */
-function rejectIfDelegated(hs: Homeserver): void {
+function rejectIfDelegated(hs: Homeserver) {
   if (hs.oauthServer && !hs.oauthServer.legacyApi) throw errors.unrecognized("Use the OAuth 2.0 API");
   if (hs.oauth)
     throw new MatrixError(
@@ -72,7 +72,7 @@ function rejectIfDelegated(hs: Homeserver): void {
     );
 }
 
-export async function validateNewUsername(hs: Homeserver, raw: unknown): Promise<string> {
+export async function validateNewUsername(hs: Homeserver, raw: unknown) {
   if (typeof raw !== "string" || raw.length === 0) throw errors.invalidUsername("Username must be a non-empty string");
   const localpart = raw.startsWith("@") ? raw.slice(1).split(":")[0] : raw;
   if (!LOCALPART_RE.test(localpart)) throw errors.invalidUsername("Username contains invalid characters");
@@ -82,7 +82,7 @@ export async function validateNewUsername(hs: Homeserver, raw: unknown): Promise
   return localpart;
 }
 
-async function generateLocalpart(hs: Homeserver): Promise<string> {
+async function generateLocalpart(hs: Homeserver) {
   for (;;) {
     // Security (https://github.com/k18k/katrix/issues/6): this used Math.random, so generated user IDs were predictable (CWE-338).
     const candidate = String(randomInt(1e9));
@@ -94,7 +94,7 @@ export async function createUser(
   hs: Homeserver,
   localpart: string,
   opts: { password?: string; guest?: boolean; admin?: boolean; displayname?: string },
-): Promise<string> {
+) {
   const userId = `@${localpart}:${hs.serverName}`;
   await hs.db.create("users", {
     user_id: userId,
@@ -121,7 +121,7 @@ export async function checkPasswordLogin(
   userId: string,
   password: string,
   request: { ip: string | null; userAgent: string | null },
-): Promise<string> {
+) {
   let user = await hs.db.findOne("users", [{ field: "user_id", value: userId }]);
   const ok = await hs.userAuth.checkPassword({
     userId,
@@ -149,7 +149,7 @@ export async function checkPasswordLogin(
   return userId;
 }
 
-async function resolveLoginUser(hs: Homeserver, body: Record<string, unknown>): Promise<string> {
+async function resolveLoginUser(hs: Homeserver, body: Record<string, unknown>) {
   let user: unknown;
   // Third-party identifiers (and the legacy top-level medium/address) log in the account they belong to.
   const id = isObject(body.identifier) ? body.identifier : null;
@@ -209,7 +209,7 @@ export const ssoConfirmPage = (serverName: string, result: SsoResult) => {
 // Synapse does.
 const OAUTH_DISCOVERY_VERSIONS = ["v1", "unstable/org.matrix.msc2965"];
 
-export function registerAccountRoutes(r: Router): void {
+export function registerAccountRoutes(r: Router) {
   r.client("GET", "/login", procedure({ endpoint: "GET /v3/login", handler: (ctx) => ({ flows: loginFlows(ctx.hs) }) }));
 
   r.client(
@@ -669,7 +669,7 @@ export async function registrationFlows(hs: Homeserver): Promise<string[][]> {
   return hs.config.threepid.requireEmailForRegistration ? [withEmail] : [base, withEmail];
 }
 
-export async function registrationTokenValid(hs: Homeserver, token: string): Promise<boolean> {
+export async function registrationTokenValid(hs: Homeserver, token: string) {
   const row = await hs.db.findOne("registration_tokens", [{ field: "token", value: token }]);
   if (!row) return false;
   if (row.expiry_time !== null && row.expiry_time < Date.now()) return false;
@@ -684,7 +684,7 @@ export async function registrationTokenValid(hs: Homeserver, token: string): Pro
  * all passed the check, and a use was not counted at all when the token stage was not the last one. The token now
  * comes from the UIA session, and the check and the count happen together under a lock per token.
  */
-export async function redeemRegistrationToken(hs: Homeserver, token: string): Promise<void> {
+export async function redeemRegistrationToken(hs: Homeserver, token: string) {
   await hs.cluster.lock(`registration-token:${token}`, async () => {
     if (!(await registrationTokenValid(hs, token))) throw errors.forbidden("Invalid registration token");
     const row = (await hs.db.findOne("registration_tokens", [{ field: "token", value: token }]))!;
@@ -692,7 +692,7 @@ export async function redeemRegistrationToken(hs: Homeserver, token: string): Pr
   });
 }
 
-export function wellKnown(hs: Homeserver): WellKnownClient | null {
+export function wellKnown(hs: Homeserver) {
   if (!hs.config.publicBaseUrl) return null;
   const wk: WellKnownClient = { "m.homeserver": { base_url: hs.config.publicBaseUrl } };
   if (hs.config.rtc.transports?.length) wk[UNSTABLE.ORG.MATRIX.MSC4143.RTC_FOCI] = hs.config.rtc.transports;

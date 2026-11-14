@@ -27,7 +27,7 @@ export class Store {
   }
 
   /** Read committed state, outside any unit of work. */
-  async get<T>(store: StoreName, key: string): Promise<T | undefined> {
+  async get<T>(store: StoreName, key: string) {
     const raw = await this.adapter.get(store, key);
     return raw === undefined ? undefined : readJson<T>(raw);
   }
@@ -37,7 +37,7 @@ export class Store {
   }
 
   /** Run `task` as one unit of work. Its writes are applied atomically after it returns. */
-  transaction<T>(task: (tx: Transaction) => Promise<T>): Promise<T> {
+  transaction<T>(task: (tx: Transaction) => Promise<T>) {
     return this.mutex.run(async () => {
       const tx = new Transaction(this.adapter);
       const result = await task(tx);
@@ -46,7 +46,7 @@ export class Store {
     });
   }
 
-  close(): Promise<void> {
+  close() {
     return this.mutex.run(async () => {
       await this.adapter.close?.();
     });
@@ -68,7 +68,7 @@ export class Transaction {
     return `${store}\u0000${key}`;
   }
 
-  async get<T>(store: StoreName, key: string): Promise<T | undefined> {
+  async get<T>(store: StoreName, key: string) {
     const op = this.pending.get(Transaction.id(store, key));
     if (op) return op.type === "put" ? readJson<T>(op.value) : undefined;
     const raw = await this.adapter.get(store, key);
@@ -85,18 +85,18 @@ export class Transaction {
     return [...merged.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(([k, v]) => [k, readJson<T>(v)]);
   }
 
-  put(store: StoreName, key: string, value: unknown): void {
+  put(store: StoreName, key: string, value: unknown) {
     this.assertOpen();
     this.pending.set(Transaction.id(store, key), { type: "put", store, key, value: JSON.stringify(value) });
   }
 
-  delete(store: StoreName, key: string): void {
+  delete(store: StoreName, key: string) {
     this.assertOpen();
     this.pending.set(Transaction.id(store, key), { type: "delete", store, key });
   }
 
   /** Run `fn` once the batch is durable (for example, emit events about what was stored). */
-  onCommit(fn: () => void): void {
+  onCommit(fn: () => void) {
     this.afterCommit.push(fn);
   }
 
@@ -104,7 +104,7 @@ export class Transaction {
     if (this.committed) throw new Error("Write after the unit of work was committed");
   }
 
-  async commit(): Promise<void> {
+  async commit() {
     this.assertOpen();
     this.committed = true;
     if (this.pending.size > 0) await this.adapter.write([...this.pending.values()]);

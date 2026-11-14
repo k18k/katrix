@@ -1,7 +1,7 @@
 import type { CryptoPrimitives, KeyPair } from "../../crypto/primitives.ts";
 import { bytesEqual, concatBytes, encodeBase64, encodeUtf8, writeUint32BE } from "@katrix/shared";
 import { b64, decodeKey, field, readPickle, writePickle, type Pickled } from "../pickle.ts";
-import { ProtocolError, type IdentityKeys, type OlmAccount, type OlmMessage, type OlmSession, type PickleKey } from "../protocol.ts";
+import { ProtocolError, type OlmAccount, type OlmMessage, type PickleKey } from "../protocol.ts";
 import { decodeNormal, decodePreKey } from "./message.ts";
 import { ecdh, initialiseAsAlice, initialiseAsBob } from "./ratchet.ts";
 import { decodeBody, NativeOlmSession } from "./session.ts";
@@ -25,7 +25,7 @@ interface OneTimeKey {
 }
 
 /** libolm's key ID format: the 32-bit counter, big-endian, unpadded Base64 ("AAAAAQ"). */
-function keyIdString(id: number): string {
+function keyIdString(id: number) {
   const b = new Uint8Array(4);
   writeUint32BE(id, b, 0);
   return encodeBase64(b);
@@ -60,7 +60,7 @@ export class NativeOlmAccount implements OlmAccount {
     this.previousFallback = s.previousFallback;
   }
 
-  static create(p: CryptoPrimitives): NativeOlmAccount {
+  static create(p: CryptoPrimitives) {
     return new NativeOlmAccount(p, {
       curve25519: p.x25519GenerateKeyPair(),
       ed25519: p.ed25519GenerateKeyPair(),
@@ -69,50 +69,50 @@ export class NativeOlmAccount implements OlmAccount {
     });
   }
 
-  identityKeys(): IdentityKeys {
+  identityKeys() {
     return { curve25519: encodeBase64(this.curve25519.publicKey), ed25519: encodeBase64(this.ed25519.publicKey) };
   }
 
-  sign(message: string): string {
+  sign(message: string) {
     return encodeBase64(this.p.ed25519Sign(this.ed25519.secretKey, encodeUtf8(message)));
   }
 
-  maxNumberOfOneTimeKeys(): number {
+  maxNumberOfOneTimeKeys() {
     return MAX_ONE_TIME_KEYS / 2;
   }
 
-  generateOneTimeKeys(count: number): void {
+  generateOneTimeKeys(count: number) {
     for (let i = 0; i < count; i++) this.oneTime.push({ id: this.nextKeyId++, key: this.p.x25519GenerateKeyPair(), published: false });
     if (this.oneTime.length > MAX_ONE_TIME_KEYS) this.oneTime.splice(0, this.oneTime.length - MAX_ONE_TIME_KEYS);
   }
 
-  oneTimeKeys(): Record<string, string> {
+  oneTimeKeys() {
     const out: Record<string, string> = {};
     for (const k of this.oneTime) if (!k.published) out[keyIdString(k.id)] = encodeBase64(k.key.publicKey);
     return out;
   }
 
-  generateFallbackKey(): void {
+  generateFallbackKey() {
     this.previousFallback = this.fallback;
     this.fallback = { id: this.nextKeyId++, key: this.p.x25519GenerateKeyPair(), published: false };
   }
 
-  fallbackKey(): Record<string, string> {
+  fallbackKey() {
     return this.fallback && !this.fallback.published ? { [keyIdString(this.fallback.id)]: encodeBase64(this.fallback.key.publicKey) } : {};
   }
 
-  forgetFallbackKey(): boolean {
+  forgetFallbackKey() {
     const had = this.previousFallback !== undefined;
     this.previousFallback = undefined;
     return had;
   }
 
-  markKeysAsPublished(): void {
+  markKeysAsPublished() {
     for (const k of this.oneTime) k.published = true;
     if (this.fallback) this.fallback.published = true;
   }
 
-  createOutboundSession(identityKey: string, oneTimeKey: string): OlmSession {
+  createOutboundSession(identityKey: string, oneTimeKey: string) {
     const theirIdentity = decodeKey(identityKey, 32);
     const theirOneTime = decodeKey(oneTimeKey, 32);
     const base = this.p.x25519GenerateKeyPair();
@@ -131,7 +131,7 @@ export class NativeOlmAccount implements OlmAccount {
     );
   }
 
-  createInboundSession(theirIdentityKey: string, message: OlmMessage): { session: OlmSession; plaintext: Uint8Array } {
+  createInboundSession(theirIdentityKey: string, message: OlmMessage) {
     if (message.type !== 0) throw new ProtocolError("BAD_MESSAGE_FORMAT", "Only a pre-key message can start a session");
     const theirIdentity = decodeKey(theirIdentityKey, 32);
     const preKey = decodePreKey(decodeBody(message));
@@ -159,14 +159,14 @@ export class NativeOlmAccount implements OlmAccount {
     return { session, plaintext };
   }
 
-  private findKey(publicKey: Uint8Array): OneTimeKey | undefined {
+  private findKey(publicKey: Uint8Array) {
     return (
       this.oneTime.find((k) => bytesEqual(k.key.publicKey, publicKey)) ??
       [this.fallback, this.previousFallback].find((k) => k !== undefined && bytesEqual(k.key.publicKey, publicKey))
     );
   }
 
-  pickle(key?: PickleKey): string {
+  pickle(key?: PickleKey) {
     const keyJson = (k: OneTimeKey) => ({
       id: k.id,
       secret_key: b64(k.key.secretKey),
@@ -188,13 +188,13 @@ export class NativeOlmAccount implements OlmAccount {
     );
   }
 
-  static fromPickle(p: CryptoPrimitives, pickle: string, key?: PickleKey): NativeOlmAccount {
+  static fromPickle(p: CryptoPrimitives, pickle: string, key?: PickleKey) {
     const s = readPickle(p, "olm_account", pickle, key);
-    const pair = (j: Pickled | undefined): KeyPair => {
+    const pair = (j: Pickled | undefined) => {
       if (!j) throw new ProtocolError("BAD_PICKLE", "Corrupted pickle");
       return { secretKey: field.bytes(j, "secret_key", 32), publicKey: field.bytes(j, "public_key", 32) };
     };
-    const otk = (j: Pickled): OneTimeKey => ({ id: field.uint(j, "id"), key: pair(j), published: field.bool(j, "published") });
+    const otk = (j: Pickled) => ({ id: field.uint(j, "id"), key: pair(j), published: field.bool(j, "published") });
     const fallback = field.optional(s, "fallback");
     const previous = field.optional(s, "previous_fallback");
     const account = new NativeOlmAccount(p, {

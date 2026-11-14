@@ -23,7 +23,7 @@ export class KeyRing {
   }
 
   /** Get a verify key, fetching the server's keys when unknown or expired (as of `minValidUntil`). */
-  async getKey(serverName: string, keyId: string, minValidUntil = Date.now()): Promise<KeyObject | null> {
+  async getKey(serverName: string, keyId: string, minValidUntil = Date.now()) {
     if (serverName === this.hs.serverName) {
       return keyId === `ed25519:${this.hs.signingKey.keyId}` ? createPublicKey(this.hs.signingKey.privateKey) : null;
     }
@@ -48,13 +48,13 @@ export class KeyRing {
     return fetched && fetched.validUntil >= minValidUntil ? fetched.key : null;
   }
 
-  private remember(serverName: string, keyId: string, key: string, validUntil: number): void {
+  private remember(serverName: string, keyId: string, key: string, validUntil: number) {
     let m = this.cache.get(serverName);
     if (!m) this.cache.set(serverName, (m = new Map()));
     m.set(keyId, { key: publicKeyFromBase64(key), validUntil });
   }
 
-  private fetchKeys(serverName: string): Promise<void> {
+  private fetchKeys(serverName: string) {
     let p = this.inflight.get(serverName);
     if (!p) {
       p = this.doFetch(serverName).finally(() => this.inflight.delete(serverName));
@@ -63,7 +63,7 @@ export class KeyRing {
     return p;
   }
 
-  private async doFetch(serverName: string): Promise<void> {
+  private async doFetch(serverName: string) {
     try {
       const body = await this.hs.federation.client.request(serverName, "GET", "/_matrix/key/v2/server", { signed: false });
       await this.ingestServerKeys(serverName, body);
@@ -98,7 +98,7 @@ export class KeyRing {
   }
 
   /** Verify that `obj` carries a valid signature from `serverName`. */
-  async verifySignedBy(obj: object, serverName: string, minValidUntil?: number): Promise<boolean> {
+  async verifySignedBy(obj: object, serverName: string, minValidUntil?: number) {
     const { signatures }: Record<string, unknown> = { ...obj };
     const sigs = isObject(signatures) ? signatures[serverName] : undefined;
     if (!isObject(sigs)) return false;

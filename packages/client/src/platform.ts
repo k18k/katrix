@@ -36,11 +36,11 @@ interface PlatformGlobals {
 // types do not overlap the platform-neutral ones, so this one double cast stays.
 const g = globalThis as unknown as PlatformGlobals; // ts-pro-exception: globals typed per runtime; see above
 
-export function setTimer(fn: () => void, ms: number): TimerHandle {
+export function setTimer(fn: () => void, ms: number) {
   return g.setTimeout(fn, ms);
 }
 
-export function clearTimer(handle: TimerHandle): void {
+export function clearTimer(handle: TimerHandle) {
   g.clearTimeout(handle);
 }
 
@@ -60,7 +60,7 @@ export function sleep(ms: number, signal?: AbortSignalLike): Promise<void> {
   });
 }
 
-export function newAbortController(): AbortControllerLike {
+export function newAbortController() {
   if (!g.AbortController) throw new Error("AbortController is not available on this platform");
   return new g.AbortController();
 }
@@ -72,11 +72,11 @@ export class AbortError extends Error {
   }
 }
 
-export function abortError(): AbortError {
+export function abortError() {
   return new AbortError();
 }
 
-export function isAbortError(e: unknown): boolean {
+export function isAbortError(e: unknown) {
   return e instanceof Error && e.name === "AbortError";
 }
 
@@ -90,7 +90,7 @@ export function platformRandomValues(): ((array: Uint8Array) => Uint8Array) | un
   return (array) => c.getRandomValues!(array);
 }
 
-export function platformConsole(): PlatformGlobals["console"] {
+export function platformConsole() {
   return g.console;
 }
 
@@ -107,7 +107,7 @@ export interface FetchResponseLike {
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-export function platformFetch(): FetchLike | undefined {
+export function platformFetch() {
   const f = (globalThis as { fetch?: unknown }).fetch;
   return typeof f === "function" ? (f.bind(globalThis) as FetchLike) : undefined;
 }

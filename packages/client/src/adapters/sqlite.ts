@@ -38,7 +38,7 @@ class SqliteStorage implements StorageAdapter {
     this.table = table;
   }
 
-  private init(): Promise<void> {
+  private init() {
     this.ready ??= this.mutex.run(async () => {
       await this.db.run(
         `CREATE TABLE IF NOT EXISTS ${this.table} (store TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (store, key)) WITHOUT ROWID`,
@@ -48,7 +48,7 @@ class SqliteStorage implements StorageAdapter {
     return this.ready;
   }
 
-  async get(store: StoreName, key: string): Promise<string | undefined> {
+  async get(store: StoreName, key: string) {
     await this.init();
     return this.mutex.run(async () => {
       const rows = await this.db.all(`SELECT value FROM ${this.table} WHERE store = ? AND key = ?`, [store, key]);
@@ -57,7 +57,7 @@ class SqliteStorage implements StorageAdapter {
     });
   }
 
-  async list(store: StoreName, prefix: string): Promise<Array<[string, string]>> {
+  async list(store: StoreName, prefix: string) {
     await this.init();
     return this.mutex.run(async () => {
       const rows = await this.db.all(`SELECT key, value FROM ${this.table} WHERE store = ? AND key >= ? AND key < ? ORDER BY key`, [
@@ -69,7 +69,7 @@ class SqliteStorage implements StorageAdapter {
     });
   }
 
-  async write(batch: readonly WriteOp[]): Promise<void> {
+  async write(batch: readonly WriteOp[]) {
     if (batch.length === 0) return;
     await this.init();
     await this.mutex.run(async () => {
@@ -97,6 +97,6 @@ class SqliteStorage implements StorageAdapter {
 }
 
 /** Storage in an SQLite database (the table is created on first use; `table` defaults to "katrix"). */
-export function sqliteStorage(db: SqlExecutor, opts: { table?: string } = {}): StorageAdapter {
+export function sqliteStorage(db: SqlExecutor, opts: { table?: string } = {}) {
   return new SqliteStorage(db, opts.table ?? "katrix");
 }

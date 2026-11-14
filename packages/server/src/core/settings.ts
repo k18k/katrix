@@ -12,7 +12,7 @@ export class SettingsService {
     hs.cluster.subscribe(CLUSTER_RESYNC, () => this.cache.clear());
   }
 
-  async get<T>(key: string): Promise<T | null> {
+  async get<T>(key: string) {
     if (this.cache.has(key)) return this.cache.get(key) as T | null;
     const row = await this.hs.db.findOne("server_settings", [{ field: "key", value: key }]);
     const value = (row?.value ?? null) as T | null;
@@ -20,7 +20,7 @@ export class SettingsService {
     return value;
   }
 
-  async set(key: string, value: unknown): Promise<void> {
+  async set(key: string, value: unknown) {
     await this.hs.db.upsert("server_settings", { key, value });
     this.cache.set(key, value);
     await this.hs.cluster.publish("settings", { key });

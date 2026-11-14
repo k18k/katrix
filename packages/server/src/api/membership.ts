@@ -14,7 +14,7 @@ import { requireRoom } from "#api/rooms.ts";
  * Invite by email address or phone number (spec "Third-party invites"): invite the Matrix user the
  * identity server knows for it, or store the invite there and emit an m.room.third_party_invite.
  */
-async function inviteByThreepid(ctx: RequestContext, s: Session, raw: Record<string, unknown>): Promise<Record<string, never>> {
+async function inviteByThreepid(ctx: RequestContext, s: Session, raw: Record<string, unknown>) {
   const hs = ctx.hs;
   const roomId = ctx.params.roomId;
   const body = threepidInvite(raw);
@@ -74,7 +74,7 @@ export const membershipBody = body({ user_id: lenient(v.string()), reason: lenie
 async function sendMembership(
   ctx: ProcedureContext<"user", v.output<typeof membershipBody>>,
   membership: "leave" | "ban" | "unban" | "kick",
-): Promise<Record<string, never>> {
+) {
   const s = ctx.session;
   const roomId = ctx.params.roomId;
   // Leaving (and rejecting invites) stays possible while suspended; moderating others does not.
@@ -121,7 +121,7 @@ async function sendMembership(
   return {};
 }
 
-export function registerMembershipRoutes(r: Router): void {
+export function registerMembershipRoutes(r: Router) {
   // Unknown keys of a join request become part of the membership event's content.
   const joinBody = body({ reason: lenient(v.string()), third_party_signed: v.unknown().optional() });
   const join = async (ctx: ProcedureContext<"user", v.output<typeof joinBody>>, idOrAlias: string) => {

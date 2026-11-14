@@ -72,7 +72,7 @@ export class MegolmService {
   }
 
   /** Encrypt an event for a room: rotate the session if due, share it with new devices, encrypt. */
-  encrypt(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>): Promise<MegolmEncryptedContent> {
+  encrypt(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>) {
     return this.roomLocks.run(room.roomId, async () => {
       if (room.algorithm !== MEGOLM_ALGORITHM) throw new Error(`Unsupported room encryption algorithm ${room.algorithm}`);
       const all = await this.targetDevices(room);
@@ -87,7 +87,7 @@ export class MegolmService {
   }
 
   /** Devices to share with: every device with Megolm of every target user, except this one. */
-  private async targetDevices(room: RoomEncryptionInfo): Promise<DeviceInfo[]> {
+  private async targetDevices(room: RoomEncryptionInfo) {
     const users = [...new Set([...room.members, this.olm.userId])];
     await this.store.transaction((tx) => this.devices.track(tx, users));
     await this.devices.refresh(users);
@@ -108,7 +108,7 @@ export class MegolmService {
    * encryption settings or history visibility changed; or a device that has the key is no longer
    * a target (a member left, a device was removed), as it must not read what follows.
    */
-  private async prepareSession(room: RoomEncryptionInfo, targets: DeviceInfo[]): Promise<OutboundGroupSessionRecord> {
+  private async prepareSession(room: RoomEncryptionInfo, targets: DeviceInfo[]) {
     return this.store.transaction(async (tx) => {
       const existing = await tx.get<OutboundGroupSessionRecord>("outbound_group_sessions", room.roomId);
       const settings = {
@@ -160,7 +160,7 @@ export class MegolmService {
   }
 
   /** Send the session key (at its current index) to every target device that does not have it. */
-  private async share(room: RoomEncryptionInfo, record: OutboundGroupSessionRecord, targets: DeviceInfo[]): Promise<void> {
+  private async share(room: RoomEncryptionInfo, record: OutboundGroupSessionRecord, targets: DeviceInfo[]) {
     const pending = targets.filter((d) => {
       const s = record.sharedWith[`${d.userId}|${d.deviceId}`];
       // A device refused before (m.unverified) that is now allowed gets the key.
@@ -225,7 +225,7 @@ export class MegolmService {
   }
 
   /** Tell devices, once per session, that they will not get its key (m.room_key.withheld, unencrypted). */
-  private async withhold(room: RoomEncryptionInfo, devices: DeviceInfo[], code: string, reason: string): Promise<void> {
+  private async withhold(room: RoomEncryptionInfo, devices: DeviceInfo[], code: string, reason: string) {
     const record = (await this.store.get<OutboundGroupSessionRecord>("outbound_group_sessions", room.roomId))!;
     const fresh = devices.filter((d) => record.sharedWith[`${d.userId}|${d.deviceId}`]?.withheld !== code);
     if (fresh.length === 0) return;
@@ -256,7 +256,7 @@ export class MegolmService {
     });
   }
 
-  private encryptWith(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>): Promise<MegolmEncryptedContent> {
+  private encryptWith(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>) {
     return this.store.transaction(async (tx) => {
       const record = (await tx.get<OutboundGroupSessionRecord>("outbound_group_sessions", room.roomId))!;
       const session = this.pickler.outbound(record);
@@ -282,7 +282,7 @@ export class MegolmService {
   }
 
   /** Force a new session for the next message in the room (for example after a membership change). */
-  async discardSession(roomId: string): Promise<void> {
+  async discardSession(roomId: string) {
     await this.roomLocks.run(roomId, () => this.store.transaction(async (tx) => tx.delete("outbound_group_sessions", roomId)));
   }
 
@@ -291,7 +291,7 @@ export class MegolmService {
    * session key's signature is verified by the protocol (the key proves its own origin), and the
    * session ID must be the key's.
    */
-  async handleRoomKey(tx: Transaction, decrypted: DecryptedToDevice): Promise<{ roomId: string; sessionId: string } | undefined> {
+  async handleRoomKey(tx: Transaction, decrypted: DecryptedToDevice) {
     const c = decrypted.content;
     if (
       c.algorithm !== MEGOLM_ALGORITHM ||
@@ -346,7 +346,7 @@ export class MegolmService {
    * event's room; the session belongs to the event's sender; and no other event used the same
    * message index of the session before (a replay). Throws MegolmDecryptionError.
    */
-  async decrypt(event: MatrixEvent): Promise<{ clear: { type: string; content: Record<string, unknown> }; info: DecryptionInfo }> {
+  async decrypt(event: MatrixEvent) {
     const content = event.wire.content as Partial<MegolmEncryptedContent>;
     const roomId = event.roomId;
     if (content.algorithm !== MEGOLM_ALGORITHM) throw new MegolmDecryptionError("UNKNOWN_ALGORITHM", "Not a Megolm event");

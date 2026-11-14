@@ -14,14 +14,14 @@ import { paginate } from "#api/timeline.ts";
 
 const viewerOf = (s: Session) => ({ userId: s.userId, deviceId: s.deviceId });
 
-const parseStreamToken = (raw: string | null, fallback: number): number => {
+const parseStreamToken = (raw: string | null, fallback: number) => {
   if (raw === null) return fallback;
   const m = /^s(\d+)/.exec(raw);
   if (!m) throw errors.invalidParam("Invalid from token");
   return Number(m[1]);
 };
 
-async function roomAccountData(hs: Homeserver, userId: string, roomId: string): Promise<Record<string, unknown>[]> {
+async function roomAccountData(hs: Homeserver, userId: string, roomId: string) {
   const rows = await hs.db.findMany("account_data", {
     where: [
       { field: "user_id", value: userId },
@@ -32,7 +32,7 @@ async function roomAccountData(hs: Homeserver, userId: string, roomId: string): 
 }
 
 /** Current state and latest messages of a room the user may see (also for peeking). */
-async function roomInfo(hs: Homeserver, s: Session, roomId: string, limit: number): Promise<Record<string, unknown>> {
+async function roomInfo(hs: Homeserver, s: Session, roomId: string, limit: number) {
   const state = await visibleState(hs, roomId, s.userId);
   // Peekers who never were in the room have no membership.
   const row = await hs.db.findOne("memberships", [
@@ -61,7 +61,7 @@ async function roomInfo(hs: Homeserver, s: Session, roomId: string, limit: numbe
 }
 
 /** Events after `from` in the given rooms, oldest first. */
-async function eventsSince(hs: Homeserver, s: Session, roomIds: string[], from: number, limit: number): Promise<StoredEvent[]> {
+async function eventsSince(hs: Homeserver, s: Session, roomIds: string[], from: number, limit: number) {
   const all: StoredEvent[] = [];
   for (const roomId of roomIds) {
     const { events } = await paginate(hs, s.userId, roomId, { from: { depth: null, stream: from }, to: null, dir: "f", limit });
@@ -70,7 +70,7 @@ async function eventsSince(hs: Homeserver, s: Session, roomIds: string[], from: 
   return all.sort((a, b) => a.stream - b.stream).slice(0, limit);
 }
 
-export function registerLegacyRoutes(r: Router): void {
+export function registerLegacyRoutes(r: Router) {
   r.client(
     "GET",
     "/initialSync",

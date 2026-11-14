@@ -20,24 +20,24 @@ export interface MegolmRatchet {
   counter: number;
 }
 
-export function ratchetFromBytes(bytes: Uint8Array, counter: number): MegolmRatchet {
+export function ratchetFromBytes(bytes: Uint8Array, counter: number) {
   return { parts: [0, 1, 2, 3].map((j) => bytes.slice(j * 32, j * 32 + 32)), counter: counter >>> 0 };
 }
 
-export function ratchetBytes(r: MegolmRatchet): Uint8Array {
+export function ratchetBytes(r: MegolmRatchet) {
   return concatBytes(...r.parts);
 }
 
-export function copyRatchet(r: MegolmRatchet): MegolmRatchet {
+export function copyRatchet(r: MegolmRatchet) {
   return { parts: r.parts.map((x) => x.slice()), counter: r.counter };
 }
 
-function rehash(p: CryptoPrimitives, r: MegolmRatchet, from: number, to: number): void {
+function rehash(p: CryptoPrimitives, r: MegolmRatchet, from: number, to: number) {
   r.parts[to] = p.hmacSha256(r.parts[from], SEEDS[to]);
 }
 
 /** One step: i → i+1. */
-export function advance(p: CryptoPrimitives, r: MegolmRatchet): void {
+export function advance(p: CryptoPrimitives, r: MegolmRatchet) {
   r.counter = (r.counter + 1) >>> 0;
   // The lowest-numbered part whose period divides the new counter is rehashed, with all after it.
   let h = 0;
@@ -52,7 +52,7 @@ export function advance(p: CryptoPrimitives, r: MegolmRatchet): void {
 }
 
 /** Jump forward to `index` (≥ the current counter; the caller checks). */
-export function advanceTo(p: CryptoPrimitives, r: MegolmRatchet, index: number): void {
+export function advanceTo(p: CryptoPrimitives, r: MegolmRatchet, index: number) {
   index = index >>> 0;
   for (let j = 0; j < 4; j++) {
     const shift = (3 - j) * 8;

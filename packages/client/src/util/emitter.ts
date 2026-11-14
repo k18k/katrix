@@ -7,14 +7,14 @@ export class TypedEmitter<Events extends { [K in keyof Events]: unknown[] }> {
   /** Called when a listener throws; the emitter itself never throws to the code that emits. */
   protected onListenerError: (event: keyof Events, error: unknown) => void = () => {};
 
-  on<K extends keyof Events>(event: K, listener: Listener<Events[K]>): () => void {
+  on<K extends keyof Events>(event: K, listener: Listener<Events[K]>) {
     let set = this.listeners.get(event);
     if (!set) this.listeners.set(event, (set = new Set()));
     set.add(listener);
     return () => this.off(event, listener);
   }
 
-  once<K extends keyof Events>(event: K, listener: Listener<Events[K]>): () => void {
+  once<K extends keyof Events>(event: K, listener: Listener<Events[K]>) {
     const wrapped: Listener<Events[K]> = (...args) => {
       this.off(event, wrapped);
       listener(...args);
@@ -22,11 +22,11 @@ export class TypedEmitter<Events extends { [K in keyof Events]: unknown[] }> {
     return this.on(event, wrapped);
   }
 
-  off<K extends keyof Events>(event: K, listener: Listener<Events[K]>): void {
+  off<K extends keyof Events>(event: K, listener: Listener<Events[K]>) {
     this.listeners.get(event)?.delete(listener);
   }
 
-  removeAllListeners(event?: keyof Events): void {
+  removeAllListeners(event?: keyof Events) {
     if (event === undefined) this.listeners.clear();
     else this.listeners.delete(event);
   }
@@ -35,7 +35,7 @@ export class TypedEmitter<Events extends { [K in keyof Events]: unknown[] }> {
    * Calls listeners synchronously in registration order. A listener that throws does not stop the
    * others, nor the sync loop that emitted: the error goes to onListenerError.
    */
-  emit<K extends keyof Events>(event: K, ...args: Events[K]): void {
+  emit<K extends keyof Events>(event: K, ...args: Events[K]) {
     const set = this.listeners.get(event);
     if (!set) return;
     // A copy: listeners added while emitting are not called for this event.

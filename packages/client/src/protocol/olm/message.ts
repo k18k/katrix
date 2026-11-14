@@ -30,7 +30,7 @@ export interface NormalMessage {
 }
 
 /** The normal message without its MAC; the caller appends HMAC(authenticated)[0..8]. */
-export function encodeNormalBody(ratchetKey: Uint8Array, chainIndex: number, ciphertext: Uint8Array): Uint8Array {
+export function encodeNormalBody(ratchetKey: Uint8Array, chainIndex: number, ciphertext: Uint8Array) {
   return new WireWriter()
     .byte(VERSION)
     .bytesField(T_RATCHET_KEY, ratchetKey)
@@ -39,7 +39,7 @@ export function encodeNormalBody(ratchetKey: Uint8Array, chainIndex: number, cip
     .finish();
 }
 
-export function decodeNormal(bytes: Uint8Array): NormalMessage {
+export function decodeNormal(bytes: Uint8Array) {
   if (bytes.length < 1) throw new ProtocolError("BAD_MESSAGE_FORMAT", "Empty message");
   if (bytes[0] !== VERSION) throw new ProtocolError("BAD_MESSAGE_VERSION", "Unsupported Olm message version");
   if (bytes.length < 1 + MAC_LENGTH) throw new ProtocolError("BAD_MESSAGE_FORMAT", "Truncated message");
@@ -59,7 +59,7 @@ export interface PreKeyMessage {
   message: Uint8Array;
 }
 
-export function encodePreKey(m: { oneTimeKey: Uint8Array; baseKey: Uint8Array; identityKey: Uint8Array; message: Uint8Array }): Uint8Array {
+export function encodePreKey(m: { oneTimeKey: Uint8Array; baseKey: Uint8Array; identityKey: Uint8Array; message: Uint8Array }) {
   return new WireWriter()
     .byte(VERSION)
     .bytesField(T_ONE_TIME_KEY, m.oneTimeKey)
@@ -69,7 +69,7 @@ export function encodePreKey(m: { oneTimeKey: Uint8Array; baseKey: Uint8Array; i
     .finish();
 }
 
-export function decodePreKey(bytes: Uint8Array): PreKeyMessage {
+export function decodePreKey(bytes: Uint8Array) {
   if (bytes.length < 1) throw new ProtocolError("BAD_MESSAGE_FORMAT", "Empty message");
   if (bytes[0] !== VERSION) throw new ProtocolError("BAD_MESSAGE_VERSION", "Unsupported Olm message version");
   const fields = readFields(bytes.subarray(1));
@@ -81,6 +81,6 @@ export function decodePreKey(bytes: Uint8Array): PreKeyMessage {
   return { oneTimeKey, baseKey, identityKey, message };
 }
 
-export function withMac(authenticated: Uint8Array, mac: Uint8Array): Uint8Array {
+export function withMac(authenticated: Uint8Array, mac: Uint8Array) {
   return concatBytes(authenticated, mac.subarray(0, MAC_LENGTH));
 }

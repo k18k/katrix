@@ -23,14 +23,14 @@ export class AdminService {
 
   // --- Users ------------------------------------------------------------------
 
-  async createUser(localpart: string, opts: { password?: string; admin?: boolean; displayname?: string } = {}): Promise<string> {
+  async createUser(localpart: string, opts: { password?: string; admin?: boolean; displayname?: string } = {}) {
     const lp = localpart.toLowerCase();
     if (!LOCALPART_RE.test(lp)) throw errors.invalidUsername();
     if (await this.getUser(`@${lp}:${this.hs.serverName}`)) throw errors.userInUse();
     return createUser(this.hs, lp, opts);
   }
 
-  async getUser(userId: string): Promise<Record<string, unknown> | null> {
+  async getUser(userId: string) {
     const row = await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]);
     if (!row) return null;
     const { password_hash, ...rest } = row;
@@ -53,7 +53,7 @@ export class AdminService {
     };
   }
 
-  async setAdmin(userId: string, admin: boolean): Promise<void> {
+  async setAdmin(userId: string, admin: boolean) {
     if (!(await this.hs.db.update("users", [{ field: "user_id", value: userId }], { is_admin: admin })))
       throw errors.notFound("Unknown user");
     await this.hs.auth.invalidateUser(userId);
@@ -62,20 +62,20 @@ export class AdminService {
   }
 
   /** Lock or unlock an account (reversible; sessions are kept but unusable while locked). */
-  async setLocked(userId: string, locked: boolean, actor = "server"): Promise<void> {
+  async setLocked(userId: string, locked: boolean, actor = "server") {
     if (!(await this.hs.db.update("users", [{ field: "user_id", value: userId }], { locked }))) throw errors.notFound("Unknown user");
     await this.hs.auth.invalidateUser(userId);
     await this.hs.audit.record({ action: locked ? "user_lock" : "user_unlock", actor, target: userId });
   }
 
   /** Suspend or unsuspend an account (reversible; the user can still read, leave and log out). */
-  async setSuspended(userId: string, suspended: boolean, actor = "server"): Promise<void> {
+  async setSuspended(userId: string, suspended: boolean, actor = "server") {
     if (!(await this.hs.db.update("users", [{ field: "user_id", value: userId }], { suspended }))) throw errors.notFound("Unknown user");
     await this.hs.auth.invalidateUser(userId);
     await this.hs.audit.record({ action: suspended ? "user_suspend" : "user_unsuspend", actor, target: userId });
   }
 
-  async resetPassword(userId: string, password: string, logoutDevices = true): Promise<void> {
+  async resetPassword(userId: string, password: string, logoutDevices = true) {
     const hash = await this.hs.userAuth.hashPassword(password);
     if (!(await this.hs.db.update("users", [{ field: "user_id", value: userId }], { password_hash: hash })))
       throw errors.notFound("Unknown user");
@@ -83,7 +83,7 @@ export class AdminService {
   }
 
   /** Deactivate an account: leave all rooms, log out everywhere and (optionally) erase the profile. */
-  async deactivateUser(userId: string, opts: { erase?: boolean } = {}): Promise<void> {
+  async deactivateUser(userId: string, opts: { erase?: boolean } = {}) {
     const user = await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]);
     if (!user) throw errors.notFound("Unknown user");
     for (const membership of ["join", "invite", "knock"]) {
@@ -120,7 +120,7 @@ export class AdminService {
     return this.hs.db.findMany("registration_tokens");
   }
 
-  async deleteRegistrationToken(token: string): Promise<void> {
+  async deleteRegistrationToken(token: string) {
     if (!(await this.hs.db.delete("registration_tokens", [{ field: "token", value: token }]))) throw errors.notFound("Unknown token");
   }
 
@@ -131,7 +131,7 @@ export class AdminService {
    * directly; otherwise a local member who may invite invites them first (the invite shows in the
    * room, so its members see who added them). Returns the room ID.
    */
-  async joinUser(userId: string, roomIdOrAlias: string): Promise<string> {
+  async joinUser(userId: string, roomIdOrAlias: string) {
     if (!this.hs.isLocalUser(userId) || !(await this.getUser(userId))) throw errors.notFound("Unknown user");
     const roomId = await this.hs.rooms.resolveRoomIdOrAlias(roomIdOrAlias);
     const version = await this.hs.rooms.roomVersion(roomId);
@@ -167,7 +167,7 @@ export class AdminService {
   }
 
   /** Remove everyone from a room, delist it and drop its aliases. With `purge`, also delete its history. */
-  async deleteRoom(roomId: string, opts: { actor?: string; reason?: string; purge?: boolean } = {}): Promise<{ kicked: string[] }> {
+  async deleteRoom(roomId: string, opts: { actor?: string; reason?: string; purge?: boolean } = {}) {
     if (!(await this.hs.rooms.exists(roomId))) throw errors.notFound("Unknown room");
     const kicked: string[] = [];
     for (const membership of ["join", "invite", "knock"]) {
@@ -212,13 +212,13 @@ export class AdminService {
 
   // --- Media --------------------------------------------------------------------
 
-  async deleteMedia(mediaId: string): Promise<void> {
+  async deleteMedia(mediaId: string) {
     await this.hs.media.delete?.(mediaId);
     await this.hs.db.delete("media", [{ field: "media_id", value: mediaId }]);
   }
 
   /** Delete local media uploaded before `beforeTs`. Returns the deleted media IDs. */
-  async purgeMediaBefore(beforeTs: number): Promise<string[]> {
+  async purgeMediaBefore(beforeTs: number) {
     const rows = await this.hs.db.findMany("media", { where: [{ field: "created_ts", operator: "lt", value: beforeTs }] });
     for (const r of rows) await this.deleteMedia(r.media_id);
     return rows.map((r) => r.media_id);
@@ -226,18 +226,18 @@ export class AdminService {
 
   // --- Server notices -------------------------------------------------------------
 
-  get noticeUserId(): string {
+  get noticeUserId() {
     return `@${this.hs.config.serverNotices.localpart}:${this.hs.serverName}`;
   }
 
   /** Whether `roomId` is a server notices room (members may not reject or leave its invites). */
-  async isNoticeRoom(roomId: string): Promise<boolean> {
+  async isNoticeRoom(roomId: string) {
     const room = await this.hs.db.findOne("rooms", [{ field: "room_id", value: roomId }]);
     return room?.creator === this.noticeUserId;
   }
 
   /** Send a message to a user in their server notices room, creating or re-inviting as needed. */
-  async sendServerNotice(userId: string, content: Record<string, unknown>, opts: { type?: string; txnId?: string } = {}): Promise<string> {
+  async sendServerNotice(userId: string, content: Record<string, unknown>, opts: { type?: string; txnId?: string } = {}) {
     if (!isValidUserId(userId) || !this.hs.isLocalUser(userId)) throw errors.invalidParam("Server notices can only be sent to local users");
     if (!(await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]))) throw errors.notFound("Unknown user");
     const txnKey = opts.txnId ? `notice-txn:${userId}|${opts.txnId}` : null;
@@ -258,7 +258,7 @@ export class AdminService {
     return eventId;
   }
 
-  private async noticeRoomFor(userId: string): Promise<string> {
+  private async noticeRoomFor(userId: string) {
     const noticeUser = this.noticeUserId;
     const rooms = await this.hs.db.findMany("rooms", { where: [{ field: "creator", value: noticeUser }] });
     for (const room of rooms) {

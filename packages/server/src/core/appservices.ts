@@ -41,7 +41,7 @@ const compile = (ns: AppServiceNamespace[] = []) => ns.map((n) => ({ exclusive: 
  * Parse an application service registration file. Accepts JSON or the YAML subset
  * used by registration files (nested mappings and lists of mappings, scalars).
  */
-export function parseAppServiceRegistration(text: string): AppServiceRegistration {
+export function parseAppServiceRegistration(text: string) {
   const trimmed = text.trim();
   if (trimmed.startsWith("{")) return JSON.parse(trimmed);
   return parseSimpleYaml(text) as AppServiceRegistration;
@@ -71,7 +71,7 @@ function parseScalar(raw: string): unknown {
  * Security (https://github.com/k18k/katrix/issues/4): this was the regex `/\s+#.*$/`, polynomial on long whitespace runs (ReDoS,
  * CWE-1333); registration files are operator-provided, but a malformed one could hang startup.
  */
-function stripComment(line: string): string {
+function stripComment(line: string) {
   for (let i = 0; i < line.length; i++) {
     if (line[i] === "#" && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i).trimEnd();
   }
@@ -86,7 +86,7 @@ function parseSimpleYaml(text: string): unknown {
     .filter((l) => l.trim() !== "")
     .map((l) => ({ indent: l.length - l.trimStart().length, text: l.trim() }));
   let i = 0;
-  const parseBlock = (indent: number): unknown => {
+  const parseBlock = (indent: number) => {
     if (i < lines.length && lines[i].text.startsWith("- ")) {
       const list: unknown[] = [];
       while (i < lines.length && lines[i].indent === indent && lines[i].text.startsWith("- ")) {
@@ -122,7 +122,7 @@ function parseSimpleYaml(text: string): unknown {
 }
 
 /** Load every *.yaml / *.yml / *.json registration in a directory. */
-export async function loadAppServiceRegistrations(directory: string): Promise<AppServiceRegistration[]> {
+export async function loadAppServiceRegistrations(directory: string) {
   let names: string[];
   try {
     names = await readdir(directory);
@@ -152,42 +152,42 @@ export class AppServiceService {
     }));
   }
 
-  get registrations(): AppServiceRegistration[] {
+  get registrations() {
     return this.services.map((s) => s.reg);
   }
 
-  byToken(token: string): AppServiceRegistration | null {
+  byToken(token: string) {
     return this.services.find((s) => s.reg.as_token === token)?.reg ?? null;
   }
 
-  byId(id: string): AppServiceRegistration | null {
+  byId(id: string) {
     return this.services.find((s) => s.reg.id === id)?.reg ?? null;
   }
 
-  senderOf(reg: AppServiceRegistration): string {
+  senderOf(reg: AppServiceRegistration) {
     return `@${reg.sender_localpart}:${this.hs.serverName}`;
   }
 
-  private compiled(reg: AppServiceRegistration): CompiledService {
+  private compiled(reg: AppServiceRegistration) {
     return this.services.find((s) => s.reg === reg)!;
   }
 
   /** Whether the AS owns this user ID (its sender or its user namespace). */
-  isInterestedUser(reg: AppServiceRegistration, userId: string): boolean {
+  isInterestedUser(reg: AppServiceRegistration, userId: string) {
     return userId === this.senderOf(reg) || (this.hs.isLocalUser(userId) && this.compiled(reg).users.some((n) => n.re.test(userId)));
   }
 
   /** An exclusive namespace owned by some AS (other than `except`) covers this user ID. */
-  exclusiveUserOwner(userId: string): AppServiceRegistration | null {
+  exclusiveUserOwner(userId: string) {
     return this.services.find((s) => s.users.some((n) => n.exclusive && n.re.test(userId)))?.reg ?? null;
   }
 
-  exclusiveAliasOwner(alias: string): AppServiceRegistration | null {
+  exclusiveAliasOwner(alias: string) {
     return this.services.find((s) => s.aliases.some((n) => n.exclusive && n.re.test(alias)))?.reg ?? null;
   }
 
   /** Resolve the user an AS request acts as (masquerading with `user_id`). */
-  async masquerade(reg: AppServiceRegistration, userIdParam: string | null): Promise<string> {
+  async masquerade(reg: AppServiceRegistration, userIdParam: string | null) {
     const userId = userIdParam ?? this.senderOf(reg);
     if (!this.isInterestedUser(reg, userId)) throw errors.forbidden("Application service cannot masquerade as this user");
     if (userId === this.senderOf(reg) && !(await this.hs.db.findOne("users", [{ field: "user_id", value: userId }]))) {
@@ -212,7 +212,7 @@ export class AppServiceService {
   // Event push
   // ---------------------------------------------------------------------------
 
-  private async interestedInEvent(svc: CompiledService, pdu: PDU, state: StateMap): Promise<boolean> {
+  private async interestedInEvent(svc: CompiledService, pdu: PDU, state: StateMap) {
     const reg = svc.reg;
     if (this.isInterestedUser(reg, pdu.sender)) return true;
     if (pdu.type === M.ROOM.MEMBER && typeof pdu.state_key === "string" && this.isInterestedUser(reg, pdu.state_key)) return true;
@@ -229,7 +229,7 @@ export class AppServiceService {
   }
 
   /** Queue an event for every interested application service. */
-  async onEvent(pdu: PDU, state: StateMap): Promise<void> {
+  async onEvent(pdu: PDU, state: StateMap) {
     for (const svc of this.services) {
       if (!svc.reg.url || !(await this.interestedInEvent(svc, pdu, state))) continue;
       await this.enqueue(svc.reg, "event", toClientEvent(pdu));
@@ -237,7 +237,7 @@ export class AppServiceService {
   }
 
   /** Queue an ephemeral event (typing/receipt/presence) for interested services that asked for them. */
-  async onEphemeral(roomId: string | null, event: object, users: string[]): Promise<void> {
+  async onEphemeral(roomId: string | null, event: object, users: string[]) {
     for (const svc of this.services) {
       const reg = svc.reg;
       if (!reg.url || !(reg.receive_ephemeral || reg[UNSTABLE.DE.SORUNOME.MSC2409.PUSH_EPHEMERAL])) continue;
@@ -253,13 +253,13 @@ export class AppServiceService {
     }
   }
 
-  private async enqueue(reg: AppServiceRegistration, kind: string, payload: object): Promise<void> {
+  private async enqueue(reg: AppServiceRegistration, kind: string, payload: object) {
     const id = await this.hs.cluster.nextId("appservice_outbox");
     await this.hs.db.create("appservice_outbox", { id, as_id: reg.id, kind, payload, created_ts: Date.now() });
     this.schedule(reg.id, 0);
   }
 
-  private schedule(asId: string, delay: number): void {
+  private schedule(asId: string, delay: number) {
     if (this.hs.isClosed || (this.timers.has(asId) && delay > 0)) return;
     const existing = this.timers.get(asId);
     if (existing) clearTimeout(existing);
@@ -273,7 +273,7 @@ export class AppServiceService {
 
   private retries = new Map<string, number>();
 
-  private async flush(asId: string): Promise<void> {
+  private async flush(asId: string) {
     const reg = this.byId(asId);
     if (!reg?.url) return;
     await this.hs.cluster.lock(`appservice:${asId}`, async () => {
@@ -312,11 +312,11 @@ export class AppServiceService {
     });
   }
 
-  start(): void {
+  start() {
     for (const s of this.services) if (s.reg.url) this.schedule(s.reg.id, 0);
   }
 
-  stop(): void {
+  stop() {
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
   }
@@ -325,7 +325,7 @@ export class AppServiceService {
   // Queries to application services
   // ---------------------------------------------------------------------------
 
-  private async query(reg: AppServiceRegistration, path: string): Promise<Response | null> {
+  private async query(reg: AppServiceRegistration, path: string) {
     if (!reg.url) return null;
     try {
       return await this.hs.fetch(`${reg.url.replace(/\/$/, "")}${path}`, {
@@ -338,7 +338,7 @@ export class AppServiceService {
   }
 
   /** Ask the owning AS whether a user exists (it may create it). */
-  async queryUser(userId: string): Promise<boolean> {
+  async queryUser(userId: string) {
     for (const svc of this.services) {
       if (!svc.users.some((n) => n.re.test(userId))) continue;
       const res = await this.query(svc.reg, `/_matrix/app/v1/users/${encodeURIComponent(userId)}`);
@@ -348,7 +348,7 @@ export class AppServiceService {
   }
 
   /** Ask the owning AS about an alias; returns the room ID if it now exists. */
-  async queryAlias(alias: string): Promise<string | null> {
+  async queryAlias(alias: string) {
     for (const svc of this.services) {
       if (!svc.aliases.some((n) => n.re.test(alias))) continue;
       const res = await this.query(svc.reg, `/_matrix/app/v1/rooms/${encodeURIComponent(alias)}`);
@@ -360,7 +360,7 @@ export class AppServiceService {
     return null;
   }
 
-  async ping(reg: AppServiceRegistration, transactionId?: string): Promise<number> {
+  async ping(reg: AppServiceRegistration, transactionId?: string) {
     if (!reg.url) throw new MatrixError(400, "M_URL_NOT_SET", "Application service has no URL");
     const started = Date.now();
     let res: Response;
@@ -382,7 +382,7 @@ export class AppServiceService {
     return Date.now() - started;
   }
 
-  async thirdParty(path: string, query: URLSearchParams): Promise<unknown[]> {
+  async thirdParty(path: string, query: URLSearchParams) {
     const results: unknown[] = [];
     for (const svc of this.services) {
       const res = await this.query(svc.reg, `/_matrix/app/v1/thirdparty/${path}${query.toString() ? `?${query}` : ""}`);
@@ -394,7 +394,7 @@ export class AppServiceService {
     return results;
   }
 
-  async protocols(): Promise<Record<string, unknown>> {
+  async protocols() {
     const out: Record<string, unknown> = {};
     for (const svc of this.services) {
       for (const protocol of svc.reg.protocols ?? []) {

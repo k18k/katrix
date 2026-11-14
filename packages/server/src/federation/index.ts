@@ -54,7 +54,7 @@ export interface FederationOptions {
 export const domainOf = (id: string) => id.slice(id.indexOf(":") + 1);
 
 /** Server ACL check (m.room.server_acl). */
-export function serverAllowedByAcl(state: StateMap, serverName: string): boolean {
+export function serverAllowedByAcl(state: StateMap, serverName: string) {
   const acl = getState(state, M.ROOM.SERVER_ACL)?.content;
   if (!isObject(acl)) return true;
   const host = serverName.replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
@@ -90,13 +90,13 @@ export class FederationService {
     this.sender = new TransactionSender(hs);
   }
 
-  serverAllowed(serverName: string): boolean {
+  serverAllowed(serverName: string) {
     if (this.options.blockedServers?.includes(serverName)) return false;
     if (this.options.allowedServers && !this.options.allowedServers.includes(serverName)) return false;
     return true;
   }
 
-  private requireEnabled(): void {
+  private requireEnabled() {
     if (!this.enabled) throw errors.forbidden("Federation is disabled");
   }
 
@@ -132,7 +132,7 @@ export class FederationService {
    * Verify an incoming PDU: event ID, signatures and content hash. Events with a bad
    * content hash are redacted (as the spec requires) rather than rejected.
    */
-  async verifyPdu(raw: unknown, version: string, roomId: string): Promise<{ pdu: PDU; joinAuthorisedSignatureValid?: boolean }> {
+  async verifyPdu(raw: unknown, version: string, roomId: string) {
     if (!isPdu(raw)) {
       throw errors.badJson("Malformed PDU");
     }
@@ -173,7 +173,7 @@ export class FederationService {
   // ---------------------------------------------------------------------------
 
   /** Servers with joined members in a room (excluding ourselves). */
-  serversInRoom(state: StateMap, applyAcl = true): Set<string> {
+  serversInRoom(state: StateMap, applyAcl = true) {
     const servers = new Set<string>();
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
@@ -188,7 +188,7 @@ export class FederationService {
    * Servers to send a room's traffic to: joined servers per the state, plus, while the room's
    * state is partial (MSC3902), the servers the resident server said were in the room.
    */
-  async roomDestinations(roomId: string, state: StateMap, applyAcl = true): Promise<Set<string>> {
+  async roomDestinations(roomId: string, state: StateMap, applyAcl = true) {
     const destinations = this.serversInRoom(state, applyAcl);
     for (const s of await this.hs.partialState.servers(roomId)) {
       if (s !== this.hs.serverName && this.serverAllowed(s) && (!applyAcl || serverAllowedByAcl(state, s))) destinations.add(s);
@@ -197,7 +197,7 @@ export class FederationService {
   }
 
   /** Send a newly created local event to every server in the room. */
-  onLocalEvent(pdu: PDU, state: StateMap): void {
+  onLocalEvent(pdu: PDU, state: StateMap) {
     if (!this.enabled) return;
     void (async () => {
       // A server denied by a new ACL still needs to receive the ACL event itself.
@@ -213,7 +213,7 @@ export class FederationService {
   }
 
   /** Send an EDU to every server in the given rooms. */
-  async sendEduToRooms(roomIds: string[], eduType: string, content: Record<string, unknown>, durable = true): Promise<void> {
+  async sendEduToRooms(roomIds: string[], eduType: string, content: Record<string, unknown>, durable = true) {
     if (!this.enabled) return;
     const destinations = new Set<string>();
     for (const roomId of roomIds) {
@@ -224,7 +224,7 @@ export class FederationService {
   }
 
   /** Servers sharing a room with a local user. */
-  async serversSharingRooms(userId: string): Promise<Set<string>> {
+  async serversSharingRooms(userId: string) {
     const out = new Set<string>();
     for (const roomId of await this.hs.rooms.roomsForUser(userId)) {
       for (const s of await this.roomDestinations(roomId, await this.hs.rooms.currentState(roomId))) out.add(s);
@@ -232,18 +232,18 @@ export class FederationService {
     return out;
   }
 
-  async onTyping(roomId: string, userId: string, typing: boolean): Promise<void> {
+  async onTyping(roomId: string, userId: string, typing: boolean) {
     if (this.hs.isLocalUser(userId)) await this.sendEduToRooms([roomId], M.TYPING, { room_id: roomId, user_id: userId, typing }, false);
   }
 
-  async onReceipt(roomId: string, userId: string, receiptType: string, eventId: string, ts: number, threadId: string): Promise<void> {
+  async onReceipt(roomId: string, userId: string, receiptType: string, eventId: string, ts: number, threadId: string) {
     if (!this.hs.isLocalUser(userId) || receiptType === M.READ.PRIVATE) return;
     const data: Record<string, unknown> = { ts };
     if (threadId) data.thread_id = threadId;
     await this.sendEduToRooms([roomId], M.RECEIPT, { [roomId]: { [receiptType]: { [userId]: { event_ids: [eventId], data } } } });
   }
 
-  async onPresence(userId: string, presence: string, statusMsg: string | null): Promise<void> {
+  async onPresence(userId: string, presence: string, statusMsg: string | null) {
     if (!this.enabled || !this.hs.isLocalUser(userId)) return;
     const servers = await this.serversSharingRooms(userId);
     if (!servers.size) return;
@@ -266,7 +266,7 @@ export class FederationService {
   }
 
   /** Tell servers sharing rooms with a local user that their device list changed. */
-  async onDeviceListChange(userId: string, deletedDeviceId?: string, to?: Set<string>): Promise<void> {
+  async onDeviceListChange(userId: string, deletedDeviceId?: string, to?: Set<string>) {
     if (!this.enabled || !this.hs.isLocalUser(userId)) return;
     const servers = to ?? (await this.serversSharingRooms(userId));
     if (!servers.size) return;
@@ -295,7 +295,7 @@ export class FederationService {
     }
   }
 
-  async onSigningKeyUpdate(userId: string): Promise<void> {
+  async onSigningKeyUpdate(userId: string) {
     if (!this.enabled || !this.hs.isLocalUser(userId)) return;
     const servers = await this.serversSharingRooms(userId);
     if (!servers.size) return;
@@ -306,7 +306,7 @@ export class FederationService {
   }
 
   /** Deliver to-device messages addressed to remote users. */
-  async sendToDevice(sender: string, type: string, messages: Record<string, Record<string, unknown>>, messageId: string): Promise<void> {
+  async sendToDevice(sender: string, type: string, messages: Record<string, Record<string, unknown>>, messageId: string) {
     if (!this.enabled) return;
     const byServer = new Map<string, Record<string, unknown>>();
     for (const [userId, devices] of Object.entries(messages)) {
@@ -323,7 +323,7 @@ export class FederationService {
   // Inbound transactions
   // ---------------------------------------------------------------------------
 
-  async receiveTransaction(origin: string, txnId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async receiveTransaction(origin: string, txnId: string, body: Record<string, unknown>) {
     const key = `fedtxn:${origin}|${txnId}`;
     void this.sender.wake(origin);
     // Retries of a transaction (possibly hitting another instance) get the original result.
@@ -343,7 +343,7 @@ export class FederationService {
     return p;
   }
 
-  private async processTransaction(origin: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async processTransaction(origin: string, body: Record<string, unknown>) {
     const pdus = Array.isArray(body.pdus) ? body.pdus.slice(0, 50) : [];
     const edus = Array.isArray(body.edus) ? body.edus.slice(0, 100) : [];
     const results: Record<string, unknown> = {};
@@ -380,7 +380,7 @@ export class FederationService {
    * A PDU for a room we are not in can still matter: a local user's invite being
    * rescinded or their knock being accepted/rejected.
    */
-  private async handleOutOfRoomMembership(origin: string, roomId: string, raw: Record<string, unknown>): Promise<string> {
+  private async handleOutOfRoomMembership(origin: string, roomId: string, raw: Record<string, unknown>) {
     if (raw?.type !== M.ROOM.MEMBER || typeof raw.state_key !== "string" || !this.hs.isLocalUser(raw.state_key)) {
       throw errors.notFound("Unknown room");
     }
@@ -431,7 +431,7 @@ export class FederationService {
   }
 
   /** Process one incoming PDU (caller holds the room lock). */
-  async handlePdu(origin: string, roomId: string, version: string, raw: Record<string, unknown>, depth = 0): Promise<void> {
+  async handlePdu(origin: string, roomId: string, version: string, raw: Record<string, unknown>, depth = 0) {
     const state = await this.hs.rooms.currentState(roomId);
     if (!serverAllowedByAcl(state, origin)) throw errors.forbidden("Server is denied by the room's ACL");
     const { pdu, joinAuthorisedSignatureValid } = await this.verifyPdu(raw, version, roomId);
@@ -518,13 +518,7 @@ export class FederationService {
    * fetch the state at it (/state_ids) plus the event itself, then resolve all
    * predecessors' states. Throws if a required event cannot be fetched.
    */
-  async stateFromPrevs(
-    origin: string,
-    roomId: string,
-    version: string,
-    prevIds: string[],
-    opts: { remote?: boolean } = {},
-  ): Promise<Record<string, string>> {
+  async stateFromPrevs(origin: string, roomId: string, version: string, prevIds: string[], opts: { remote?: boolean } = {}) {
     const sets: Record<string, string>[] = [];
     for (const prev of prevIds) {
       // `remote`: our own view of the state is incomplete (partial-state join), so always ask.
@@ -546,7 +540,7 @@ export class FederationService {
     return resolveState(sets, version, (ids) => this.hs.rooms.getPdus(ids), create);
   }
 
-  private async fetchMissingAuthEvents(origin: string, roomId: string, version: string, pdu: PDU): Promise<void> {
+  private async fetchMissingAuthEvents(origin: string, roomId: string, version: string, pdu: PDU) {
     const authIds = (pdu.auth_events ?? []).map(eventIdOf);
     const missing = [];
     for (const id of authIds) if (!(await this.hs.rooms.knowsEvent(id))) missing.push(id);
@@ -580,7 +574,7 @@ export class FederationService {
   }
 
   /** Fill a gap with /get_missing_events. Returns false when the response contained invalid events. */
-  private async fetchMissingPrevEvents(origin: string, roomId: string, version: string, pdu: PDU): Promise<boolean> {
+  private async fetchMissingPrevEvents(origin: string, roomId: string, version: string, pdu: PDU) {
     const earliest = await this.hs.rooms.extremities(roomId);
     let res: unknown;
     try {
@@ -615,12 +609,12 @@ export class FederationService {
   }
 
   /** Fetch one event from a remote server and store it as an outlier. */
-  private async fetchEvent(origin: string, roomId: string, version: string, eventId: string): Promise<void> {
+  private async fetchEvent(origin: string, roomId: string, version: string, eventId: string) {
     const raw = await this.fetchRawEvent(origin, eventId);
     if (raw) await this.storeOutliers(roomId, version, [raw]);
   }
 
-  private async fetchRawEvent(origin: string, eventId: string): Promise<Record<string, unknown> | null> {
+  private async fetchRawEvent(origin: string, eventId: string) {
     const r = await this.client.request(origin, "GET", `/_matrix/federation/v1/event/${encodeURIComponent(eventId)}`);
     return Array.isArray(r.pdus) && isObject(r.pdus[0]) ? r.pdus[0] : null;
   }
@@ -629,7 +623,7 @@ export class FederationService {
    * Fetch the state before an event from a remote server. Uses /state_ids and
    * fetches only unknown events (falling back to /state), storing them as outliers.
    */
-  async fetchStateBefore(origin: string, roomId: string, version: string, eventId: string): Promise<Record<string, string>> {
+  async fetchStateBefore(origin: string, roomId: string, version: string, eventId: string) {
     let stateIds: string[];
     let res: unknown = null;
     // Computing the state of a large room can take the remote server a while.
@@ -682,7 +676,7 @@ export class FederationService {
   }
 
   /** Verify and store events that are not (yet) part of the timeline. */
-  async storeOutliers(roomId: string, version: string, raws: unknown[]): Promise<void> {
+  async storeOutliers(roomId: string, version: string, raws: unknown[]) {
     const verified: PDU[] = [];
     for (const raw of raws) {
       if (!isObject(raw)) continue;
@@ -711,7 +705,7 @@ export class FederationService {
   }
 
   /** Check an outlier against its own auth events. Returns a rejection reason, or null. */
-  private async checkOutlierAuth(roomId: string, version: string, pdu: PDU): Promise<string | null> {
+  private async checkOutlierAuth(roomId: string, version: string, pdu: PDU) {
     const authIds = (pdu.auth_events ?? []).map(eventIdOf);
     const authPdus: PDU[] = [];
     for (const id of authIds) {
@@ -741,14 +735,14 @@ export class FederationService {
    * Whether a remote user's ephemeral activity (typing, receipts) in a room is accepted: they are
    * joined, or the room's state is partial (MSC3902) and their server is one of the room's servers.
    */
-  private async mayActInRoom(roomId: string, userId: string, origin: string): Promise<boolean> {
+  private async mayActInRoom(roomId: string, userId: string, origin: string) {
     const membership = await this.hs.rooms.membership(roomId, userId);
     if (membership === "join") return true;
     if (membership !== "leave" || !(await this.hs.partialState.isPartial(roomId))) return false;
     return (await this.hs.partialState.servers(roomId)).includes(origin);
   }
 
-  async handleEdu(origin: string, edu: Record<string, unknown>): Promise<void> {
+  async handleEdu(origin: string, edu: Record<string, unknown>) {
     const content = edu?.content;
     if (!isObject(content)) return;
     switch (edu.edu_type) {
@@ -866,7 +860,7 @@ export class FederationService {
   // ---------------------------------------------------------------------------
 
   /** Build a full event from a make_join/make_leave/make_knock template and sign it. */
-  private finaliseTemplate(template: Record<string, unknown>, version: string, extraContent: Record<string, unknown>): PDU {
+  private finaliseTemplate(template: Record<string, unknown>, version: string, extraContent: Record<string, unknown>) {
     const { event_id, hashes, signatures, unsigned, ...rest } = template;
     // https://github.com/k18k/katrix/issues/128: the remote template was cast to a PDU unchecked; it is checked like
     // any incoming PDU now.
@@ -877,7 +871,7 @@ export class FederationService {
   }
 
   /** Join a room hosted on other servers. Returns the room ID. */
-  async joinRemoteRoom(userId: string, roomId: string, servers: string[], content: Record<string, unknown>): Promise<string> {
+  async joinRemoteRoom(userId: string, roomId: string, servers: string[], content: Record<string, unknown>) {
     this.requireEnabled();
     let lastError: unknown = errors.notFound("No server could be reached to join the room");
     for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName && this.serverAllowed(s))) {
@@ -927,7 +921,7 @@ export class FederationService {
     throw lastError;
   }
 
-  private async completeJoin(roomId: string, version: string, joinPdu: PDU, res: Record<string, unknown>, origin: string): Promise<void> {
+  private async completeJoin(roomId: string, version: string, joinPdu: PDU, res: Record<string, unknown>, origin: string) {
     const statePdus: unknown[] = Array.isArray(res.state) ? res.state : [];
     const authChain: unknown[] = Array.isArray(res.auth_chain) ? res.auth_chain : [];
     await this.storeOutliers(roomId, version, [...authChain, ...statePdus]);
@@ -978,7 +972,7 @@ export class FederationService {
   }
 
   /** Leave (or reject an invite to) a room hosted elsewhere. */
-  async leaveRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string): Promise<PDU> {
+  async leaveRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string) {
     this.requireEnabled();
     let lastError: unknown = errors.notFound("No server could be reached to leave the room");
     for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName)) {
@@ -1007,7 +1001,7 @@ export class FederationService {
     throw lastError;
   }
 
-  async knockRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string): Promise<{ pdu: PDU; knockState: unknown[] }> {
+  async knockRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string) {
     this.requireEnabled();
     let lastError: unknown = errors.notFound("No server could be reached to knock on the room");
     for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName)) {
@@ -1040,7 +1034,7 @@ export class FederationService {
   }
 
   /** Ask the invitee's server to sign an invite; returns the countersigned event. */
-  async sendInvite(pdu: PDU, version: string, inviteRoomState: Record<string, unknown>[]): Promise<PDU> {
+  async sendInvite(pdu: PDU, version: string, inviteRoomState: Record<string, unknown>[]) {
     this.requireEnabled();
     const server = domainOf(pdu.state_key!);
     if (!this.serverAllowed(server)) throw errors.forbidden("Federation with this server is not allowed");
@@ -1065,7 +1059,7 @@ export class FederationService {
   // Queries
   // ---------------------------------------------------------------------------
 
-  async queryProfile(userId: string, field?: string): Promise<Record<string, unknown>> {
+  async queryProfile(userId: string, field?: string) {
     this.requireEnabled();
     return this.client.request(domainOf(userId), "GET", "/_matrix/federation/v1/query/profile", { query: { user_id: userId, field } });
   }
@@ -1081,10 +1075,7 @@ export class FederationService {
     return { room_id: res.room_id, servers: isStrings(res.servers) ? res.servers : [domainOf(alias)] };
   }
 
-  async queryKeys(
-    deviceKeys: Record<string, string[]>,
-    timeoutMs = 10_000,
-  ): Promise<{ results: Record<string, unknown>[]; failures: Record<string, unknown> }> {
+  async queryKeys(deviceKeys: Record<string, string[]>, timeoutMs = 10_000) {
     const byServer = new Map<string, Record<string, string[]>>();
     for (const [userId, devices] of Object.entries(deviceKeys)) {
       const server = domainOf(userId);
@@ -1137,12 +1128,12 @@ export class FederationService {
     return { results, failures };
   }
 
-  async queryPublicRooms(server: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async queryPublicRooms(server: string, body: Record<string, unknown>) {
     this.requireEnabled();
     return this.client.request(server, "POST", "/_matrix/federation/v1/publicRooms", { body });
   }
 
-  async queryHierarchy(server: string, roomId: string, suggestedOnly: boolean): Promise<Record<string, unknown>> {
+  async queryHierarchy(server: string, roomId: string, suggestedOnly: boolean) {
     this.requireEnabled();
     return this.client.request(server, "GET", `/_matrix/federation/v1/hierarchy/${encodeURIComponent(roomId)}`, {
       query: { suggested_only: String(suggestedOnly) },
@@ -1157,7 +1148,7 @@ export class FederationService {
    * Fetch history preceding the oldest events we have. Returns the number of new
    * events stored. Caller should not hold the room lock.
    */
-  async backfill(roomId: string, fromEventIds: string[], limit = 50): Promise<number> {
+  async backfill(roomId: string, fromEventIds: string[], limit = 50) {
     if (!this.enabled || !fromEventIds.length) return 0;
     const version = await this.hs.rooms.roomVersion(roomId);
     if (!version) return 0;
@@ -1219,11 +1210,7 @@ export class FederationService {
   // ---------------------------------------------------------------------------
 
   /** Download remote media (authenticated federation endpoint, falling back to the legacy one). */
-  async fetchMedia(
-    server: string,
-    mediaId: string,
-    maxBytes: number,
-  ): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
+  async fetchMedia(server: string, mediaId: string, maxBytes: number) {
     this.requireEnabled();
     const res = await this.client.requestRaw(server, "GET", `/_matrix/federation/v1/media/download/${encodeURIComponent(mediaId)}`, {
       timeoutMs: 60_000,
@@ -1252,17 +1239,17 @@ export class FederationService {
   }
 
   /** Remote members who should receive the invitee's stripped state. */
-  strippedStateFor(state: StateMap): Record<string, unknown>[] {
+  strippedStateFor(state: StateMap) {
     return this.hs.rooms.strippedState(state);
   }
 
   /** Servers that may be able to help us join `roomId`. */
-  candidateServers(roomId: string, extra: string[] = []): string[] {
+  candidateServers(roomId: string, extra: string[] = []) {
     const fromId = parseId(roomId, "!")?.server;
     return [...new Set([...extra, ...(fromId ? [fromId] : [])])];
   }
 
-  static memberServers(state: StateMap): string[] {
+  static memberServers(state: StateMap) {
     const out = new Set<string>();
     for (const [key, ev] of state) {
       const [type, userId] = splitStateKey(key);
@@ -1271,7 +1258,7 @@ export class FederationService {
     return [...out];
   }
 
-  isMembershipVisibleTo(state: StateMap, server: string): boolean {
+  isMembershipVisibleTo(state: StateMap, server: string) {
     for (const [key] of state) {
       const [type, userId] = splitStateKey(key);
       if (type === M.ROOM.MEMBER && domainOf(userId) === server && membershipOf(state, userId) === "join") return true;
@@ -1279,11 +1266,11 @@ export class FederationService {
     return false;
   }
 
-  stripped(pdu: PDU): Record<string, unknown> {
+  stripped(pdu: PDU) {
     return stripState(pdu);
   }
 
-  error(status: number, errcode: string, message: string): MatrixError {
+  error(status: number, errcode: string, message: string) {
     return new MatrixError(status, errcode, message);
   }
 }
@@ -1306,7 +1293,7 @@ function claimedKeys(asked: Record<string, Record<string, string>>, answer: unkn
   return out;
 }
 
-function filenameFromDisposition(header: string | undefined): string | null {
+function filenameFromDisposition(header: string | undefined) {
   if (!header) return null;
   const star = /filename\*=utf-8''([^;]+)/i.exec(header);
   if (star) return decodeURIComponent(star[1]);
@@ -1315,11 +1302,7 @@ function filenameFromDisposition(header: string | undefined): string | null {
 }
 
 /** Parse a federation media multipart/mixed response: a JSON part then the file (or a redirect). */
-async function parseMultipartMedia(
-  body: Buffer,
-  boundary: string,
-  limits: { maxBytes: number; fetch: typeof globalThis.fetch },
-): Promise<{ data: Uint8Array; contentType: string | null; filename: string | null }> {
+async function parseMultipartMedia(body: Buffer, boundary: string, limits: { maxBytes: number; fetch: typeof globalThis.fetch }) {
   const delimiter = Buffer.from(`--${boundary}`);
   const parts: Buffer[] = [];
   let idx = body.indexOf(delimiter);

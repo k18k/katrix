@@ -44,14 +44,11 @@ export interface SyncFilter {
 // Security (https://github.com/k18k/katrix/issues/2): filter patterns come from clients. Compiled to regexes they allowed
 // catastrophic backtracking that hung the server (ReDoS); matched in linear time (core/glob.ts).
 // Only `*` is a wildcard here.
-function globMatch(pattern: string, value: string): boolean {
+function globMatch(pattern: string, value: string) {
   return matchGlob(pattern, value, { questionMark: false });
 }
 
-export function matchesFilter(
-  filter: EventFilter | undefined,
-  ev: { type: string; sender?: string; room_id?: string; content?: unknown },
-): boolean {
+export function matchesFilter(filter: EventFilter | undefined, ev: { type: string; sender?: string; room_id?: string; content?: unknown }) {
   if (!filter) return true;
   if (filter.not_types?.some((t) => globMatch(t, ev.type))) return false;
   if (filter.types && !filter.types.some((t) => globMatch(t, ev.type))) return false;
@@ -78,7 +75,7 @@ export function matchesFilter(
   return true;
 }
 
-export function roomAllowed(filter: SyncFilter, roomId: string): boolean {
+export function roomAllowed(filter: SyncFilter, roomId: string) {
   const r = filter.room;
   if (!r) return true;
   if (r.not_rooms?.includes(roomId)) return false;
@@ -134,7 +131,7 @@ export function assertEventFilter(f: unknown, name: string): asserts f is EventF
     throw errors.badJson(`${name}.limit must be a non-negative integer`);
 }
 
-export function validateSyncFilter(f: unknown): SyncFilter {
+export function validateSyncFilter(f: unknown) {
   if (!isObject(f)) throw errors.badJson("Filter must be an object");
   for (const k of ["presence", "account_data"]) assertEventFilter(f[k], k);
   if (f.room !== undefined) {
@@ -148,7 +145,7 @@ export function validateSyncFilter(f: unknown): SyncFilter {
 }
 
 /** Parse the `filter` query param of /messages and /context (a JSON RoomEventFilter). */
-export function parseRoomEventFilter(ctx: RequestContext): EventFilter | undefined {
+export function parseRoomEventFilter(ctx: RequestContext) {
   const raw = ctx.query.get("filter");
   if (!raw) return undefined;
   let parsed: unknown;
@@ -162,6 +159,6 @@ export function parseRoomEventFilter(ctx: RequestContext): EventFilter | undefin
 }
 
 /** Member events needed to render `events` when lazy-loading members. */
-export function lazyMemberKeys(events: PDU[]): Set<string> {
+export function lazyMemberKeys(events: PDU[]) {
   return new Set(events.map((e) => e.sender));
 }

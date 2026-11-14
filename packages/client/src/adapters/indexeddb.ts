@@ -78,13 +78,13 @@ class IndexedDbStorage implements StorageAdapter {
     });
   }
 
-  async get(store: StoreName, key: string): Promise<string | undefined> {
+  async get(store: StoreName, key: string) {
     const db = await this.db;
     const value = await request(db.transaction([store], "readonly").objectStore(store).get(key));
     return typeof value === "string" ? value : undefined;
   }
 
-  async list(store: StoreName, prefix: string): Promise<Array<[string, string]>> {
+  async list(store: StoreName, prefix: string) {
     const db = await this.db;
     const s = db.transaction([store], "readonly").objectStore(store);
     // Keys compare by UTF-16 code units: "￿" sorts after anything a key can continue with.
@@ -93,7 +93,7 @@ class IndexedDbStorage implements StorageAdapter {
     return keys.map((k, i) => [String(k), String(values[i])] as [string, string]);
   }
 
-  async write(batch: readonly WriteOp[]): Promise<void> {
+  async write(batch: readonly WriteOp[]) {
     if (batch.length === 0) return;
     const db = await this.db;
     const stores = [...new Set(batch.map((op) => op.store))];
@@ -112,7 +112,7 @@ class IndexedDbStorage implements StorageAdapter {
     await done;
   }
 
-  async close(): Promise<void> {
+  async close() {
     (await this.db).close();
   }
 }
@@ -121,7 +121,7 @@ class IndexedDbStorage implements StorageAdapter {
  * Storage in an IndexedDB database (default name "katrix"). `indexedDB` and `IDBKeyRange` default
  * to the browser's.
  */
-export function indexedDbStorage(opts: { name?: string; indexedDB?: IDBFactoryLike; IDBKeyRange?: IDBKeyRangeLike } = {}): StorageAdapter {
+export function indexedDbStorage(opts: { name?: string; indexedDB?: IDBFactoryLike; IDBKeyRange?: IDBKeyRangeLike } = {}) {
   const g = globalThis as { indexedDB?: IDBFactoryLike; IDBKeyRange?: IDBKeyRangeLike };
   const factory = opts.indexedDB ?? g.indexedDB;
   const keyRange = opts.IDBKeyRange ?? g.IDBKeyRange;

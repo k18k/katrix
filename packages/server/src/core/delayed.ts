@@ -33,13 +33,13 @@ export class DelayedEventService {
     this.maxPerUser = options.maxPerUser ?? 100;
   }
 
-  start(): void {
+  start() {
     if (this.timer) return;
     this.timer = setInterval(() => void this.tick().catch((err) => this.hs.logger.warn("Delayed events failed", err)), 250);
     this.timer.unref?.();
   }
 
-  stop(): void {
+  stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }
@@ -53,7 +53,7 @@ export class DelayedEventService {
     content: Record<string, unknown>;
     delayMs: number;
     txnId?: string;
-  }): Promise<string> {
+  }) {
     if (!Number.isInteger(opts.delayMs) || opts.delayMs < 0) throw errors.invalidParam("Invalid delay");
     if (opts.delayMs > this.maxDelayMs) {
       throw new MatrixError(400, "M_MAX_DELAY_EXCEEDED", "Delay is too long", { [UNSTABLE.ORG.MATRIX.MSC4140.MAX_DELAY]: this.maxDelayMs });
@@ -84,7 +84,7 @@ export class DelayedEventService {
     return delayId;
   }
 
-  async list(userId: string): Promise<Record<string, unknown>[]> {
+  async list(userId: string) {
     const rows = await this.hs.db.findMany("delayed_events", {
       where: [{ field: "user_id", value: userId }],
       sortBy: { field: "send_at", direction: "asc" },
@@ -100,7 +100,7 @@ export class DelayedEventService {
     }));
   }
 
-  async update(userId: string, delayId: string, action: string): Promise<void> {
+  async update(userId: string, delayId: string, action: string) {
     if (!["cancel", "restart", "send"].includes(action)) throw errors.unrecognized("Unknown action");
     const where = [
       { field: "delay_id", value: delayId },
@@ -121,7 +121,7 @@ export class DelayedEventService {
   }
 
   /** Cancel pending delayed state events for a key overwritten by someone else (MSC4140). */
-  async onStateEvent(roomId: string, type: string, stateKey: string, sender: string): Promise<void> {
+  async onStateEvent(roomId: string, type: string, stateKey: string, sender: string) {
     const rows = await this.hs.db.findMany("delayed_events", {
       where: [
         { field: "room_id", value: roomId },
@@ -132,7 +132,7 @@ export class DelayedEventService {
     for (const r of rows) if (r.user_id !== sender) await this.hs.db.delete("delayed_events", [{ field: "delay_id", value: r.delay_id }]);
   }
 
-  private async tick(): Promise<void> {
+  private async tick() {
     const due = await this.hs.db.findMany("delayed_events", {
       where: [{ field: "send_at", operator: "lte", value: Date.now() }],
       sortBy: { field: "send_at", direction: "asc" },
@@ -163,7 +163,7 @@ export class DelayedEventService {
     }
   }
 
-  private async send(row: Row): Promise<void> {
+  private async send(row: Row) {
     await this.hs.rooms.sendEvent(
       row.room_id,
       row.user_id,

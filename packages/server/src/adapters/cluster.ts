@@ -7,7 +7,7 @@ export { localCluster, type ClusterAdapter } from "#core/cluster.ts";
 /** Per-process queue so each instance holds at most one remote lock per key. */
 function localQueue() {
   const tails = new Map<string, Promise<unknown>>();
-  return async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+  return async <T>(key: string, fn: () => Promise<T>) => {
     const prev = tails.get(key) ?? Promise.resolve();
     const run = prev.then(fn, fn);
     const settled = run.catch(() => {}); // ts-pro-exception: the settled tail only orders the queue; run's own rejection reaches its caller
@@ -97,7 +97,7 @@ export function postgresCluster(pool: PgClusterPoolLike, options: { tablePrefix?
   // messages sent meanwhile are lost, it tells its own subscribers to drop their caches (CLUSTER_RESYNC).
   // shortcut: a connection that dies silently (no error, no end, e.g. a network partition) is not noticed; add a
   // periodic query on the listener if that matters.
-  const listen = async (): Promise<void> => {
+  const listen = async () => {
     const client = await pool.connect();
     const lost = () => {
       if (listener !== client) return;

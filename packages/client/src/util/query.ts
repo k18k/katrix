@@ -5,7 +5,7 @@
 
 export type QueryValue = string | number | boolean | undefined | null | ReadonlyArray<string>;
 
-export function encodeQuery(params: Record<string, QueryValue>): string {
+export function encodeQuery(params: Record<string, QueryValue>) {
   const parts: string[] = [];
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null) continue;
@@ -16,7 +16,7 @@ export function encodeQuery(params: Record<string, QueryValue>): string {
 }
 
 /** Parse the query of a URL (for example an OAuth redirect) into its first value per key. */
-export function parseQuery(url: string): Record<string, string> {
+export function parseQuery(url: string) {
   const q = url.includes("?") ? url.slice(url.indexOf("?") + 1) : url;
   const query = q.includes("#") ? q.slice(0, q.indexOf("#")) : q;
   const out: Record<string, string> = {};
@@ -31,7 +31,7 @@ export function parseQuery(url: string): Record<string, string> {
 }
 
 /** `/rooms/${roomId}/send/…` with every interpolated value percent-encoded as one path segment. */
-export function path(strings: TemplateStringsArray, ...values: Array<string | number>): string {
+export function path(strings: TemplateStringsArray, ...values: Array<string | number>) {
   let out = strings[0];
   values.forEach((v, i) => {
     out += encodeURIComponent(String(v)) + strings[i + 1];

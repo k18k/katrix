@@ -31,7 +31,7 @@ interface SyncToken {
   ack?: boolean;
 }
 
-function parseSyncToken(raw: string | null): SyncToken | null {
+function parseSyncToken(raw: string | null) {
   if (!raw) return null;
   const m = /^s(\d+)(?:_(\d+))?(_a)?$/.exec(raw);
   if (!m) throw errors.invalidParam("Invalid since token");
@@ -40,7 +40,7 @@ function parseSyncToken(raw: string | null): SyncToken | null {
 
 const formatToken = (t: SyncToken) => `s${t.pos}_${t.toDevice}${t.ack ? "_a" : ""}`;
 
-async function loadFilter(hs: Homeserver, userId: string, raw: string | null): Promise<SyncFilter> {
+async function loadFilter(hs: Homeserver, userId: string, raw: string | null) {
   if (!raw) return {};
   if (raw.trim().startsWith("{")) {
     let parsed: unknown;
@@ -84,7 +84,7 @@ export interface SyncParams {
 }
 
 /** State snapshot ID in effect at stream position `pos` in a room (0 = empty). */
-async function snapshotAt(hs: Homeserver, roomId: string, pos: number): Promise<number> {
+async function snapshotAt(hs: Homeserver, roomId: string, pos: number) {
   const rows = await hs.db.findMany("events", {
     where: [
       { field: "room_id", value: roomId },
@@ -167,7 +167,7 @@ export async function roomTimeline(hs: Homeserver, p: SyncParams, roomId: string
   // #38: the newest event at or before a position, with its state snapshot. The timeline walk read
   // the room's events from `upTo` down without gaps, so a scanned row answers it when one is old
   // enough; only otherwise is it a query.
-  const newestAtOrBefore = async (pos: number): Promise<{ stream: number; state_snapshot: number } | null> => {
+  const newestAtOrBefore = async (pos: number) => {
     const row = scanned.find((r) => r.stream <= pos);
     if (row) return row as { stream: number; state_snapshot: number };
     const rows = await hs.db.findMany("events", {
@@ -320,19 +320,13 @@ export async function roomSummary(hs: Homeserver, roomId: string, userId: string
  * queries find the rooms that changed, and only those are built.
  */
 /** One-time key counts by algorithm, as /sync reports them (signed_curve25519 always present). */
-function countAlgorithms(rows: Row[]): Record<string, number> {
+function countAlgorithms(rows: Row[]) {
   const counts: Record<string, number> = { signed_curve25519: 0 };
   for (const r of rows) counts[r.algorithm] = (counts[r.algorithm] ?? 0) + 1;
   return counts;
 }
 
-async function changesSince(
-  hs: Homeserver,
-  p: SyncParams,
-  memberships: Row[],
-  since: number,
-  accountRows: Row[],
-): Promise<{ touched: Set<string>; receipts: Map<string, Row[]>; accountData: Map<string, Row[]>; memberChanges: Row[] }> {
+async function changesSince(hs: Homeserver, p: SyncParams, memberships: Row[], since: number, accountRows: Row[]) {
   const joined = memberships.filter((m) => m.membership === "join").map((m) => m.room_id as string);
   const anyMembership = [...new Set(memberships.map((m) => m.room_id as string))];
   const range = [
@@ -394,7 +388,7 @@ const RECENT_CHANGES = 500;
 const JOINED_ROOMS_AT_ONCE = 8;
 
 /** `fn` over `items` with at most `limit` running at once; results in input order. */
-async function mapConcurrently<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+async function mapConcurrently<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>) {
   const out: R[] = [];
   let next = 0;
   const worker = async () => {
@@ -543,7 +537,7 @@ async function buildSync(hs: Homeserver, p: SyncParams) {
   // after another, each with its reads in sequence, so a sync took as many round trips as its
   // rooms had reads. They are built concurrently now (a few at a time, so an initial sync of many
   // rooms does not take the whole database pool), and a room's independent reads run together.
-  const joinedRoom = async (m: Row): Promise<JoinedRoom | null> => {
+  const joinedRoom = async (m: Row) => {
     const roomId: string = m.room_id;
     // MSC3902: without lazy-loaded members the room is withheld until its full state is known,
     // and then sent as if newly joined.
@@ -712,7 +706,7 @@ async function buildSync(hs: Homeserver, p: SyncParams) {
 // join that arrived meanwhile. Only maxConcurrentSyncs responses are built at once per process;
 // the others wait here, which costs nothing, and other requests keep getting connections.
 const slots = new WeakMap<Homeserver, Semaphore>();
-function syncSlots(hs: Homeserver): Semaphore {
+function syncSlots(hs: Homeserver) {
   let s = slots.get(hs);
   if (!s) slots.set(hs, (s = new Semaphore(hs.config.maxConcurrentSyncs)));
   return s;
@@ -749,7 +743,7 @@ async function sync(ctx: RequestContext) {
 // refreshed at most once a minute (Synapse's granularity too).
 const LAST_ACTIVE_GRANULARITY_MS = 60_000;
 
-async function touchPresence(hs: Homeserver, userId: string, presence: string): Promise<void> {
+async function touchPresence(hs: Homeserver, userId: string, presence: string) {
   const state = presence === "unavailable" ? "unavailable" : "online";
   // #51: the row is kept until it is written (single instance only).
   const read = () => hs.db.findOne("presence", [{ field: "user_id", value: userId }]);
@@ -778,7 +772,7 @@ async function touchPresence(hs: Homeserver, userId: string, presence: string): 
     .catch((err) => hs.logger.warn("Presence update to federation failed", err));
 }
 
-export function registerSyncRoutes(r: Router): void {
+export function registerSyncRoutes(r: Router) {
   // https://github.com/k18k/katrix/issues/128: the response was assembled as Record<string, any>; it is bound to the shared
   // endpoint map now, so the server and the client cannot disagree on its shape.
   r.client("GET", "/sync", procedure({ endpoint: "GET /v3/sync", handler: sync }));

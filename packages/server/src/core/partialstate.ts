@@ -36,7 +36,7 @@ export class PartialStateService {
     });
   }
 
-  async isPartial(roomId: string): Promise<boolean> {
+  async isPartial(roomId: string) {
     const cached = this.partial.get(roomId);
     if (cached !== undefined) return cached;
     const row = await this.hs.db.findOne("partial_state_rooms", [{ field: "room_id", value: roomId }]);
@@ -47,14 +47,14 @@ export class PartialStateService {
   }
 
   /** Servers the joining server told us were in the room (used as destinations and resync sources). */
-  async servers(roomId: string): Promise<string[]> {
+  async servers(roomId: string) {
     if (!(await this.isPartial(roomId))) return [];
     const row = await this.hs.db.findOne("partial_state_rooms", [{ field: "room_id", value: roomId }]);
     return Array.isArray(row?.servers) ? row!.servers : [];
   }
 
   /** Stream position at which the room got its full state (null if it never was partial). */
-  async completedAt(roomId: string): Promise<number | null> {
+  async completedAt(roomId: string) {
     if (this.partial.get(roomId) === false && this.completedStreams.has(roomId)) return this.completedStreams.get(roomId)!;
     const row = await this.hs.db.findOne("partial_state_rooms", [{ field: "room_id", value: roomId }]);
     const at = row?.completed_stream ?? null;
@@ -67,7 +67,7 @@ export class PartialStateService {
    * A device list update for a user we do not share a (known) room with: if they may be a member
    * of a partial-state room hosted by the sender, remember them for when the state is complete.
    */
-  async notePendingDeviceUpdate(userId: string, origin: string): Promise<void> {
+  async notePendingDeviceUpdate(userId: string, origin: string) {
     const rows = (await this.hs.db.findMany("partial_state_rooms", {})).filter(
       (r) => r.completed_stream === null && (r.servers ?? []).includes(origin),
     );
@@ -80,7 +80,7 @@ export class PartialStateService {
     }
   }
 
-  async markPartial(roomId: string, joinEventId: string, origin: string, servers: string[]): Promise<void> {
+  async markPartial(roomId: string, joinEventId: string, origin: string, servers: string[]) {
     await this.hs.db.upsert("partial_state_rooms", {
       room_id: roomId,
       join_event_id: joinEventId,
@@ -99,7 +99,7 @@ export class PartialStateService {
   }
 
   /** Resolve once the room has its full state (or the signal aborts / the server closes). */
-  async waitForFullState(roomId: string, signal?: AbortSignal): Promise<void> {
+  async waitForFullState(roomId: string, signal?: AbortSignal) {
     if (!(await this.isPartial(roomId))) return;
     await new Promise<void>((resolve) => {
       const done = () => {
@@ -129,7 +129,7 @@ export class PartialStateService {
   }
 
   /** Resume resyncs of rooms left partial (e.g. by a restart). */
-  async resume(): Promise<void> {
+  async resume() {
     const rows = (await this.hs.db.findMany("partial_state_rooms", {})).filter((r) => r.completed_stream === null);
     this.hs.logger.debug(
       "Resuming partial state resyncs",
@@ -138,11 +138,11 @@ export class PartialStateService {
     for (const row of rows) this.startResync(row.room_id);
   }
 
-  stop(): void {
+  stop() {
     this.stopped = true;
   }
 
-  startResync(roomId: string): void {
+  startResync(roomId: string) {
     if (this.running.has(roomId)) return;
     this.running.add(roomId);
     void this.resync(roomId)
@@ -150,7 +150,7 @@ export class PartialStateService {
       .finally(() => this.running.delete(roomId));
   }
 
-  private async resync(roomId: string): Promise<void> {
+  private async resync(roomId: string) {
     const claim = `partial-resync:${roomId}`;
     // One instance resyncs a room at a time; a crashed instance's claim expires.
     if (!(await this.hs.cluster.setIfAbsent(claim, this.hs.instanceId, RESYNC_CLAIM_MS))) {
@@ -179,7 +179,7 @@ export class PartialStateService {
     }
   }
 
-  private async tryResync(roomId: string, row: Row): Promise<boolean> {
+  private async tryResync(roomId: string, row: Row) {
     const version = await this.hs.rooms.roomVersion(roomId);
     const join = await this.hs.rooms.getEvent(row.join_event_id);
     if (!version || !join) {
@@ -221,7 +221,7 @@ export class PartialStateService {
     return false;
   }
 
-  private async finish(roomId: string): Promise<void> {
+  private async finish(roomId: string) {
     await this.hs.streams.write((stream) =>
       this.hs.db.update("partial_state_rooms", [{ field: "room_id", value: roomId }], { completed_stream: stream }),
     );

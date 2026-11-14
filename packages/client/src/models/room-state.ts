@@ -1,5 +1,5 @@
 import { MatrixEvent } from "./event.ts";
-import type { EventContentMap, Membership, PowerLevelsContent, ClientEvent } from "@katrix/shared";
+import type { EventContentMap, Membership, ClientEvent } from "@katrix/shared";
 
 export interface RoomMember {
   userId: string;
@@ -20,23 +20,23 @@ export class RoomState {
 
   get<K extends keyof EventContentMap>(type: K, stateKey?: string): MatrixEvent<K> | undefined;
   get(type: string, stateKey?: string): MatrixEvent | undefined;
-  get(type: string, stateKey = ""): MatrixEvent | undefined {
+  get(type: string, stateKey = "") {
     return this.events.get(type)?.get(stateKey);
   }
 
-  getAll(type: string): MatrixEvent[] {
+  getAll(type: string) {
     return [...(this.events.get(type)?.values() ?? [])];
   }
 
   /** Every state event (for persisting). */
-  all(): MatrixEvent[] {
+  all() {
     const out: MatrixEvent[] = [];
     for (const m of this.events.values()) out.push(...m.values());
     return out;
   }
 
   /** Set a state event; returns the event it replaced. */
-  set(event: MatrixEvent): MatrixEvent | undefined {
+  set(event: MatrixEvent) {
     if (event.stateKey === undefined) return undefined;
     let m = this.events.get(event.wire.type);
     if (!m) this.events.set(event.wire.type, (m = new Map()));
@@ -45,20 +45,20 @@ export class RoomState {
     return previous;
   }
 
-  setRaw(raw: ClientEvent): MatrixEvent | undefined {
+  setRaw(raw: ClientEvent) {
     return this.set(new MatrixEvent(raw));
   }
 
-  clear(): void {
+  clear() {
     this.events.clear();
     this.membersLoaded = false;
   }
 
-  membership(userId: string): Membership | undefined {
+  membership(userId: string) {
     return this.get("m.room.member", userId)?.content.membership;
   }
 
-  powerLevels(): PowerLevelsContent {
+  powerLevels() {
     return this.get("m.room.power_levels")?.content ?? {};
   }
 
@@ -67,7 +67,7 @@ export class RoomState {
    * (https://spec.matrix.org/v1.16/client-server-api/#mroompower_levels). Room version 12 makes
    * the creators' power infinite; they show as Infinity.
    */
-  powerLevel(userId: string): number {
+  powerLevel(userId: string) {
     const create = this.get("m.room.create");
     const version = create?.content.room_version;
     if (version === "12" || (version?.startsWith("org.matrix.hydra") ?? false)) {
@@ -80,14 +80,14 @@ export class RoomState {
   }
 
   /** Whether `userId` may send `type` (state or message) by the power levels. */
-  maySend(userId: string, type: string, state: boolean): boolean {
+  maySend(userId: string, type: string, state: boolean) {
     const pl = this.powerLevels();
     const required =
       pl.events?.[type] ?? (state ? (this.get("m.room.power_levels") ? (pl.state_default ?? 50) : 0) : (pl.events_default ?? 0));
     return this.powerLevel(userId) >= required;
   }
 
-  members(): RoomMember[] {
+  members() {
     const events = this.getAll("m.room.member") as Array<MatrixEvent<"m.room.member">>;
     // Disambiguate display names shared by joined or invited members (spec 'Calculating the
     // display name for a user'): "name (@user:server)".
@@ -113,11 +113,11 @@ export class RoomState {
     });
   }
 
-  member(userId: string): RoomMember | undefined {
+  member(userId: string) {
     return this.members().find((m) => m.userId === userId);
   }
 
-  isEncrypted(): boolean {
+  isEncrypted() {
     return this.get("m.room.encryption") !== undefined;
   }
 }

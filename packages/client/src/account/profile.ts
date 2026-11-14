@@ -1,6 +1,6 @@
 import type { MatrixHttpApi } from "../http/api.ts";
 import { MatrixError } from "../http/errors.ts";
-import type { PresenceResponse, PresenceState, ProfileResponse } from "@katrix/shared";
+import type { PresenceState } from "@katrix/shared";
 
 /**
  * Profiles (https://spec.matrix.org/v1.19/client-server-api/#profiles): the display name, the
@@ -18,12 +18,12 @@ export class ProfileApi {
   }
 
   /** A user's whole profile (this user's by default). */
-  get(userId = this.userId): Promise<ProfileResponse> {
+  get(userId = this.userId) {
     return this.api.endpoint("GET /v3/profile/:userId", { userId }, {});
   }
 
   /** One field of a profile; undefined when it is not set. */
-  async getField(key: string, userId = this.userId): Promise<unknown> {
+  async getField(key: string, userId = this.userId) {
     try {
       const res = await this.api.endpoint("GET /v3/profile/:userId/:keyName", { userId, keyName: key }, {});
       return res[key];
@@ -34,25 +34,25 @@ export class ProfileApi {
   }
 
   /** Set one field of this user's profile (a JSON value; `displayname` and `avatar_url` must be strings). */
-  async setField(key: string, value: unknown): Promise<void> {
+  async setField(key: string, value: unknown) {
     await this.api.endpoint("PUT /v3/profile/:userId/:keyName", { userId: this.userId, keyName: key }, { body: { [key]: value } });
   }
 
-  async deleteField(key: string): Promise<void> {
+  async deleteField(key: string) {
     await this.api.endpoint("DELETE /v3/profile/:userId/:keyName", { userId: this.userId, keyName: key }, {});
   }
 
-  setDisplayName(name: string): Promise<void> {
+  setDisplayName(name: string) {
     return this.setField("displayname", name);
   }
 
   /** An mxc:// URI (MediaApi.upload). */
-  setAvatarUrl(mxcUri: string): Promise<void> {
+  setAvatarUrl(mxcUri: string) {
     return this.setField("avatar_url", mxcUri);
   }
 
   /** An IANA time zone name, such as "Europe/Warsaw". */
-  setTimeZone(tz: string): Promise<void> {
+  setTimeZone(tz: string) {
     return this.setField("m.tz", tz);
   }
 }
@@ -69,7 +69,7 @@ export class PresenceApi {
     this.onSet = onSet;
   }
 
-  get(userId = this.userId): Promise<PresenceResponse> {
+  get(userId = this.userId) {
     return this.api.endpoint("GET /v3/presence/:userId/status", { userId }, {});
   }
 
@@ -77,7 +77,7 @@ export class PresenceApi {
    * Set this user's presence. The client's /sync then keeps it (as set_presence): a sync without
    * it means "online" (spec), which would undo "unavailable" at the next round.
    */
-  async set(presence: PresenceState, statusMsg?: string): Promise<void> {
+  async set(presence: PresenceState, statusMsg?: string) {
     await this.api.endpoint("PUT /v3/presence/:userId/status", { userId: this.userId }, { body: { presence, status_msg: statusMsg } });
     this.onSet?.(presence);
   }

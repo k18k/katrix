@@ -51,7 +51,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
   }
 
   /** The verifications in progress or recently finished. */
-  requests(): VerificationRequest[] {
+  requests() {
     return [...new Set([...this.byTxn.values(), ...this.byEvent.values()])];
   }
 
@@ -109,7 +109,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
    * Verify another device of this user (to-device): all of them, or one. The first that accepts
    * gets the verification; the others are told it was taken.
    */
-  async requestOwnDeviceVerification(deviceId?: string): Promise<VerificationRequest> {
+  async requestOwnDeviceVerification(deviceId?: string) {
     await this.ctx.devices.refresh([this.ctx.userId]);
     const devices = deviceId
       ? [deviceId]
@@ -131,7 +131,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
   }
 
   /** Verify another user, in a room with them (preferably the direct chat). */
-  async requestUserVerification(roomId: string, userId: string): Promise<VerificationRequest> {
+  async requestUserVerification(roomId: string, userId: string) {
     const eventId = await this.sendRoomEvent(roomId, "m.room.message", {
       msgtype: "m.key.verification.request",
       body: `${this.ctx.userId} is asking to verify your key, but your client does not support in-chat key verification.`,
@@ -146,7 +146,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
   }
 
   /** A to-device event from /sync (plaintext or decrypted). */
-  async handleToDevice(event: ToDeviceEvent): Promise<void> {
+  async handleToDevice(event: ToDeviceEvent) {
     if (!VERIFICATION_TYPES.has(event.type)) return;
     const c = event.content as Record<string, unknown>;
     const txn = c.transaction_id;
@@ -189,7 +189,7 @@ export class VerificationManager extends TypedEmitter<VerificationManagerEvents>
   }
 
   /** A room event (decrypted if it was encrypted) that may belong to a verification. */
-  async handleRoomEvent(event: MatrixEvent): Promise<void> {
+  async handleRoomEvent(event: MatrixEvent) {
     const c = event.content as Record<string, unknown>;
     if (!event.sender || !event.roomId) return;
     if (event.type === "m.room.message" && c.msgtype === "m.key.verification.request") {

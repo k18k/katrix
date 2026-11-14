@@ -66,7 +66,7 @@ export function isMedium(m: unknown): m is Medium {
 }
 
 /** Canonical form of an address: lower-case email, digits-only phone number. */
-export function canonicalAddress(medium: Medium, address: string): string | null {
+export function canonicalAddress(medium: Medium, address: string) {
   if (medium === "email") {
     const email = address.trim().toLowerCase();
     return EMAIL_RE.test(email) && email.length <= 320 ? email : null;
@@ -87,16 +87,16 @@ export class ThreepidService {
   }
 
   /** Whether this server can validate addresses of `medium` itself. */
-  canValidate(medium: Medium): boolean {
+  canValidate(medium: Medium) {
     return medium === "email" ? !!this.options.sendEmail : !!this.options.sendSms;
   }
 
   /** Account changes involving 3PIDs are possible at all (the m.3pid_changes capability). */
-  get enabled(): boolean {
+  get enabled() {
     return this.canValidate("email") || this.canValidate("msisdn");
   }
 
-  async userFor(medium: Medium, address: string): Promise<string | null> {
+  async userFor(medium: Medium, address: string) {
     const row = await this.hs.db.findOne("user_threepids", [
       { field: "medium", value: medium },
       { field: "address", value: address },
@@ -104,12 +104,12 @@ export class ThreepidService {
     return row?.user_id ?? null;
   }
 
-  async list(userId: string): Promise<{ medium: string; address: string; validated_at: number; added_at: number }[]> {
+  async list(userId: string) {
     const rows = await this.hs.db.findMany("user_threepids", { where: [{ field: "user_id", value: userId }] });
     return rows.map((r) => ({ medium: r.medium, address: r.address, validated_at: r.validated_ts, added_at: r.added_ts }));
   }
 
-  async add(userId: string, threepid: Threepid & { validatedTs: number }): Promise<void> {
+  async add(userId: string, threepid: Threepid & { validatedTs: number }) {
     const owner = await this.userFor(threepid.medium, threepid.address);
     if (owner && owner !== userId) throw new MatrixError(400, "M_THREEPID_IN_USE", "This address is already in use");
     await this.hs.db.upsert("user_threepids", {
@@ -121,7 +121,7 @@ export class ThreepidService {
     });
   }
 
-  async remove(userId: string, medium: Medium, address: string): Promise<boolean> {
+  async remove(userId: string, medium: Medium, address: string) {
     return (
       (await this.hs.db.delete("user_threepids", [
         { field: "user_id", value: userId },
@@ -135,7 +135,7 @@ export class ThreepidService {
    * Unbind a 3PID from the identity servers it was bound on through this server (or `idServer`).
    * Returns "success" if every unbind succeeded, "no-support" otherwise.
    */
-  async unbindAll(userId: string, medium: string, address: string, idServer?: string): Promise<"success" | "no-support"> {
+  async unbindAll(userId: string, medium: string, address: string, idServer?: string) {
     const where = [
       { field: "user_id", value: userId },
       { field: "medium", value: medium },
@@ -158,7 +158,7 @@ export class ThreepidService {
   }
 
   /** Remove every 3PID of a (deactivated) account, unbinding them from identity servers. */
-  async removeAll(userId: string): Promise<"success" | "no-support"> {
+  async removeAll(userId: string) {
     let result: "success" | "no-support" = "success";
     const bound = await this.hs.db.findMany("threepid_bindings", { where: [{ field: "user_id", value: userId }] });
     for (const b of bound) if ((await this.unbindAll(userId, b.medium, b.address, b.id_server)) !== "success") result = "no-support";
@@ -170,7 +170,7 @@ export class ThreepidService {
    * Start (or continue) validating an address: `POST .../{medium}/requestToken`. Repeating a
    * request with the same `client_secret`, address and `send_attempt` does not send again.
    */
-  async requestToken(purpose: ThreepidPurpose, medium: Medium, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async requestToken(purpose: ThreepidPurpose, medium: Medium, body: Record<string, unknown>) {
     if (!this.enabled) throw errors.threepidDenied();
     if (!this.canValidate(medium))
       throw new MatrixError(
@@ -227,14 +227,14 @@ export class ThreepidService {
     return this.tokenResponse(session!);
   }
 
-  private tokenResponse(session: Row): Record<string, unknown> {
+  private tokenResponse(session: Row) {
     const out: Record<string, unknown> = { sid: session.sid };
     if (this.hs.config.publicBaseUrl) out.submit_url = `${this.hs.config.publicBaseUrl.replace(/\/$/, "")}${SUBMIT_PATH}`;
     if (session.medium === "msisdn") Object.assign(out, { msisdn: session.address, intl_fmt: `+${session.address}` });
     return out;
   }
 
-  private async send(purpose: ThreepidPurpose, session: Row): Promise<void> {
+  private async send(purpose: ThreepidPurpose, session: Row) {
     const what = PURPOSE_TEXT[purpose];
     try {
       if (session.medium === "email") {
@@ -263,12 +263,12 @@ export class ThreepidService {
     }
   }
 
-  private expired(session: Row): boolean {
+  private expired(session: Row) {
     return session.created_ts + (this.options.sessionLifetimeMs ?? 24 * 60 * 60_000) < Date.now();
   }
 
   /** Validate a session with the token the user received. Returns the session's `next_link`. */
-  async submitToken(sid: string, clientSecret: string, token: string): Promise<string | null> {
+  async submitToken(sid: string, clientSecret: string, token: string) {
     const session = await this.hs.db.findOne("threepid_sessions", [{ field: "sid", value: sid }]);
     if (!session || session.client_secret !== clientSecret || this.expired(session))
       throw new MatrixError(400, "M_NO_VALID_SESSION", "Unknown or expired session");
@@ -279,7 +279,7 @@ export class ThreepidService {
   }
 
   /** The address a client proved ownership of, given its `threepid_creds`. */
-  async validated(creds: unknown): Promise<(Threepid & { validatedTs: number }) | null> {
+  async validated(creds: unknown) {
     const c = creds as Record<string, unknown> | null;
     if (!c || typeof c.sid !== "string" || typeof c.client_secret !== "string") return null;
     const session = await this.hs.db.findOne("threepid_sessions", [{ field: "sid", value: c.sid }]);

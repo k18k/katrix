@@ -55,7 +55,7 @@ export class CallsApi extends TypedEmitter<CallsEvents> {
   }
 
   /** The homeserver's TURN servers, cached until their credentials expire. */
-  async turnServers(): Promise<IceServer[]> {
+  async turnServers() {
     if (this.turn && this.turn.expires > Date.now()) return this.turn.servers;
     try {
       const res = await this.api.endpoint("GET /v3/voip/turnServer", {}, {});
@@ -69,11 +69,11 @@ export class CallsApi extends TypedEmitter<CallsEvents> {
   }
 
   /** Calls known to this client that have not ended. */
-  active(): MatrixCall[] {
+  active() {
     return [...this.calls.values()].filter((c) => c.state !== "ended");
   }
 
-  get(callId: string): MatrixCall | undefined {
+  get(callId: string) {
     return this.calls.get(callId);
   }
 
@@ -86,7 +86,7 @@ export class CallsApi extends TypedEmitter<CallsEvents> {
     opponent?: { userId: string; partyId: string };
     offer?: { type: "offer"; sdp: string };
     remoteStreamMetadata?: StreamMetadata;
-  }): MatrixCall {
+  }) {
     if (!this.factory && opts.direction === "outbound")
       throw new Error("Calls need a PeerConnectionFactory (ClientOptions.calls.peerConnectionFactory)");
     const call = new MatrixCall({
@@ -118,7 +118,7 @@ export class CallsApi extends TypedEmitter<CallsEvents> {
     roomId: string,
     setup: (pc: PeerConnectionLike) => void | Promise<void>,
     opts: { invitee?: string; streamMetadata?: StreamMetadata } = {},
-  ): Promise<MatrixCall> {
+  ) {
     const call = this.newCall({ callId: this.makeId(), roomId, direction: "outbound", partyId: this.makeId(), invitee: opts.invitee });
     await call.place(setup, opts);
     return call;
@@ -128,7 +128,7 @@ export class CallsApi extends TypedEmitter<CallsEvents> {
    * The m.call.* events of one sync, in timeline order, after decryption: whole syncs at once,
    * so an invite already hung up or answered elsewhere in the same sync never rings (spec).
    */
-  async handleEvents(events: Array<{ event: MatrixEvent; room: Room }>): Promise<void> {
+  async handleEvents(events: Array<{ event: MatrixEvent; room: Room }>) {
     const rung: MatrixCall[] = [];
     for (const { event, room } of events) {
       try {
@@ -142,7 +142,7 @@ export class CallsApi extends TypedEmitter<CallsEvents> {
   }
 
   /** One m.call.* event; returns a new ringing call (to signal once the sync is done). */
-  private async handleEvent(event: MatrixEvent, room: Room): Promise<MatrixCall | undefined> {
+  private async handleEvent(event: MatrixEvent, room: Room) {
     const c = event.content as Record<string, unknown>;
     if (!event.type.startsWith("m.call.") || typeof c.call_id !== "string" || !event.sender) return undefined;
     const existing = this.calls.get(c.call_id);

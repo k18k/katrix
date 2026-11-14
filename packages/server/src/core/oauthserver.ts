@@ -134,7 +134,7 @@ const USER_CODE_ALPHABET = "BCDFGHJKLMNPQRSTVWXZ";
 
 const isHostUnder = (host: string, base: string) => host === base || host.endsWith(`.${base}`);
 
-function parseUrl(raw: unknown): URL | null {
+function parseUrl(raw: unknown) {
   if (typeof raw !== "string") return null;
   try {
     return new URL(raw);
@@ -144,7 +144,7 @@ function parseUrl(raw: unknown): URL | null {
 }
 
 /** An `https` URL without credentials, on the client's host or a subdomain of it. */
-function checkHttpsUri(field: string, raw: unknown, clientHost: string | null): string {
+function checkHttpsUri(field: string, raw: unknown, clientHost: string | null) {
   const url = parseUrl(raw);
   if (!url || url.protocol !== "https:" || url.username || url.password)
     throw new OAuthError("invalid_client_metadata", `${field} must be an https URL without credentials`);
@@ -154,8 +154,8 @@ function checkHttpsUri(field: string, raw: unknown, clientHost: string | null): 
 }
 
 /** Redirect URI validation of the spec ("Redirect URI validation", after RFC 8252 section 7). */
-export function checkRedirectUri(raw: string, applicationType: "web" | "native", clientHost: string): void {
-  const bad = (why: string): never => {
+export function checkRedirectUri(raw: string, applicationType: "web" | "native", clientHost: string) {
+  const bad = (why: string) => {
     throw new OAuthError("invalid_redirect_uri", `Invalid redirect URI ${raw}: ${why}`);
   };
   if (raw.includes("#")) bad("it may not have a fragment");
@@ -179,7 +179,7 @@ export function checkRedirectUri(raw: string, applicationType: "web" | "native",
 }
 
 /** Whether `given` is one of the client's redirect URIs; loopback URIs match on any port. */
-export function redirectUriMatches(registered: string[], given: string): boolean {
+export function redirectUriMatches(registered: string[], given: string) {
   if (registered.includes(given)) return true;
   const url = parseUrl(given);
   if (!url || url.protocol !== "http:" || !LOOPBACK_HOSTS.has(url.hostname) || !url.port) return false;
@@ -188,13 +188,13 @@ export function redirectUriMatches(registered: string[], given: string): boolean
 }
 
 /** Validate a registration request and return the metadata as registered (RFC 7591 section 2). */
-export function validateClientMetadata(raw: Record<string, unknown>): Omit<ClientMetadata, "client_id"> {
+export function validateClientMetadata(raw: Record<string, unknown>) {
   const clientUri = checkHttpsUri("client_uri", raw.client_uri, null);
   const host = new URL(clientUri).hostname;
   const applicationType = raw.application_type ?? "web";
   if (applicationType !== "web" && applicationType !== "native")
     throw new OAuthError("invalid_client_metadata", "application_type must be web or native");
-  const list = (field: string, fallback: string[]): string[] => {
+  const list = (field: string, fallback: string[]) => {
     const v = raw[field];
     if (v === undefined) return fallback;
     if (!Array.isArray(v) || v.some((x) => typeof x !== "string"))
@@ -231,7 +231,7 @@ export function validateClientMetadata(raw: Record<string, unknown>): Omit<Clien
 }
 
 /** The API scope and the one device ID a login scope must contain. */
-export function parseScope(scope: string | null): { scope: string; deviceId: string; openid: boolean } {
+export function parseScope(scope: string | null) {
   const tokens = (scope ?? "").split(" ").filter(Boolean);
   if (!tokens.some((t) => API_SCOPES.includes(t))) throw new OAuthError("invalid_scope", `The scope must include ${API_SCOPE}`);
   const devices: string[] = [];
@@ -250,7 +250,7 @@ export function parseScope(scope: string | null): { scope: string; deviceId: str
 
 const s256 = (verifier: string) => urlSafeBase64(createHash("sha256").update(verifier).digest());
 
-function safeEqual(a: string, b: string): boolean {
+function safeEqual(a: string, b: string) {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
@@ -268,25 +268,25 @@ export class OAuthServer {
     this.issuer = `${publicBaseUrl.replace(/\/$/, "")}/`;
   }
 
-  get legacyApi(): boolean {
+  get legacyApi() {
     return this.options.legacyApi !== false;
   }
 
-  get accessTokenLifetimeMs(): number {
+  get accessTokenLifetimeMs() {
     return this.options.accessTokenLifetimeMs ?? 5 * 60_000;
   }
 
   /** Absolute URL of a path under the OAuth prefix. */
-  url(path: string): string {
+  url(path: string) {
     return `${this.issuer}${OAUTH_PREFIX.slice(1)}${path}`;
   }
 
-  get accountManagementUri(): string {
+  get accountManagementUri() {
     return this.url("/account");
   }
 
   /** Authorization server metadata (RFC 8414), served at `/_matrix/client/v1/auth_metadata`. */
-  metadata(): Record<string, unknown> {
+  metadata() {
     return {
       issuer: this.issuer,
       authorization_endpoint: this.url("/authorize"),
@@ -317,7 +317,7 @@ export class OAuthServer {
   }
 
   /** The server's signing key as a JWK set (RFC 8037), for ID tokens. */
-  jwks(): { keys: Record<string, string>[] } {
+  jwks() {
     const key = this.hs.signingKey;
     const x = Buffer.from(key.publicKeyBase64, "base64").toString("base64url");
     return { keys: [{ kty: "OKP", crv: "Ed25519", x, kid: key.keyId, alg: "EdDSA", use: "sig" }] };
@@ -329,7 +329,7 @@ export class OAuthServer {
    * Register a client. Each login registers again (the spec asks clients to), so identical
    * metadata gets the same client ID, derived from it, instead of a new row every time.
    */
-  async registerClient(raw: Record<string, unknown>): Promise<ClientMetadata> {
+  async registerClient(raw: Record<string, unknown>) {
     const metadata = validateClientMetadata(raw);
     const clientId = urlSafeBase64(createHash("sha256").update(canonicalJson(metadata)).digest()).slice(0, 26);
     const client: ClientMetadata = { client_id: clientId, ...metadata };
@@ -338,14 +338,14 @@ export class OAuthServer {
     return client;
   }
 
-  async client(clientId: string | null): Promise<ClientMetadata | null> {
+  async client(clientId: string | null) {
     if (!clientId) return null;
     const row = await this.hs.db.findOne("oauth_clients", [{ field: "client_id", value: clientId }]);
     return row ? (row.metadata as ClientMetadata) : null;
   }
 
   /** Delete old registrations that no token uses (the spec forbids deleting ones in use). */
-  async prune(): Promise<void> {
+  async prune() {
     const old = await this.hs.db.findMany("oauth_clients", {
       where: [{ field: "created_ts", operator: "lt", value: Date.now() - UNUSED_CLIENT_TTL_MS }],
       limit: 500,
@@ -416,7 +416,7 @@ export class OAuthServer {
   }
 
   /** The client's redirect URI with the response parameters (and RFC 9207 `iss`). */
-  callbackUrl(redirectUri: string, mode: "query" | "fragment", params: Record<string, string | undefined>): string {
+  callbackUrl(redirectUri: string, mode: "query" | "fragment", params: Record<string, string | undefined>) {
     const url = new URL(redirectUri);
     const out = new URLSearchParams(mode === "query" ? url.search : "");
     for (const [k, v] of Object.entries({ ...params, iss: this.issuer })) if (v !== undefined) out.set(k, v);
@@ -425,25 +425,25 @@ export class OAuthServer {
     return url.toString();
   }
 
-  async saveGrant(grant: PendingGrant): Promise<string> {
+  async saveGrant(grant: PendingGrant) {
     const id = randomToken(24);
     await this.hs.cluster.set(`oauth:grant:${id}`, grant, GRANT_TTL_MS);
     return id;
   }
 
-  grant(id: string): Promise<PendingGrant | null> {
+  grant(id: string) {
     return this.hs.cluster.get<PendingGrant>(`oauth:grant:${id}`);
   }
 
   /** The user approved: issue a code and return where the browser goes next. */
-  async approveGrant(id: string, grant: PendingGrant, userId: string, authTime: number): Promise<string> {
+  async approveGrant(id: string, grant: PendingGrant, userId: string, authTime: number) {
     await this.hs.cluster.delete(`oauth:grant:${id}`);
     const code = randomToken(32);
     await this.hs.cluster.set(`oauth:code:${code}`, { ...grant, userId, authTime } satisfies IssuedCode, CODE_TTL_MS);
     return this.callbackUrl(grant.redirectUri, grant.responseMode, { code, state: grant.state });
   }
 
-  async denyGrant(id: string, grant: PendingGrant): Promise<string> {
+  async denyGrant(id: string, grant: PendingGrant) {
     await this.hs.cluster.delete(`oauth:grant:${id}`);
     return this.callbackUrl(grant.redirectUri, grant.responseMode, {
       error: "access_denied",
@@ -454,7 +454,7 @@ export class OAuthServer {
 
   // --- Token endpoint -----------------------------------------------------------
 
-  async token(params: URLSearchParams, clientId: string | null): Promise<TokenResponse> {
+  async token(params: URLSearchParams, clientId: string | null) {
     const client = await this.client(clientId);
     if (!client) throw new OAuthError("invalid_client", "Unknown client", 401);
     const grantType = params.get("grant_type");
@@ -473,7 +473,7 @@ export class OAuthServer {
     return this.tokenResponse(out, out.scope ?? `${API_SCOPE} urn:matrix:client:device:${out.device_id}`);
   }
 
-  private async exchangeCode(client: ClientMetadata, params: URLSearchParams): Promise<TokenResponse> {
+  private async exchangeCode(client: ClientMetadata, params: URLSearchParams) {
     const code = params.get("code");
     if (!code) throw new OAuthError("invalid_request", "Missing code");
     const issued = await this.hs.cluster.lock(`oauth:code:${code}`, async () => {
@@ -531,7 +531,7 @@ export class OAuthServer {
   }
 
   /** An OpenID Connect ID token (EdDSA with the server's signing key). */
-  private idToken(client: ClientMetadata, userId: string, authTime: number, nonce?: string): string {
+  private idToken(client: ClientMetadata, userId: string, authTime: number, nonce?: string) {
     const now = Math.floor(Date.now() / 1000);
     const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
     const header = enc({ alg: "EdDSA", typ: "JWT", kid: this.hs.signingKey.keyId });
@@ -582,7 +582,7 @@ export class OAuthServer {
   }
 
   /** The device grant a user code belongs to (typed in any case, with or without the dash). */
-  async deviceGrantByUserCode(raw: string): Promise<{ deviceCode: string; grant: DeviceGrant } | null> {
+  async deviceGrantByUserCode(raw: string) {
     const clean = raw.toUpperCase().replace(/[^A-Z]/g, "");
     if (clean.length !== 8) return null;
     const userCode = `${clean.slice(0, 4)}-${clean.slice(4)}`;
@@ -591,13 +591,13 @@ export class OAuthServer {
     return deviceCode && grant && grant.status === "pending" ? { deviceCode, grant } : null;
   }
 
-  async decideDeviceGrant(deviceCode: string, grant: DeviceGrant, userId: string, approve: boolean): Promise<void> {
+  async decideDeviceGrant(deviceCode: string, grant: DeviceGrant, userId: string, approve: boolean) {
     await this.hs.cluster.delete(`oauth:usercode:${grant.userCode}`);
     const ttl = Math.max(1000, grant.expires - Date.now());
     await this.hs.cluster.set(`oauth:device:${deviceCode}`, { ...grant, status: approve ? "approved" : "denied", userId }, ttl);
   }
 
-  private async pollDevice(client: ClientMetadata, deviceCode: string | null): Promise<TokenResponse> {
+  private async pollDevice(client: ClientMetadata, deviceCode: string | null) {
     if (!deviceCode) throw new OAuthError("invalid_request", "Missing device_code");
     const key = `oauth:device:${deviceCode}`;
     return this.hs.cluster.lock(key, async () => {
@@ -627,7 +627,7 @@ export class OAuthServer {
    * logout through this endpoint ends the device's session like `/logout` does. Unknown tokens
    * are not an error.
    */
-  async revoke(token: string | null): Promise<void> {
+  async revoke(token: string | null) {
     if (!token) throw new OAuthError("invalid_request", "Missing token");
     const row =
       (await this.hs.db.findOne("access_tokens", [{ field: "token", value: token }])) ??
@@ -644,7 +644,7 @@ export class OAuthServer {
 // the stage only completes within the window after that.
 
 /** Approve a cross-signing reset for `userId`; returns when the approval runs out. */
-export async function allowCrossSigningReset(hs: Homeserver, userId: string): Promise<number> {
+export async function allowCrossSigningReset(hs: Homeserver, userId: string) {
   const until = Date.now() + CROSS_SIGNING_RESET_WINDOW_MS;
   await hs.cluster.set(`xsign-reset:${userId}`, until, CROSS_SIGNING_RESET_WINDOW_MS);
   return until;
@@ -654,7 +654,7 @@ export async function allowCrossSigningReset(hs: Homeserver, userId: string): Pr
  * Whether the user approved a cross-signing reset in the last few minutes. The approval is not
  * used up: a client may need several uploads (Synapse allows the same within the window).
  */
-export async function crossSigningResetAllowed(hs: Homeserver, userId: string): Promise<boolean> {
+export async function crossSigningResetAllowed(hs: Homeserver, userId: string) {
   const until = await hs.cluster.get<number>(`xsign-reset:${userId}`);
   return !!until && until > Date.now();
 }

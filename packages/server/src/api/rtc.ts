@@ -28,7 +28,7 @@ export interface RtcOptions {
   transports?: Record<string, unknown>[];
 }
 
-export function registerRtcRoutes(r: Router): void {
+export function registerRtcRoutes(r: Router) {
   r.client(
     "GET",
     "/voip/turnServer",

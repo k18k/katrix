@@ -121,28 +121,28 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     this.ourMethods = opts.ourMethods ?? ALL_METHODS;
   }
 
-  get transactionId(): string {
+  get transactionId() {
     return this.channel.transactionId;
   }
 
   /** The SAS to compare, once the keys are exchanged. */
-  get sasCode(): SasCode | undefined {
+  get sasCode() {
     return this.sas?.code;
   }
 
-  private setPhase(phase: VerificationPhase): void {
+  private setPhase(phase: VerificationPhase) {
     this.phase = phase;
     this.emit("change");
   }
 
-  private get common(): string[] {
+  private get common() {
     return this.ourMethods.filter((m) => this.theirMethods.includes(m));
   }
 
   // ─── Requesting and accepting ─────────────────────────────────────────────
 
   /** Accept a request from the other side (m.key.verification.ready). */
-  async accept(): Promise<void> {
+  async accept() {
     if (this.initiatedByMe || this.phase !== "requested") throw new Error("Only a pending incoming request can be accepted");
     const methods = this.ourMethods.filter(
       (m) => this.theirMethods.includes(m) || (m === RECIPROCATE && this.theirMethods.some((t) => t.startsWith("m.qr_code"))),
@@ -156,7 +156,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   }
 
   /** Decline or abort (m.key.verification.cancel). */
-  async cancel(code = "m.user", reason = "The user cancelled the verification"): Promise<void> {
+  async cancel(code = "m.user", reason = "The user cancelled the verification") {
     if (this.phase === "done" || this.phase === "cancelled") return;
     this.cancelCode = code;
     this.cancelReason = reason;
@@ -169,7 +169,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   // ─── Incoming messages ────────────────────────────────────────────────────
 
   /** A message of this verification from the other side (`fromDevice` from its content). */
-  async handle(type: string, content: Record<string, unknown>, sender: string): Promise<void> {
+  async handle(type: string, content: Record<string, unknown>, sender: string) {
     if (this.phase === "done" || this.phase === "cancelled") return;
     try {
       // A message from another device of ours: it took the request over (in-room requests).
@@ -218,7 +218,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     }
   }
 
-  private async onReady(content: Record<string, unknown>): Promise<void> {
+  private async onReady(content: Record<string, unknown>) {
     if (!this.initiatedByMe || this.phase !== "requested") return this.unexpected();
     if (typeof content.from_device !== "string") return this.unexpected();
     this.otherDeviceId = content.from_device;
@@ -227,14 +227,14 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     this.setPhase("ready");
   }
 
-  private async unexpected(): Promise<void> {
+  private async unexpected() {
     await this.cancel("m.unexpected_message", "Unexpected verification message");
   }
 
   // ─── SAS ──────────────────────────────────────────────────────────────────
 
   /** Start SAS verification (after ready). */
-  async startSas(): Promise<void> {
+  async startSas() {
     if (this.phase !== "ready" || !this.common.includes(SAS_METHOD)) throw new Error("SAS cannot be started now");
     await this.pinKeys();
     const startContent = await this.channel.send("m.key.verification.start", {
@@ -257,12 +257,12 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   }
 
   /** Whether our start wins over theirs when both sent one: the lexicographically smaller user (then device) wins. */
-  private weWinStartRace(): boolean {
+  private weWinStartRace() {
     if (this.ctx.userId !== this.otherUserId) return this.ctx.userId < this.otherUserId;
     return this.ctx.deviceId < (this.otherDeviceId ?? "");
   }
 
-  private async onStart(content: Record<string, unknown>): Promise<void> {
+  private async onStart(content: Record<string, unknown>) {
     if (typeof content.from_device === "string") this.otherDeviceId ??= content.from_device;
     if (content.method === RECIPROCATE) return this.onReciprocate(content);
     if (content.method !== SAS_METHOD) return void (await this.cancel("m.unknown_method", "Unsupported verification method"));
@@ -292,7 +292,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     });
   }
 
-  private async onAccept(content: Record<string, unknown>): Promise<void> {
+  private async onAccept(content: Record<string, unknown>) {
     const sas = this.sas;
     if (!sas?.weStarted || sas.commitment !== undefined) return this.unexpected();
     if (content.key_agreement_protocol !== KEY_AGREEMENT || content.hash !== HASH || content.message_authentication_code !== MAC_METHOD)
@@ -305,7 +305,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     await this.channel.send("m.key.verification.key", { key: encodeBase64(sas.keyPair.publicKey) });
   }
 
-  private async onKey(content: Record<string, unknown>): Promise<void> {
+  private async onKey(content: Record<string, unknown>) {
     const sas = this.sas;
     if (!sas || sas.theirKey !== undefined || typeof content.key !== "string") return this.unexpected();
     if (sas.weStarted) {
@@ -340,7 +340,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   }
 
   /** The user says the SAS matches: send our MACs (and finish, if theirs are here and check out). */
-  async confirmSas(): Promise<void> {
+  async confirmSas() {
     const sas = this.sas;
     if (!sas?.shared || sas.confirmed) throw new Error("There is no SAS to confirm");
     sas.confirmed = true;
@@ -364,18 +364,18 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   }
 
   /** The user says the SAS does not match. */
-  mismatchSas(): Promise<void> {
+  mismatchSas() {
     return this.cancel("m.mismatched_sas", "The short authentication strings did not match");
   }
 
-  private async onMac(content: Record<string, unknown>): Promise<void> {
+  private async onMac(content: Record<string, unknown>) {
     const sas = this.sas;
     if (!sas?.shared || sas.theirMac || !isStringRecord(content.mac) || typeof content.keys !== "string") return this.unexpected();
     sas.theirMac = { mac: content.mac, keys: content.keys };
     if (sas.confirmed) await this.checkTheirMac();
   }
 
-  private async checkTheirMac(): Promise<void> {
+  private async checkTheirMac() {
     const sas = this.sas!;
     const theirs = sas.theirMac!;
     const params = (keyId: string) => ({
@@ -414,7 +414,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
    * The QR code to show the other side (its bytes, to draw as a byte-mode QR code), when it can
    * scan and we can show one; undefined otherwise.
    */
-  async qrCode(): Promise<Uint8Array | undefined> {
+  async qrCode() {
     if (this.phase !== "ready" || !this.ourMethods.includes(QR_SHOW) || !this.theirMethods.includes(QR_SCAN)) return undefined;
     if (this.qr) return this.qr.code;
     await this.pinKeys();
@@ -441,10 +441,10 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
    * We scanned the other side's QR code: check its keys against what we know, verify the other
    * side, and tell it (m.reciprocate.v1). Throws (and cancels) if the code does not match.
    */
-  async scanQrCode(bytes: Uint8Array): Promise<void> {
+  async scanQrCode(bytes: Uint8Array) {
     if (this.phase !== "ready" || !this.ourMethods.includes(QR_SCAN)) throw new Error("A QR code cannot be scanned now");
     await this.pinKeys();
-    const fail = async (why: string): Promise<never> => {
+    const fail = async (why: string) => {
       await this.cancel("m.key_mismatch", why);
       throw new Error(why);
     };
@@ -488,7 +488,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
     if (this.theirDone) await this.sendDone();
   }
 
-  private async onReciprocate(content: Record<string, unknown>): Promise<void> {
+  private async onReciprocate(content: Record<string, unknown>) {
     if (!this.qr || this.phase !== "ready" || typeof content.secret !== "string") return this.unexpected();
     if (!bytesEqual(decodeBase64(content.secret), this.qr.secret))
       return void (await this.cancel("m.key_mismatch", "The QR code secret does not match"));
@@ -498,7 +498,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   }
 
   /** The user confirms the other device scanned our QR code (it showed success): verify it, finish. */
-  async confirmQrScanned(): Promise<void> {
+  async confirmQrScanned() {
     const qr = this.qr;
     if (!qr || this.method !== RECIPROCATE || this.phase !== "started") throw new Error("No QR code was scanned");
     // What the code we showed vouched for: mode 0, their master key; mode 1, their device; mode 2,
@@ -511,13 +511,13 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
 
   // ─── Finishing ────────────────────────────────────────────────────────────
 
-  private async onDone(): Promise<void> {
+  private async onDone() {
     this.theirDone = true;
     if (this.scanned && !this.ourDone) await this.sendDone();
     else if (this.ourDone) this.setPhase("done");
   }
 
-  private async sendDone(): Promise<void> {
+  private async sendDone() {
     if (this.ourDone) return;
     this.ourDone = true;
     await this.channel.send("m.key.verification.done", {});
@@ -526,7 +526,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   }
 
   /** Fix the keys being verified (spec: they must not change during the verification). */
-  private async pinKeys(): Promise<void> {
+  private async pinKeys() {
     if (this.pinned) return;
     await this.ctx.devices.refresh([this.otherUserId]);
     const rec = await this.ctx.devices.getUser(this.otherUserId);
@@ -540,7 +540,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   }
 
   /** Record what was verified: the other device, the other user's (or our own) master key. */
-  private async trust(what: { device: boolean; master: boolean }): Promise<void> {
+  private async trust(what: { device: boolean; master: boolean }) {
     const cs = this.ctx.crossSigning;
     const ownUser = this.otherUserId === this.ctx.userId;
     if (what.device && this.otherDeviceId) {
@@ -557,7 +557,7 @@ export class VerificationRequest extends TypedEmitter<VerificationEvents> {
   }
 }
 
-function macEqual(a: string, b: string): boolean {
+function macEqual(a: string, b: string) {
   try {
     return constantTimeEqual(decodeBase64(a), decodeBase64(b));
   } catch {

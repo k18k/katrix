@@ -23,17 +23,17 @@ class EventCache {
     this.source = source;
   }
 
-  async load(ids: Iterable<string>): Promise<void> {
+  async load(ids: Iterable<string>) {
     const missing = [...ids].filter((id) => !this.events.has(id));
     if (!missing.length) return;
     for (const [id, ev] of await this.source(missing)) this.events.set(id, ev);
   }
-  get(id: string): PDU | undefined {
+  get(id: string) {
     return this.events.get(id);
   }
 
   /** All auth ancestors of the given events (not including them). */
-  async authChain(ids: Iterable<string>): Promise<Set<string>> {
+  async authChain(ids: Iterable<string>) {
     const chain = new Set<string>();
     let frontier = [...ids];
     while (frontier.length) {
@@ -58,7 +58,7 @@ class EventCache {
  * State resolution v2 (and v2.1 for room version 12).
  * `createEvent` is required for v12, where the create event is not in auth_events.
  */
-export async function resolveState(stateSets: StateIds[], roomVersion: string, source: EventSource, createEvent?: PDU): Promise<StateIds> {
+export async function resolveState(stateSets: StateIds[], roomVersion: string, source: EventSource, createEvent?: PDU) {
   if (stateSets.length === 0) return {};
   if (stateSets.length === 1) return { ...stateSets[0] };
   const v21 = roomVersionFeatures(roomVersion).v12;
@@ -111,7 +111,7 @@ export async function resolveState(stateSets: StateIds[], roomVersion: string, s
 }
 
 /** v2.1: events on auth paths between two conflicted events. */
-async function conflictedSubgraph(cache: EventCache, conflicted: Set<string>): Promise<Set<string>> {
+async function conflictedSubgraph(cache: EventCache, conflicted: Set<string>) {
   const ancestors = await cache.authChain(conflicted);
   await cache.load(ancestors);
   const memo = new Map<string, boolean>();
@@ -131,7 +131,7 @@ async function conflictedSubgraph(cache: EventCache, conflicted: Set<string>): P
 }
 
 /** Power level of an event's sender according to its own auth events. */
-async function senderPowerLevel(cache: EventCache, ev: PDU, roomVersion: string, createEvent?: PDU): Promise<number> {
+async function senderPowerLevel(cache: EventCache, ev: PDU, roomVersion: string, createEvent?: PDU) {
   await cache.load(authIds(ev));
   const state: StateMap = new Map();
   for (const id of authIds(ev)) {
@@ -143,7 +143,7 @@ async function senderPowerLevel(cache: EventCache, ev: PDU, roomVersion: string,
   return Number.isFinite(level) ? level : Number.MAX_SAFE_INTEGER;
 }
 
-async function reverseTopologicalPowerSort(cache: EventCache, ids: Set<string>, roomVersion: string, createEvent?: PDU): Promise<string[]> {
+async function reverseTopologicalPowerSort(cache: EventCache, ids: Set<string>, roomVersion: string, createEvent?: PDU) {
   const levels = new Map<string, number>();
   for (const id of ids) levels.set(id, await senderPowerLevel(cache, cache.get(id)!, roomVersion, createEvent));
   // Kahn's algorithm on the auth DAG restricted to `ids`: an event is ready once all its auth events are output.
@@ -176,13 +176,7 @@ async function reverseTopologicalPowerSort(cache: EventCache, ids: Set<string>, 
   return out;
 }
 
-async function iterativeAuthChecks(
-  cache: EventCache,
-  ids: string[],
-  base: StateIds,
-  roomVersion: string,
-  createEvent?: PDU,
-): Promise<StateIds> {
+async function iterativeAuthChecks(cache: EventCache, ids: string[], base: StateIds, roomVersion: string, createEvent?: PDU) {
   const state: StateIds = { ...base };
   for (const id of ids) {
     const ev = cache.get(id);
@@ -212,7 +206,7 @@ async function iterativeAuthChecks(
   return state;
 }
 
-async function mainlineOf(cache: EventCache, plId: string | undefined): Promise<Map<string, number>> {
+async function mainlineOf(cache: EventCache, plId: string | undefined) {
   const chain: string[] = [];
   let current = plId;
   while (current) {
@@ -232,7 +226,7 @@ async function mainlineOf(cache: EventCache, plId: string | undefined): Promise<
   return positions;
 }
 
-async function mainlinePosition(cache: EventCache, id: string, mainline: Map<string, number>): Promise<number> {
+async function mainlinePosition(cache: EventCache, id: string, mainline: Map<string, number>) {
   let current: string | undefined = id;
   const seen = new Set<string>();
   while (current && !seen.has(current)) {

@@ -42,7 +42,7 @@ server stats
 help`;
 
 /** Split a command line into arguments, honouring quotes. */
-export function parseArgs(line: string): string[] {
+export function parseArgs(line: string) {
   const out: string[] = [];
   for (const m of line.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)) out.push(m[1] ?? m[2] ?? m[3]);
   return out;
@@ -70,21 +70,21 @@ export class AdminRoomService {
     };
   }
 
-  get botUserId(): string {
+  get botUserId() {
     return `@${this.options.botLocalpart}:${this.hs.serverName}`;
   }
 
-  get alias(): string {
+  get alias() {
     return `#${this.options.aliasLocalpart}:${this.hs.serverName}`;
   }
 
   /** Whether no real (non-bot) account exists yet. */
-  async noUsersYet(): Promise<boolean> {
+  async noUsersYet() {
     const users = await this.hs.db.findMany("users", { limit: 2 });
     return users.every((u) => u.user_id === this.botUserId);
   }
 
-  async roomId(): Promise<string | null> {
+  async roomId() {
     if (this.roomIdCache) return this.roomIdCache;
     const row = await this.hs.db.findOne("room_aliases", [{ field: "alias", value: this.alias }]);
     this.roomIdCache = row?.room_id ?? null;
@@ -92,7 +92,7 @@ export class AdminRoomService {
   }
 
   /** Create the admin bot and room if needed. */
-  async ensureRoom(): Promise<string> {
+  async ensureRoom() {
     return this.hs.cluster.lock("adminroom", async () => {
       const existing = await this.roomId();
       if (existing) return existing;
@@ -113,7 +113,7 @@ export class AdminRoomService {
   }
 
   /** Called after an account was created. */
-  async onUserCreated(userId: string): Promise<void> {
+  async onUserCreated(userId: string) {
     if (!this.options.enabled || userId === this.botUserId || !this.options.firstUserIsAdmin) return;
     const first = await this.hs.cluster.lock("first-user", async () => {
       const users = await this.hs.db.findMany("users", { sortBy: { field: "created_ts", direction: "asc" }, limit: 3 });
@@ -127,7 +127,7 @@ export class AdminRoomService {
   }
 
   /** Put an admin into the admin room. */
-  async addAdmin(userId: string): Promise<void> {
+  async addAdmin(userId: string) {
     if (!this.options.enabled || userId === this.botUserId) return;
     const roomId = await this.ensureRoom();
     const membership = await this.hs.rooms.membership(roomId, userId);
@@ -137,7 +137,7 @@ export class AdminRoomService {
   }
 
   /** Remove a former admin from the admin room. */
-  async removeAdmin(userId: string): Promise<void> {
+  async removeAdmin(userId: string) {
     const roomId = await this.roomId();
     if (!roomId || userId === this.botUserId) return;
     const membership = await this.hs.rooms.membership(roomId, userId);
@@ -147,7 +147,7 @@ export class AdminRoomService {
   }
 
   /** Post a message from the admin bot. */
-  async say(text: string, replyTo?: string): Promise<void> {
+  async say(text: string, replyTo?: string) {
     const roomId = await this.roomId();
     if (!roomId) return;
     const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -162,7 +162,7 @@ export class AdminRoomService {
   }
 
   /** Called for every new event; handles commands posted in the admin room. */
-  async onEvent(event: PDU): Promise<void> {
+  async onEvent(event: PDU) {
     if (!this.options.enabled || event.type !== M.ROOM.MESSAGE || event.sender === this.botUserId) return;
     if (event.room_id !== (await this.roomId())) return;
     const body = typeof event.content?.body === "string" ? event.content.body.trim() : "";
@@ -184,14 +184,14 @@ export class AdminRoomService {
     await this.say(reply, event.event_id);
   }
 
-  private resolveUser(arg: string | undefined): string {
+  private resolveUser(arg: string | undefined) {
     if (!arg) throw new Error("Missing user");
     const id = arg.startsWith("@") ? arg : `@${arg.toLowerCase()}:${this.hs.serverName}`;
     if (!isValidUserId(id)) throw new Error(`Invalid user ID: ${arg}`);
     return id;
   }
 
-  private async resolveRoom(arg: string | undefined): Promise<string> {
+  private async resolveRoom(arg: string | undefined) {
     if (!arg) throw new Error("Missing room");
     if (arg.startsWith("#")) return this.hs.rooms.resolveRoomIdOrAlias(arg);
     if (!isValidRoomId(arg)) throw new Error(`Invalid room: ${arg}`);
@@ -199,7 +199,7 @@ export class AdminRoomService {
   }
 
   /** Run one admin command; returns the reply text. */
-  async execute(actor: string, args: string[]): Promise<string> {
+  async execute(actor: string, args: string[]) {
     const hs = this.hs;
     const flags = new Set(args.filter((a) => a.startsWith("--")));
     const pos = args.filter((a) => !a.startsWith("--"));

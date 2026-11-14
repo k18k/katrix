@@ -24,12 +24,12 @@ const threepidBody = body({
 
 // Third-party identifier management (spec "Adding Account Administrative Contact Information").
 
-function notDelegated(ctx: RequestContext): void {
+function notDelegated(ctx: RequestContext) {
   // With delegated OAuth, the authorization server manages contact information.
   if (ctx.hs.oauth) throw errors.unrecognized("Managed by the OAuth provider");
 }
 
-export function registerThreepidRoutes(r: Router): void {
+export function registerThreepidRoutes(r: Router) {
   // The fields are checked by the 3PID service, after it has checked that 3PIDs are enabled at all.
   const requestToken =
     (purpose: ThreepidPurpose, medium: "email" | "msisdn") => async (ctx: ProcedureContext<"none", Record<string, unknown>>) => {

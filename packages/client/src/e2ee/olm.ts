@@ -70,16 +70,16 @@ export class OlmService {
     this.deviceId = opts.deviceId;
   }
 
-  setIdentity(identity: { curve25519: string; ed25519: string }): void {
+  setIdentity(identity: { curve25519: string; ed25519: string }) {
     this.identity = identity;
   }
 
-  get identityKeys(): { curve25519: string; ed25519: string } {
+  get identityKeys() {
     if (!this.identity) throw new Error("The crypto engine is not initialised");
     return this.identity;
   }
 
-  async sessions(tx: Transaction | Store, senderKey: string): Promise<OlmSessionRecord[]> {
+  async sessions(tx: Transaction | Store, senderKey: string) {
     return (await tx.list<OlmSessionRecord>("olm_sessions", `${senderKey}|`)).map(([, r]) => r);
   }
 
@@ -87,7 +87,7 @@ export class OlmService {
    * The session to send with: the one we last received on (the spec asks clients to prefer it,
    * as it is the one the other side is sure to have), else the newest.
    */
-  private static preferred(records: OlmSessionRecord[]): OlmSessionRecord | undefined {
+  private static preferred(records: OlmSessionRecord[]) {
     return [...records].sort((a, b) => (b.lastReceivedAt ?? 0) - (a.lastReceivedAt ?? 0) || b.createdAt - a.createdAt)[0];
   }
 
@@ -95,7 +95,7 @@ export class OlmService {
    * Make sure we have an Olm session with each device, claiming one-time keys for those without.
    * Returns the devices we could not get a session with (no one-time key, invalid signature).
    */
-  async ensureSessions(devices: DeviceInfo[], opts: { force?: boolean } = {}): Promise<DeviceInfo[]> {
+  async ensureSessions(devices: DeviceInfo[], opts: { force?: boolean } = {}) {
     const missing: DeviceInfo[] = [];
     for (const d of devices) if (opts.force || (await this.sessions(this.store, d.curve25519)).length === 0) missing.push(d);
     if (missing.length === 0) return [];
@@ -147,12 +147,7 @@ export class OlmService {
    * Encrypt a to-device payload for `device` (which must have a session: ensureSessions). The
    * payload binds sender and recipient, as the spec requires, so it cannot be redirected.
    */
-  async encrypt(
-    tx: Transaction,
-    device: DeviceInfo,
-    type: string,
-    content: Record<string, unknown>,
-  ): Promise<Record<string, unknown> | undefined> {
+  async encrypt(tx: Transaction, device: DeviceInfo, type: string, content: Record<string, unknown>) {
     const record = OlmService.preferred(await this.sessions(tx, device.curve25519));
     if (!record) return undefined;
     const session = this.pickler.session(record);
@@ -178,7 +173,7 @@ export class OlmService {
    * session matches but that does not decrypt is refused (a replay must not start a second
    * session from a fallback key).
    */
-  async decrypt(tx: Transaction, event: ToDeviceEvent): Promise<DecryptedToDevice> {
+  async decrypt(tx: Transaction, event: ToDeviceEvent) {
     const content = event.content ?? {};
     if (content.algorithm !== OLM_ALGORITHM || typeof content.sender_key !== "string" || typeof event.sender !== "string") {
       throw new OlmDecryptionError("BAD_FORMAT", "Not an Olm message");
@@ -267,11 +262,7 @@ export class OlmService {
   }
 
   /** PUT /sendToDevice, in chunks (large rooms can mean thousands of devices). */
-  async sendToDevice(
-    type: string,
-    messages: Array<{ device: DeviceInfo; content: Record<string, unknown> }>,
-    txnId: () => string,
-  ): Promise<void> {
+  async sendToDevice(type: string, messages: Array<{ device: DeviceInfo; content: Record<string, unknown> }>, txnId: () => string) {
     for (let i = 0; i < messages.length; i += 250) {
       const body: Record<string, Record<string, Record<string, unknown>>> = {};
       for (const { device, content } of messages.slice(i, i + 250)) (body[device.userId] ??= {})[device.deviceId] = content;

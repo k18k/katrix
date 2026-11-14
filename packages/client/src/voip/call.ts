@@ -169,22 +169,22 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
   }
 
   /** Whether the other side offered video (an m=video section in its SDP). */
-  get hasVideo(): boolean {
+  get hasVideo() {
     return /^m=video /m.test(this.offer?.sdp ?? "");
   }
 
-  private setState(state: CallState): void {
+  private setState(state: CallState) {
     const previous = this.state;
     if (previous === state) return;
     this.state = state;
     this.emit("state", state, previous);
   }
 
-  private common(): Record<string, unknown> {
+  private common() {
     return { call_id: this.callId, party_id: this.partyId, version: "1" };
   }
 
-  private async createPeerConnection(setup: (pc: PeerConnectionLike) => void | Promise<void>): Promise<PeerConnectionLike> {
+  private async createPeerConnection(setup: (pc: PeerConnectionLike) => void | Promise<void>) {
     const pc = this.factory({ iceServers: await this.signalling.iceServers().catch(() => []) });
     this.peerConnection = pc;
     pc.addEventListener("icecandidate", (e) => this.onLocalCandidate(e.candidate));
@@ -199,7 +199,7 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
   }
 
   /** Outbound: create the offer and send the invite. `setup` adds the local tracks. */
-  async place(setup: (pc: PeerConnectionLike) => void | Promise<void>, opts: { streamMetadata?: StreamMetadata } = {}): Promise<void> {
+  async place(setup: (pc: PeerConnectionLike) => void | Promise<void>, opts: { streamMetadata?: StreamMetadata } = {}) {
     this.localSetup = setup;
     const pc = await this.createPeerConnection(setup);
     this.makingOffer = true;
@@ -223,7 +223,7 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
   }
 
   /** Inbound: answer. `setup` adds the local tracks. */
-  async answer(setup: (pc: PeerConnectionLike) => void | Promise<void>, opts: { streamMetadata?: StreamMetadata } = {}): Promise<void> {
+  async answer(setup: (pc: PeerConnectionLike) => void | Promise<void>, opts: { streamMetadata?: StreamMetadata } = {}) {
     if (this.direction !== "inbound" || this.state !== "ringing" || !this.offer) throw new Error("Only a ringing call can be answered");
     this.setState("connecting");
     try {
@@ -247,14 +247,14 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
   }
 
   /** Inbound, before answering: decline on every device (m.call.reject). */
-  async reject(): Promise<void> {
+  async reject() {
     if (this.direction !== "inbound" || this.state !== "ringing") throw new Error("Only a ringing call can be rejected");
     this.end("rejected");
     await this.signalling.send("m.call.reject", this.common());
   }
 
   /** End the call (m.call.hangup). */
-  async hangup(reason: CallHangupReason = "user_hangup"): Promise<void> {
+  async hangup(reason: CallHangupReason = "user_hangup") {
     if (this.state === "ended") return;
     const wire = ["ice_timeout", "ice_failed", "invite_timeout", "user_hangup", "user_media_failed", "user_busy", "unknown_error"].includes(
       reason,
@@ -268,7 +268,7 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
   }
 
   /** Stop the call here without telling the other side (for example when another call replaces it). */
-  end(reason: CallHangupReason): void {
+  end(reason: CallHangupReason) {
     if (this.state === "ended") return;
     this.hangupReason = reason;
     if (this.candidateTimer !== undefined) clearTimer(this.candidateTimer);
@@ -282,13 +282,13 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
   }
 
   /** Tell the other side the stream metadata changed (mute, screen share), without renegotiating. */
-  async setStreamMetadata(metadata: StreamMetadata): Promise<void> {
+  async setStreamMetadata(metadata: StreamMetadata) {
     await this.signalling.send("m.call.sdp_stream_metadata_changed", { ...this.common(), sdp_stream_metadata: metadata });
   }
 
   // ─── Candidates ───────────────────────────────────────────────────────────
 
-  private onLocalCandidate(candidate: IceCandidateLike | null): void {
+  private onLocalCandidate(candidate: IceCandidateLike | null) {
     // A null candidate ends gathering: the spec's end-of-candidates is an empty candidate, sent at once.
     this.pendingCandidates.push(
       candidate ? { candidate: candidate.candidate, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex } : { candidate: "" },
@@ -297,7 +297,7 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
     else if (this.candidateTimer === undefined && this.state !== "ringing") this.scheduleCandidates(BATCH_AFTER_ANSWER_MS);
   }
 
-  private scheduleCandidates(ms: number): void {
+  private scheduleCandidates(ms: number) {
     if (this.candidateTimer !== undefined) return;
     this.candidateTimer = setTimer(() => {
       this.candidateTimer = undefined;
@@ -305,7 +305,7 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
     }, ms);
   }
 
-  private async sendCandidates(): Promise<void> {
+  private async sendCandidates() {
     if (this.pendingCandidates.length === 0 || this.state === "ended") return;
     const candidates = this.pendingCandidates.splice(0);
     await this.signalling
@@ -313,11 +313,11 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
       .catch((e) => this.logger.warn("could not send ICE candidates", describeError(e)));
   }
 
-  private async flushRemoteCandidates(): Promise<void> {
+  private async flushRemoteCandidates() {
     for (const c of this.queuedRemoteCandidates.splice(0)) await this.addRemoteCandidate(c);
   }
 
-  private async addRemoteCandidate(c: IceCandidateLike): Promise<void> {
+  private async addRemoteCandidate(c: IceCandidateLike) {
     try {
       await this.peerConnection!.addIceCandidate(c);
     } catch (e) {
@@ -327,7 +327,7 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
 
   // ─── Renegotiation (perfect negotiation: the callee is polite) ────────────
 
-  private async renegotiate(): Promise<void> {
+  private async renegotiate() {
     const pc = this.peerConnection;
     if (!pc || this.state !== "connected") return;
     this.makingOffer = true;
@@ -349,7 +349,7 @@ export class MatrixCall extends TypedEmitter<CallEvents> {
   // ─── Incoming signalling ──────────────────────────────────────────────────
 
   /** An m.call.* event of this call from someone else (or from another device of ours). */
-  async handle(type: string, content: Record<string, unknown>, sender: string): Promise<void> {
+  async handle(type: string, content: Record<string, unknown>, sender: string) {
     if (this.state === "ended") return;
     const fromUs = sender === this.myUserId && content.party_id === this.partyId;
     if (fromUs) return;

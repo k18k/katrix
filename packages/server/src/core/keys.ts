@@ -26,12 +26,12 @@ export class KeyService {
   }
 
   /** A local user's devices or device keys changed: update local clients and remote servers. */
-  async deviceChanged(userId: string, deletedDeviceId?: string): Promise<void> {
+  async deviceChanged(userId: string, deletedDeviceId?: string) {
     await this.markDeviceListChanged(userId);
     await this.hs.federation.onDeviceListChange(userId, deletedDeviceId).catch((err) => this.hs.logger.warn("Device list EDU failed", err));
   }
 
-  async markDeviceListChanged(userId: string, notify = true): Promise<void> {
+  async markDeviceListChanged(userId: string, notify = true) {
     await this.hs.streams.write((stream) => this.hs.db.upsert("device_list_changes", { user_id: userId, stream }));
     if (notify) this.hs.notifier.notify(await this.hs.rooms.usersSharingRooms(userId));
   }
@@ -40,7 +40,7 @@ export class KeyService {
    * A partial-state room got its full state (MSC3902): device list updates received meanwhile for
    * users we could not place count as changes now, if those users turned out to be members.
    */
-  async onPartialStateComplete(roomId: string, pendingUsers: string[]): Promise<void> {
+  async onPartialStateComplete(roomId: string, pendingUsers: string[]) {
     const members = new Set(await this.hs.rooms.joinedMembers(roomId));
     for (const userId of pendingUsers) {
       if (members.has(userId)) await this.markDeviceListChanged(userId, false);
@@ -48,7 +48,7 @@ export class KeyService {
     this.hs.notifier.notify([...members].filter((u) => this.hs.isLocalUser(u)));
   }
 
-  async upload(userId: string, deviceId: string, body: Record<string, unknown>): Promise<Record<string, number>> {
+  async upload(userId: string, deviceId: string, body: Record<string, unknown>) {
     if (body.device_keys !== undefined) {
       const dk = body.device_keys;
       if (!isObject(dk) || dk.user_id !== userId || dk.device_id !== deviceId)
@@ -107,7 +107,7 @@ export class KeyService {
     return this.oneTimeKeyCounts(userId, deviceId);
   }
 
-  async oneTimeKeyCounts(userId: string, deviceId: string): Promise<Record<string, number>> {
+  async oneTimeKeyCounts(userId: string, deviceId: string) {
     const rows = await this.hs.db.findMany("one_time_keys", {
       where: [
         { field: "user_id", value: userId },
@@ -122,7 +122,7 @@ export class KeyService {
     return counts;
   }
 
-  async unusedFallbackKeyTypes(userId: string, deviceId: string): Promise<string[]> {
+  async unusedFallbackKeyTypes(userId: string, deviceId: string) {
     const rows = await this.hs.db.findMany("fallback_keys", {
       where: [
         { field: "user_id", value: userId },
@@ -214,7 +214,7 @@ export class KeyService {
   }
 
   /** Whether a remote user shares a room with a local user (by known membership). */
-  async isTracked(userId: string): Promise<boolean> {
+  async isTracked(userId: string) {
     const rows = await this.hs.db.findMany("memberships", {
       where: [
         { field: "user_id", value: userId },
@@ -227,13 +227,13 @@ export class KeyService {
     return false;
   }
 
-  async dropRemoteCache(userId: string): Promise<void> {
+  async dropRemoteCache(userId: string) {
     await this.hs.db.delete("remote_devices", [{ field: "user_id", value: userId }]);
     await this.hs.db.delete("remote_device_lists", [{ field: "user_id", value: userId }]);
   }
 
   /** A tracked user's device list changed: refetch it on the next query. */
-  async markRemoteStale(userId: string): Promise<void> {
+  async markRemoteStale(userId: string) {
     if (await this.isTracked(userId)) {
       await this.hs.db.upsert("remote_device_lists", { user_id: userId, stream_id: 0, stale: true });
     } else {
@@ -262,7 +262,7 @@ export class KeyService {
     await this.hs.db.upsert("remote_device_lists", { user_id: userId, stream_id: 0, stale: false });
   }
 
-  private async fromRemoteCache(userId: string, devices: string[], result: Required<KeysQueryResponse>): Promise<void> {
+  private async fromRemoteCache(userId: string, devices: string[], result: Required<KeysQueryResponse>) {
     const wanted = Array.isArray(devices) && devices.length ? new Set(devices) : null;
     const out: Record<string, DeviceKeys> = {};
     for (const row of await this.hs.db.findMany("remote_devices", { where: [{ field: "user_id", value: userId }] })) {
@@ -315,7 +315,7 @@ export class KeyService {
     return result;
   }
 
-  async uploadCrossSigning(userId: string, body: Record<string, unknown>): Promise<void> {
+  async uploadCrossSigning(userId: string, body: Record<string, unknown>) {
     for (const type of ["master", "self_signing", "user_signing"]) {
       const key = body[`${type}_key`];
       if (key === undefined) continue;
@@ -372,7 +372,7 @@ export class KeyService {
     since: number,
     upTo: number,
     known: { memberChanges?: Row[]; deviceRows?: Row[]; joinedRooms?: string[] } = {},
-  ): Promise<{ changed: string[]; left: string[] }> {
+  ) {
     const sharing = await this.hs.rooms.usersSharingRooms(userId);
     const rows = known.deviceRows ?? (await this.hs.db.findMany("device_list_changes", deviceListChangesQuery(sharing, since)));
     const changed = new Set<string>();

@@ -2,7 +2,7 @@ import { errors } from "#core/errors.ts";
 import type { Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 
-export function registerAppServiceRoutes(r: Router): void {
+export function registerAppServiceRoutes(r: Router) {
   r.client(
     "POST",
     "/appservice/:appserviceId/ping",

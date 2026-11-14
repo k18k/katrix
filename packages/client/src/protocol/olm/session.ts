@@ -30,11 +30,11 @@ export class NativeOlmSession implements OlmSession {
   }
 
   /** As libolm and vodozemac: SHA-256(Alice's identity key ‖ Alice's base key ‖ Bob's one-time key). */
-  sessionId(): string {
+  sessionId() {
     return encodeBase64(this.p.sha256(concatBytes(this.keys.aliceIdentityKey, this.keys.aliceBaseKey, this.keys.bobOneTimeKey)));
   }
 
-  hasReceivedMessage(): boolean {
+  hasReceivedMessage() {
     return this.receivedMessage;
   }
 
@@ -51,7 +51,7 @@ export class NativeOlmSession implements OlmSession {
     return { type: 0, body: encodeBase64(preKey) };
   }
 
-  decrypt(message: OlmMessage): Uint8Array {
+  decrypt(message: OlmMessage) {
     const bytes = decodeBody(message);
     let inner: Uint8Array;
     if (message.type === 0) {
@@ -69,7 +69,7 @@ export class NativeOlmSession implements OlmSession {
     return plaintext;
   }
 
-  sessionMatches(message: OlmMessage): boolean {
+  sessionMatches(message: OlmMessage) {
     if (message.type !== 0) return false;
     try {
       return this.matchesPreKey(decodePreKey(decodeBody(message)));
@@ -78,7 +78,7 @@ export class NativeOlmSession implements OlmSession {
     }
   }
 
-  private matchesPreKey(m: ReturnType<typeof decodePreKey>): boolean {
+  private matchesPreKey(m: ReturnType<typeof decodePreKey>) {
     return (
       bytesEqual(m.oneTimeKey, this.keys.bobOneTimeKey) &&
       bytesEqual(m.baseKey, this.keys.aliceBaseKey) &&
@@ -86,7 +86,7 @@ export class NativeOlmSession implements OlmSession {
     );
   }
 
-  pickle(key?: PickleKey): string {
+  pickle(key?: PickleKey) {
     return writePickle(
       this.p,
       "olm_session",
@@ -101,7 +101,7 @@ export class NativeOlmSession implements OlmSession {
     );
   }
 
-  static fromPickle(p: CryptoPrimitives, pickle: string, key?: PickleKey): NativeOlmSession {
+  static fromPickle(p: CryptoPrimitives, pickle: string, key?: PickleKey) {
     const s = readPickle(p, "olm_session", pickle, key);
     return new NativeOlmSession(
       p,
@@ -116,7 +116,7 @@ export class NativeOlmSession implements OlmSession {
   }
 }
 
-export function decodeBody(message: OlmMessage): Uint8Array {
+export function decodeBody(message: OlmMessage) {
   if (typeof message?.body !== "string") throw new ProtocolError("BAD_MESSAGE_FORMAT", "Missing message body");
   try {
     return decodeBase64(message.body);

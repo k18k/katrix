@@ -1,6 +1,6 @@
 import type { CrossSigningKey, DeviceKeys } from "@katrix/shared";
 import type { Transaction } from "../storage/store.ts";
-import type { E2EEProtocol, InboundGroupSession, OlmAccount, OlmSession, OutboundGroupSession, PickleKey } from "../protocol/protocol.ts";
+import type { E2EEProtocol, OlmAccount, PickleKey } from "../protocol/protocol.ts";
 
 /** Records of the crypto stores. Pickles are opaque strings of the E2EEProtocol named in `protocol`. */
 
@@ -117,35 +117,35 @@ export class Pickler {
     this.key = key;
   }
 
-  account(record: AccountRecord): OlmAccount {
+  account(record: AccountRecord) {
     if (record.protocol !== this.protocol.id)
       throw new Error(`The stored account belongs to E2EE protocol ${record.protocol}, not ${this.protocol.id}`);
     return this.protocol.accountFromPickle(record.pickle, this.key);
   }
 
-  session(record: OlmSessionRecord): OlmSession {
+  session(record: OlmSessionRecord) {
     return this.protocol.sessionFromPickle(record.pickle, this.key);
   }
 
-  inbound(record: InboundGroupSessionRecord): InboundGroupSession {
+  inbound(record: InboundGroupSessionRecord) {
     return this.protocol.inboundGroupSessionFromPickle(record.pickle, this.key);
   }
 
-  outbound(record: OutboundGroupSessionRecord): OutboundGroupSession {
+  outbound(record: OutboundGroupSessionRecord) {
     return this.protocol.outboundGroupSessionFromPickle(record.pickle, this.key);
   }
 
-  pickle(obj: { pickle(key?: PickleKey): string }): string {
+  pickle(obj: { pickle(key?: PickleKey): string }) {
     return obj.pickle(this.key);
   }
 }
 
-export async function loadAccount(tx: Transaction, pickler: Pickler): Promise<{ record: AccountRecord; account: OlmAccount }> {
+export async function loadAccount(tx: Transaction, pickler: Pickler) {
   const record = await tx.get<AccountRecord>("account", "account");
   if (!record) throw new Error("No Olm account: the crypto engine is not initialised");
   return { record, account: pickler.account(record) };
 }
 
-export function saveAccount(tx: Transaction, pickler: Pickler, record: AccountRecord, account: OlmAccount): void {
+export function saveAccount(tx: Transaction, pickler: Pickler, record: AccountRecord, account: OlmAccount) {
   tx.put("account", "account", { ...record, pickle: pickler.pickle(account) });
 }

@@ -20,7 +20,7 @@ export interface ThreadSummary {
 }
 
 /** The relation an event declares (in the clear part of encrypted events, as the spec requires). */
-export function relationOf(event: MatrixEvent): RelatesTo | undefined {
+export function relationOf(event: MatrixEvent) {
   const rel =
     (event.content as { "m.relates_to"?: RelatesTo })["m.relates_to"] ??
     (event.wire.content as { "m.relates_to"?: RelatesTo })["m.relates_to"];
@@ -28,7 +28,7 @@ export function relationOf(event: MatrixEvent): RelatesTo | undefined {
 }
 
 /** Spec ordering of replacements: the latest by origin_server_ts, ties broken by the larger event ID. */
-function newer(a: MatrixEvent, b: MatrixEvent): boolean {
+function newer(a: MatrixEvent, b: MatrixEvent) {
   const ta = a.originServerTs ?? 0;
   const tb = b.originServerTs ?? 0;
   return ta !== tb ? ta > tb : (a.eventId ?? "") > (b.eventId ?? "");
@@ -52,7 +52,7 @@ export class Relations {
     this.myUserId = myUserId;
   }
 
-  private mapFor(relType: string | undefined): Map<string, Set<MatrixEvent>> | undefined {
+  private mapFor(relType: string | undefined) {
     switch (relType) {
       case "m.replace":
         return this.replacements;
@@ -67,7 +67,7 @@ export class Relations {
   }
 
   /** Index an event by the relation it declares. Returns the target's event ID if it has one. */
-  add(event: MatrixEvent): string | undefined {
+  add(event: MatrixEvent) {
     const rel = relationOf(event);
     const target = rel?.event_id;
     const map = this.mapFor(rel?.rel_type);
@@ -79,7 +79,7 @@ export class Relations {
   }
 
   /** Drop an event (redacted, or removed from the timeline). Returns the target's event ID. */
-  remove(event: MatrixEvent): string | undefined {
+  remove(event: MatrixEvent) {
     const rel = relationOf(event);
     const target = rel?.event_id;
     if (typeof target !== "string") return undefined;
@@ -93,7 +93,7 @@ export class Relations {
    * once decrypted, since their type and `m.new_content` are inside. A server-bundled
    * replacement (unsigned m.relations) is used when no edit arrived here.
    */
-  replacementFor(original: MatrixEvent, bundled?: MatrixEvent): MatrixEvent | undefined {
+  replacementFor(original: MatrixEvent, bundled?: MatrixEvent) {
     if (!original.eventId || !isEditable(original)) return undefined;
     let best: MatrixEvent | undefined;
     const candidates = [...(this.replacements.get(original.eventId) ?? [])];
@@ -103,7 +103,7 @@ export class Relations {
   }
 
   /** Reactions on an event, grouped by key, most used first. */
-  reactions(eventId: string): ReactionGroup[] {
+  reactions(eventId: string) {
     const groups = new Map<string, ReactionGroup>();
     // One reaction per (sender, key): a client that sends the same reaction twice counts once.
     const seen = new Set<string>();
@@ -122,28 +122,28 @@ export class Relations {
   }
 
   /** The thread replies that arrived here, oldest first. */
-  threadReplies(rootId: string): MatrixEvent[] {
+  threadReplies(rootId: string) {
     return [...(this.threads.get(rootId) ?? [])].filter((e) => !e.isRedacted()).sort((a, b) => (newer(a, b) ? 1 : -1));
   }
 
   /** Events that reference this one (m.reference: key verification in rooms, poll responses). */
-  references(eventId: string): MatrixEvent[] {
+  references(eventId: string) {
     return [...(this.refs.get(eventId) ?? [])].filter((e) => !e.isRedacted());
   }
 
   /** IDs of the thread roots seen in this room. */
-  threadRoots(): string[] {
+  threadRoots() {
     return [...this.threads.keys()];
   }
 }
 
 /** Whether an event can be edited at all: not state, and not an edit itself. */
-function isEditable(event: MatrixEvent): boolean {
+function isEditable(event: MatrixEvent) {
   return !event.isState() && relationOf(event)?.rel_type !== "m.replace";
 }
 
 /** The spec's validity rules for a replacement (https://spec.matrix.org/v1.19/client-server-api/#validity-of-replacement-events). */
-export function isValidReplacement(original: MatrixEvent, replacement: MatrixEvent): boolean {
+export function isValidReplacement(original: MatrixEvent, replacement: MatrixEvent) {
   if (replacement.isRedacted() || replacement.isState()) return false;
   if (replacement.isEncrypted() && replacement.decryptionStatus !== "decrypted") return false;
   const newContent = (replacement.content as { "m.new_content"?: unknown })["m.new_content"];

@@ -17,12 +17,12 @@ export class SecretBox {
     this.key = key;
   }
 
-  private keys(name: string): { aes: Uint8Array; mac: Uint8Array } {
+  private keys(name: string) {
     const okm = this.primitives.hkdfSha256(this.key!, undefined, encodeUtf8(`katrix secret ${name}`), 64);
     return { aes: okm.subarray(0, 32), mac: okm.subarray(32) };
   }
 
-  seal(name: string, secret: Uint8Array): string {
+  seal(name: string, secret: Uint8Array) {
     if (!this.key) return `plain:${encodeBase64(secret)}`;
     const { aes, mac } = this.keys(name);
     const iv = this.primitives.randomBytes(16);
@@ -32,7 +32,7 @@ export class SecretBox {
   }
 
   /** Throws when the sealed value was made with another pickle key or was changed. */
-  open(name: string, sealed: string): Uint8Array {
+  open(name: string, sealed: string) {
     if (sealed.startsWith("plain:")) {
       if (this.key) throw new Error("A secret was stored without the pickle key");
       return decodeBase64(sealed.slice("plain:".length));

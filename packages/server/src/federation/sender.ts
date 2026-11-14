@@ -26,7 +26,7 @@ export class TransactionSender {
   }
 
   /** Start background sweeping for destinations with pending items (e.g. after a restart). */
-  start(): void {
+  start() {
     if (this.sweepTimer) return;
     // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
     // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
@@ -38,20 +38,20 @@ export class TransactionSender {
     void this.sweep().catch((err) => this.hs.logger.warn("Federation outbox sweep failed", err));
   }
 
-  private async sweep(): Promise<void> {
+  private async sweep() {
     const rows = await this.hs.db.findMany("federation_outbox", { sortBy: { field: "id", direction: "asc" }, limit: 1000 });
     for (const dest of new Set(rows.map((r) => r.destination))) this.schedule(dest, 0);
   }
 
-  async sendPdu(destinations: Iterable<string>, pdu: Record<string, unknown>): Promise<void> {
+  async sendPdu(destinations: Iterable<string>, pdu: Record<string, unknown>) {
     await this.enqueue(destinations, "pdu", pdu);
   }
 
-  async sendEdu(destinations: Iterable<string>, eduType: string, content: Record<string, unknown>, durable = true): Promise<void> {
+  async sendEdu(destinations: Iterable<string>, eduType: string, content: Record<string, unknown>, durable = true) {
     await this.enqueue(destinations, durable ? "edu" : "edu-ephemeral", { edu_type: eduType, content });
   }
 
-  private async enqueue(destinations: Iterable<string>, kind: string, payload: Record<string, unknown>): Promise<void> {
+  private async enqueue(destinations: Iterable<string>, kind: string, payload: Record<string, unknown>) {
     for (const destination of new Set(destinations)) {
       if (destination === this.hs.serverName) continue;
       const id = await this.hs.cluster.nextId("federation_outbox");
@@ -60,7 +60,7 @@ export class TransactionSender {
     }
   }
 
-  private schedule(destination: string, delayMs: number): void {
+  private schedule(destination: string, delayMs: number) {
     if (this.hs.isClosed) return;
     const existing = this.timers.get(destination);
     if (existing && delayMs > 0) return;
@@ -73,7 +73,7 @@ export class TransactionSender {
     this.timers.set(destination, timer);
   }
 
-  private async flush(destination: string): Promise<void> {
+  private async flush(destination: string) {
     await this.hs.cluster.lock(`fedsend:${destination}`, async () => {
       const status = await this.hs.db.findOne("destination_status", [{ field: "destination", value: destination }]);
       if (status && status.retry_after_ts > Date.now()) {
@@ -121,14 +121,14 @@ export class TransactionSender {
   }
 
   /** Retry a destination immediately (e.g. after it contacted us). */
-  async wake(destination: string): Promise<void> {
+  async wake(destination: string) {
     const status = await this.hs.db.findOne("destination_status", [{ field: "destination", value: destination }]);
     if (!status) return;
     await this.hs.db.delete("destination_status", [{ field: "destination", value: destination }]);
     this.schedule(destination, 0);
   }
 
-  stop(): void {
+  stop() {
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
     if (this.sweepTimer) clearInterval(this.sweepTimer);

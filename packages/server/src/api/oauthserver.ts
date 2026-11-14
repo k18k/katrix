@@ -35,19 +35,19 @@ export interface WebSession {
 
 const P = OAUTH_PREFIX;
 
-function server(hs: Homeserver): OAuthServer {
+function server(hs: Homeserver) {
   if (!hs.oauthServer) throw errors.unrecognized("The OAuth 2.0 API is not enabled");
   return hs.oauthServer;
 }
 
-function cookieName(hs: Homeserver): string {
+function cookieName(hs: Homeserver) {
   return secure(hs) ? "__Host-oauth_session" : "oauth_session";
 }
 
 const secure = (hs: Homeserver) => server(hs).issuer.startsWith("https:");
 const sessionTtl = (hs: Homeserver) => server(hs).options.webSessionLifetimeMs ?? 7 * 24 * 3600_000;
 
-function readCookie(ctx: RequestContext, name: string): string | null {
+function readCookie(ctx: RequestContext, name: string) {
   for (const part of (ctx.request.headers.get("cookie") ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
     if (k === name) return v.join("=");
@@ -56,7 +56,7 @@ function readCookie(ctx: RequestContext, name: string): string | null {
 }
 
 /** The browser's session, if it has one. */
-export async function readWebSession(ctx: RequestContext): Promise<WebSession | null> {
+export async function readWebSession(ctx: RequestContext) {
   if (!ctx.hs.oauthServer) return null;
   const sid = readCookie(ctx, cookieName(ctx.hs));
   if (!sid || !/^[A-Za-z0-9_-]{20,100}$/.test(sid)) return null;
@@ -64,7 +64,7 @@ export async function readWebSession(ctx: RequestContext): Promise<WebSession | 
 }
 
 /** The browser's session, created (with a cookie to set) when it has none. */
-async function webSession(ctx: RequestContext): Promise<{ web: WebSession; cookie?: string }> {
+async function webSession(ctx: RequestContext) {
   const existing = await readWebSession(ctx);
   if (existing) return { web: existing };
   const web: WebSession = { sid: randomToken(32), csrf: randomToken(24) };
@@ -75,7 +75,7 @@ async function webSession(ctx: RequestContext): Promise<{ web: WebSession; cooki
 }
 
 /** Log the browser session in (password, registration or an upstream provider). */
-export async function setWebUser(hs: Homeserver, web: WebSession, userId: string | undefined): Promise<void> {
+export async function setWebUser(hs: Homeserver, web: WebSession, userId: string | undefined) {
   const next: WebSession = { sid: web.sid, csrf: web.csrf };
   if (userId) Object.assign(next, { userId, authTime: Date.now() });
   Object.assign(web, next);
@@ -83,24 +83,24 @@ export async function setWebUser(hs: Homeserver, web: WebSession, userId: string
 }
 
 /** A `next` value: a page of this server, nothing else (no open redirect). */
-function safeNext(raw: string | null): string {
+function safeNext(raw: string | null) {
   if (raw && raw.startsWith(`${P}/`) && !raw.includes("//") && !raw.includes("\\") && !raw.includes("..")) return raw;
   return `${P}/account`;
 }
 
 const pageUrl = (hs: Homeserver, path: string) => server(hs).url(path.startsWith(P) ? path.slice(P.length) : path);
 
-function redirect(location: string, cookie?: string, status = 303): Response {
+function redirect(location: string, cookie?: string, status = 303) {
   const headers = new Headers({ location, "cache-control": "no-store" });
   if (cookie) headers.append("set-cookie", cookie);
   return new Response(null, { status, headers });
 }
 
-async function readForm(ctx: RequestContext): Promise<URLSearchParams> {
+async function readForm(ctx: RequestContext) {
   return new URLSearchParams(new TextDecoder().decode(await ctx.bytes()));
 }
 
-function checkCsrf(ctx: RequestContext, web: WebSession, form: URLSearchParams): void {
+function checkCsrf(ctx: RequestContext, web: WebSession, form: URLSearchParams) {
   const origin = ctx.request.headers.get("origin");
   if (origin && origin !== new URL(server(ctx.hs).issuer).origin) throw errors.forbidden("Cross-site request");
   const given = Buffer.from(form.get("csrf") ?? "");
@@ -124,7 +124,7 @@ ul.devices{list-style:none;padding:0;margin:0}ul.devices li{padding:.6rem 0;bord
 ul.devices li.focus{background:color-mix(in srgb,var(--accent) 10%,transparent)}ul.devices button{margin:0}code{font-size:.9em;word-break:break-all}
 .client{display:flex;gap:.75rem;align-items:center}.client img{width:48px;height:48px;border-radius:8px}footer{text-align:center}footer a{color:var(--muted)}`;
 
-function page(hs: Homeserver, title: string, body: string, opts: { status?: number; cookie?: string } = {}): Response {
+function page(hs: Homeserver, title: string, body: string, opts: { status?: number; cookie?: string } = {}) {
   const o = server(hs).options;
   const links = [
     o.termsUrl && `<a href="${escapeHtml(o.termsUrl)}">Terms</a>`,
@@ -149,14 +149,14 @@ function page(hs: Homeserver, title: string, body: string, opts: { status?: numb
   return new Response(html, { status: opts.status ?? 200, headers });
 }
 
-function errorPage(hs: Homeserver, message: string, status = 400): Response {
+function errorPage(hs: Homeserver, message: string, status = 400) {
   return page(hs, "Something went wrong", `<div class="card"><h1>Something went wrong</h1><p>${escapeHtml(message)}</p></div>`, { status });
 }
 
 const csrfField = (web: WebSession) => `<input type="hidden" name="csrf" value="${escapeHtml(web.csrf)}">`;
 
 /** Who the client is, as far as its registration says. */
-function clientCard(client: ClientMetadata): string {
+function clientCard(client: ClientMetadata) {
   const host = new URL(client.client_uri).host;
   const name = client.client_name ?? host;
   const logo = client.logo_uri ? `<img src="${escapeHtml(client.logo_uri)}" alt="">` : "";
@@ -186,7 +186,7 @@ function pageRoute(handler: (ctx: RequestContext) => Promise<Response>) {
 }
 
 /** The logged-in user of the browser, or a redirect to the login page that comes back here. */
-async function loggedIn(ctx: RequestContext, here: string): Promise<{ web: WebSession; userId: string; cookie?: string } | Response> {
+async function loggedIn(ctx: RequestContext, here: string) {
   const { web, cookie } = await webSession(ctx);
   if (web.userId) {
     const user = await ctx.hs.db.findOne("users", [{ field: "user_id", value: web.userId }]);
@@ -200,7 +200,7 @@ async function loggedIn(ctx: RequestContext, here: string): Promise<{ web: WebSe
 }
 
 /** Whether the registration page can create an account now, and whether it needs a token. */
-async function registration(hs: Homeserver): Promise<{ open: boolean; token: boolean }> {
+async function registration(hs: Homeserver) {
   if (!hs.userAuth.passwordLoginEnabled || !(await hs.registrationAllowed())) return { open: false, token: false };
   const flows = await registrationFlows(hs);
   // Registering with an email address needs a client that can validate it.
@@ -208,7 +208,7 @@ async function registration(hs: Homeserver): Promise<{ open: boolean; token: boo
   return { open: true, token: flows.every((f) => f.includes(M.LOGIN.REGISTRATION_TOKEN)) };
 }
 
-function providerButtons(hs: Homeserver, next: string): string {
+function providerButtons(hs: Homeserver, next: string) {
   return (hs.sso?.providers ?? [])
     .map(
       (p) =>
@@ -299,7 +299,7 @@ function consentPage(
   return page(hs, "Allow access", body, { cookie: opts.cookie });
 }
 
-function oauthJson(body: unknown, status = 200): Response {
+function oauthJson(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json", "cache-control": "no-store", pragma: "no-cache" },
@@ -322,7 +322,7 @@ function oauthEndpoint(handler: (ctx: RequestContext, server: OAuthServer) => Pr
 }
 
 /** The client of a token request: Basic credentials (RFC 6749 section 2.3.1) or `client_id`. */
-function requestClientId(ctx: RequestContext, form: URLSearchParams): string | null {
+function requestClientId(ctx: RequestContext, form: URLSearchParams) {
   const header = ctx.request.headers.get("authorization");
   if (header?.startsWith("Basic ")) {
     const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
@@ -345,7 +345,7 @@ const DONE: Record<string, string> = {
   reset_allowed: "Resetting your identity is allowed for the next 10 minutes. Go back to your app to finish.",
 };
 
-export function registerOAuthServerRoutes(r: Router): void {
+export function registerOAuthServerRoutes(r: Router) {
   // --- Endpoints for clients ----------------------------------------------------
 
   r.post(

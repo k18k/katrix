@@ -73,7 +73,7 @@ export interface AuditBot {
   stop(): Promise<void>;
 }
 
-export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): Promise<AuditBot> {
+export async function startAuditBot(hs: Homeserver, options: AuditBotOptions) {
   await hs.ready;
   const localpart = options.localpart ?? "auditbot";
   const userId = `@${localpart}:${hs.serverName}`;
@@ -111,7 +111,7 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
   };
 
   const joining = new Map<string, Promise<void>>();
-  const ensureJoined = (roomId: string): Promise<void> => {
+  const ensureJoined = (roomId: string) => {
     const running = joining.get(roomId);
     if (running) return running;
     const p = (async () => {
@@ -165,7 +165,7 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
   };
   hs.on("event", onEvent);
 
-  const toRecord = (roomId: string, ev: RoomEvent, extra: Partial<AuditRecord> = {}): AuditRecord => ({
+  const toRecord = (roomId: string, ev: RoomEvent, extra: Partial<AuditRecord> = {}) => ({
     recorded_at: Date.now(),
     room_id: roomId,
     event_id: ev.event_id,
@@ -180,7 +180,7 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
   });
 
   /** A record for an event, decrypting it when it is encrypted; null when its key is not here yet. */
-  const process = async (roomId: string, ev: RoomEvent): Promise<AuditRecord | null> => {
+  const process = async (roomId: string, ev: RoomEvent) => {
     if (ev.type !== "m.room.encrypted") return toRecord(roomId, ev);
     try {
       const decrypted = await client.decrypt(ev, roomId);

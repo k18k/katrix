@@ -16,7 +16,7 @@ export const SIGNATURE_LENGTH = 64;
 const T_INDEX = 0x08;
 const T_CIPHERTEXT = 0x12;
 
-export function encodeBody(index: number, ciphertext: Uint8Array): Uint8Array {
+export function encodeBody(index: number, ciphertext: Uint8Array) {
   return new WireWriter().byte(VERSION).varintField(T_INDEX, index).bytesField(T_CIPHERTEXT, ciphertext).finish();
 }
 
@@ -31,7 +31,7 @@ export interface DecodedMegolmMessage {
   signature: Uint8Array;
 }
 
-export function decodeMessage(bytes: Uint8Array): DecodedMegolmMessage {
+export function decodeMessage(bytes: Uint8Array) {
   if (bytes.length < 1) throw new ProtocolError("BAD_MESSAGE_FORMAT", "Empty message");
   if (bytes[0] !== VERSION) throw new ProtocolError("BAD_MESSAGE_VERSION", "Unsupported Megolm message version");
   if (bytes.length < 1 + MAC_LENGTH + SIGNATURE_LENGTH) throw new ProtocolError("BAD_MESSAGE_FORMAT", "Truncated message");

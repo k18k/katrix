@@ -12,11 +12,11 @@ import { paginate, topoToken } from "#api/timeline.ts";
 
 const DEFAULT_KEYS = ["content.body", "content.name", "content.topic"];
 
-function valueAt(obj: unknown, path: string): unknown {
+function valueAt(obj: unknown, path: string) {
   return path.split(".").reduce((o, k) => (isObject(o) ? o[k] : undefined), obj);
 }
 
-export function registerSearchRoutes(r: Router): void {
+export function registerSearchRoutes(r: Router) {
   const missingTerm = fail("M_BAD_JSON", "Missing search_categories.room_events.search_term");
   const searchBody = body({
     search_categories: v.looseObject(

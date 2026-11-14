@@ -7,7 +7,6 @@ import {
   RoomMessageRequest,
   ToDeviceRequest,
   UserId,
-  type DecryptedRoomEvent,
   type RequestType,
   type StoreType,
 } from "@matrix-org/matrix-sdk-crypto-nodejs";
@@ -25,7 +24,7 @@ const Req = { KeysUpload: 0, KeysQuery: 1, KeysClaim: 2, ToDevice: 3, SignatureU
  * matrix-sdk-crypto puts signature uploads under `signed_keys`; the endpoint takes the map of
  * signatures itself as the body.
  */
-function signatureUploadBody(body: string): string {
+function signatureUploadBody(body: string) {
   const parsed = JSON.parse(body) as Record<string, unknown>; // ts-pro-exception: the body comes from matrix-sdk-crypto, not the network
   return Object.keys(parsed).length === 1 && parsed.signed_keys ? JSON.stringify(parsed.signed_keys) : body;
 }
@@ -62,7 +61,7 @@ export class CryptoClient {
    * Open the crypto store. With `storePath`, keys live in an encrypted SQLite store there (they
    * must survive restarts: room keys are sent once). Without, in memory (tests).
    */
-  async open(storePath?: string, passphrase?: string): Promise<void> {
+  async open(storePath?: string, passphrase?: string) {
     this.machine = await OlmMachine.initialize(
       new UserId(this.userId),
       new DeviceId(this.deviceId),
@@ -75,7 +74,7 @@ export class CryptoClient {
 
   // https://github.com/k18k/katrix/issues/128: responses defaulted to any; callers name the response type they expect
   // (the shared endpoint types), and errors carry an object of unknown fields.
-  async request<T = unknown>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  async request<T = unknown>(method: string, path: string, body?: unknown, signal?: AbortSignal) {
     const res = await this.fetch(
       new Request(`${this.baseUrl}${path}`, {
         method,
@@ -91,7 +90,7 @@ export class CryptoClient {
   }
 
   /** Feed a /sync response to the crypto machine, then send what it needs sent. */
-  async receiveSync(sync: SyncResponse): Promise<void> {
+  async receiveSync(sync: SyncResponse) {
     const changed = (sync.device_lists?.changed ?? []).map((u) => new UserId(u));
     const left = (sync.device_lists?.left ?? []).map((u) => new UserId(u));
     await this.machine.receiveSyncChanges(
@@ -104,7 +103,7 @@ export class CryptoClient {
   }
 
   /** Send every outgoing request of the crypto machine (key uploads, queries, claims, to-device). */
-  async flush(): Promise<void> {
+  async flush() {
     for (let round = 0; round < 10; round++) {
       const requests = await this.machine.outgoingRequests();
       if (requests.length === 0) return;
@@ -152,12 +151,12 @@ export class CryptoClient {
   }
 
   /** Make sure the crypto machine knows these users' devices. */
-  async track(users: string[]): Promise<void> {
+  async track(users: string[]) {
     await this.machine.updateTrackedUsers(users.map((u) => new UserId(u)));
     await this.flush();
   }
 
-  decrypt(event: object, roomId: string): Promise<DecryptedRoomEvent> {
+  decrypt(event: object, roomId: string) {
     return this.machine.decryptRoomEvent(JSON.stringify(event), new RoomId(roomId));
   }
 
@@ -165,7 +164,7 @@ export class CryptoClient {
    * Set up cross-signing for this account and sign the device with it, so other users' clients
    * see the device as its owner's (not as an unknown one). Only once: an existing identity is kept.
    */
-  async ensureCrossSigning(): Promise<void> {
+  async ensureCrossSigning() {
     const status = await this.machine.crossSigningStatus();
     if (status.hasMaster && status.hasSelfSigning) return;
     const requests = await this.machine.bootstrapCrossSigning(true);
@@ -184,7 +183,7 @@ export class CryptoClient {
   }
 
   /** Encrypt and send a message (the test's sender; the bot itself sends nothing encrypted). */
-  async sendEncrypted(roomId: string, members: string[], content: Record<string, unknown>): Promise<string> {
+  async sendEncrypted(roomId: string, members: string[], content: Record<string, unknown>) {
     const { EncryptionSettings } = await import("@matrix-org/matrix-sdk-crypto-nodejs");
     await this.track(members);
     const users = members.map((u) => new UserId(u));
@@ -210,7 +209,7 @@ export class CryptoClient {
     return sent.event_id;
   }
 
-  close(): void {
+  close() {
     this.machine?.close();
   }
 }

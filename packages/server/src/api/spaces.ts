@@ -31,7 +31,7 @@ export async function roomDetails(hs: Homeserver, roomId: string) {
 }
 
 /** Whether a user may see a room's summary (spec: "accessible" rooms). */
-async function canAccess(hs: Homeserver, roomId: string, userId: string | null): Promise<boolean> {
+async function canAccess(hs: Homeserver, roomId: string, userId: string | null) {
   const state = await hs.rooms.currentState(roomId);
   if (userId && ["join", "invite", "knock"].includes(membershipOf(state, userId))) return true;
   if (getState(state, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility === "world_readable") return true;
@@ -99,7 +99,7 @@ async function remoteSummary(hs: Homeserver, roomId: string, via: string[], sugg
   return null;
 }
 
-export function registerSpaceRoutes(r: Router): void {
+export function registerSpaceRoutes(r: Router) {
   r.client(
     "GET",
     "/rooms/:roomId/hierarchy",

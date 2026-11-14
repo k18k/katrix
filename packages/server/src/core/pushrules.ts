@@ -7,12 +7,12 @@ export type Ruleset = Record<string, Rule[]>;
 
 export const KINDS: readonly string[] = PUSH_RULE_KINDS;
 
-export function defaultRules(userId: string): Ruleset {
+export function defaultRules(userId: string) {
   return defaultPushRules(userId);
 }
 
 /** Serialise read-modify-write cycles on a user's push rules (cluster-wide). */
-export function withRulesLock<T>(hs: Homeserver, userId: string, fn: () => Promise<T>): Promise<T> {
+export function withRulesLock<T>(hs: Homeserver, userId: string, fn: () => Promise<T>) {
   return hs.cluster.lock(`pushrules:${userId}`, () => {
     cacheFor(hs).delete(userId);
     return fn();
@@ -21,7 +21,7 @@ export function withRulesLock<T>(hs: Homeserver, userId: string, fn: () => Promi
 
 const rulesCache = new WeakMap<Homeserver, Map<string, Ruleset>>();
 
-function cacheFor(hs: Homeserver): Map<string, Ruleset> {
+function cacheFor(hs: Homeserver) {
   let c = rulesCache.get(hs);
   if (!c) {
     const cache = new Map<string, Ruleset>();
@@ -35,7 +35,7 @@ function cacheFor(hs: Homeserver): Map<string, Ruleset> {
 }
 
 /** A user's push rules, as a copy the caller may change. */
-export async function loadRules(hs: Homeserver, userId: string): Promise<Ruleset> {
+export async function loadRules(hs: Homeserver, userId: string) {
   return structuredClone(await readOnlyRules(hs, userId));
 }
 
@@ -47,7 +47,7 @@ export async function loadRules(hs: Homeserver, userId: string): Promise<Ruleset
  * The cached rulesets are deep-frozen, so a caller that tries to change one fails loudly instead
  * of changing everyone's.
  */
-export async function readOnlyRules(hs: Homeserver, userId: string): Promise<Readonly<Ruleset>> {
+export async function readOnlyRules(hs: Homeserver, userId: string) {
   const cached = cacheFor(hs).get(userId);
   if (cached) return cached;
   const rules = deepFreeze(await readRules(hs, userId));
@@ -57,7 +57,7 @@ export async function readOnlyRules(hs: Homeserver, userId: string): Promise<Rea
   return rules;
 }
 
-function deepFreeze<T>(value: T): T {
+function deepFreeze<T>(value: T) {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
     for (const v of Object.values(value)) deepFreeze(v);
@@ -65,7 +65,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
+async function readRules(hs: Homeserver, userId: string) {
   const row = await hs.db.findOne("account_data", [
     { field: "user_id", value: userId },
     { field: "room_id", value: "" },
@@ -79,7 +79,7 @@ async function readRules(hs: Homeserver, userId: string): Promise<Ruleset> {
   return rules;
 }
 
-export async function saveRules(hs: Homeserver, userId: string, rules: Ruleset): Promise<void> {
+export async function saveRules(hs: Homeserver, userId: string, rules: Ruleset) {
   cacheFor(hs).set(userId, deepFreeze(structuredClone(rules)));
   // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
   // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
@@ -93,11 +93,11 @@ export async function saveRules(hs: Homeserver, userId: string, rules: Ruleset):
 }
 
 /** Copy room-specific push rules from an upgraded room's predecessor to the new room. */
-export function copyRoomPushRules(hs: Homeserver, userId: string, oldRoomId: string, newRoomId: string): Promise<void> {
+export function copyRoomPushRules(hs: Homeserver, userId: string, oldRoomId: string, newRoomId: string) {
   return withRulesLock(hs, userId, () => copyRules(hs, userId, oldRoomId, newRoomId));
 }
 
-async function copyRules(hs: Homeserver, userId: string, oldRoomId: string, newRoomId: string): Promise<void> {
+async function copyRules(hs: Homeserver, userId: string, oldRoomId: string, newRoomId: string) {
   const row = await hs.db.findOne("account_data", [
     { field: "user_id", value: userId },
     { field: "room_id", value: "" },

@@ -9,7 +9,7 @@ import { procedure } from "#http/procedure.ts";
 import { v } from "#core/vpm.ts";
 import { body, fail, lenient } from "#http/input.ts";
 
-async function remoteProfile(ctx: RequestContext, field?: string): Promise<Record<string, unknown>> {
+async function remoteProfile(ctx: RequestContext, field?: string) {
   if (!isValidUserId(ctx.params.userId)) throw errors.invalidParam("Invalid user ID");
   try {
     const res = await ctx.hs.federation.queryProfile(ctx.params.userId, field);
@@ -20,13 +20,13 @@ async function remoteProfile(ctx: RequestContext, field?: string): Promise<Recor
   }
 }
 
-async function localProfile(ctx: RequestContext): Promise<Record<string, unknown>> {
+async function localProfile(ctx: RequestContext) {
   const profile = await fullProfile(ctx.hs, ctx.params.userId);
   if (!profile) throw errors.notFound("Profile not found");
   return profile;
 }
 
-function checkField(field: string): void {
+function checkField(field: string) {
   if (!field || Buffer.byteLength(field) > MAX_KEY_BYTES) throw new MatrixError(400, "M_KEY_TOO_LARGE", "Profile key too long");
 }
 
@@ -47,7 +47,7 @@ const DIRECTORY_STATE = new Set<string>([M.ROOM.MEMBER, M.ROOM.JOIN_RULES, M.ROO
  * shortcut: still one pass over all rooms per 30 s and instance; a directory table kept up to date as memberships
  * change would replace it if servers grow to many rooms.
  */
-function publicRoomMembers(hs: Homeserver): Promise<Set<string>> {
+function publicRoomMembers(hs: Homeserver) {
   if (!watched.has(hs)) {
     watched.add(hs);
     const forget = () => publicMembersCache.delete(hs);
@@ -75,7 +75,7 @@ function publicRoomMembers(hs: Homeserver): Promise<Set<string>> {
   return users;
 }
 
-export function registerProfileRoutes(r: Router): void {
+export function registerProfileRoutes(r: Router) {
   r.client(
     "GET",
     "/profile/:userId",

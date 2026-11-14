@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { DatabaseAdapter, FindManyOptions, Row, Schema, WhereClause } from "#storage/types.ts";
 
-export function matches(row: Row, where: WhereClause[] = []): boolean {
+export function matches(row: Row, where: WhereClause[] = []) {
   for (const w of where) {
     const v = row[w.field] ?? null;
     const target = w.value ?? null;
@@ -33,7 +33,7 @@ export function matches(row: Row, where: WhereClause[] = []): boolean {
 }
 
 /** In-memory adapter. Data is lost on restart; useful for tests and development. */
-export function memoryAdapter(): DatabaseAdapter {
+export function memoryAdapter() {
   const tables = new Map<string, Map<string, Row>>();
   const pks = new Map<string, string[]>();
 
@@ -50,7 +50,7 @@ export function memoryAdapter(): DatabaseAdapter {
   /** Undo log entries: restore `row` (or delete when undefined) at `key`. */
   type Journal = { model: string; key: string; row: Row | undefined }[];
 
-  const build = (journal: Journal | null): DatabaseAdapter => {
+  const build = (journal: Journal | null) => {
     const set = (model: string, key: string, row: Row | undefined) => {
       const t = table(model);
       journal?.push({ model, key, row: t.get(key) });
@@ -144,7 +144,7 @@ export function memoryAdapter(): DatabaseAdapter {
     // one is open; the check and the operation (synchronous in this adapter) run in the same step.
     const run =
       <A extends unknown[], R>(op: (...args: A) => Promise<R>) =>
-      async (...args: A): Promise<R> => {
+      async (...args: A) => {
         if (inTransaction.getStore()) return op(...args);
         for (;;) {
           const current = gate;

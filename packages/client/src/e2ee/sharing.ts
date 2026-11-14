@@ -71,7 +71,7 @@ export class KeySharing {
     this.sendPlain = opts.sendPlain;
   }
 
-  private async verifiedOwnDevices(): Promise<DeviceInfo[]> {
+  private async verifiedOwnDevices() {
     await this.devices.refresh([this.userId]);
     const out: DeviceInfo[] = [];
     for (const d of await this.devices.devices(this.userId))
@@ -79,7 +79,7 @@ export class KeySharing {
     return out;
   }
 
-  private async isVerifiedOwnDevice(senderKey: string): Promise<DeviceInfo | undefined> {
+  private async isVerifiedOwnDevice(senderKey: string) {
     const device = await this.devices.deviceByCurveKey(this.userId, senderKey);
     if (!device || device.deviceId === this.deviceId) return undefined;
     return (await this.crossSigning.deviceTrust(this.userId, device.deviceId)).verified ? device : undefined;
@@ -88,7 +88,7 @@ export class KeySharing {
   // ─── Room keys ────────────────────────────────────────────────────────────
 
   /** Ask the user's other devices for a room key this device lacks (at most every 15 minutes per session). */
-  async requestRoomKey(roomId: string, sessionId: string, senderKey?: string): Promise<void> {
+  async requestRoomKey(roomId: string, sessionId: string, senderKey?: string) {
     const key = `keyreq|${roomId}|${sessionId}`;
     const last = await this.store.get<{ requestId: string; at: number }>("client", key);
     if (last && Date.now() - last.at < KEY_REQUEST_INTERVAL_MS) return;
@@ -107,7 +107,7 @@ export class KeySharing {
   }
 
   /** An m.room_key_request from another device: answered with the key if it is ours and verified. */
-  async handleRoomKeyRequest(event: ToDeviceEvent): Promise<void> {
+  async handleRoomKeyRequest(event: ToDeviceEvent) {
     const c = event.content;
     if (event.sender !== this.userId || c.action !== "request" || c.requesting_device_id === this.deviceId) return;
     const body = c.body as { algorithm?: string; room_id?: string; session_id?: string } | undefined;
@@ -144,7 +144,7 @@ export class KeySharing {
    * An m.forwarded_room_key (decrypted over Olm): stored only if it comes from a verified device
    * of ours and answers a request this device made. Returns the session if it was stored.
    */
-  async handleForwardedRoomKey(decrypted: DecryptedToDevice): Promise<{ roomId: string; sessionId: string } | undefined> {
+  async handleForwardedRoomKey(decrypted: DecryptedToDevice) {
     const c = decrypted.content;
     if (decrypted.sender !== this.userId || !(await this.isVerifiedOwnDevice(decrypted.senderKey))) {
       this.logger.warn("ignoring a forwarded room key from a device that is not ours and verified", { sender: decrypted.sender });
@@ -199,7 +199,7 @@ export class KeySharing {
   }
 
   /** m.room_key.withheld: the sender will not share the key, and says why (shown on the undecryptable events). */
-  async handleWithheld(event: ToDeviceEvent): Promise<void> {
+  async handleWithheld(event: ToDeviceEvent) {
     const c = event.content;
     if (typeof c.room_id !== "string" || typeof c.session_id !== "string" || typeof c.code !== "string") return;
     await this.store.transaction(async (tx) =>
@@ -222,7 +222,7 @@ export class KeySharing {
    * m.megolm_backup.v1, …). Resolves with the first answer from one of them, or undefined after
    * `timeoutMs`.
    */
-  async requestSecret(name: string, timeoutMs = 30_000): Promise<string | undefined> {
+  async requestSecret(name: string, timeoutMs = 30_000) {
     const devices = await this.verifiedOwnDevices();
     if (devices.length === 0) return undefined;
     const requestId = this.txnId();
@@ -245,7 +245,7 @@ export class KeySharing {
   }
 
   /** An m.secret.request from another device of ours: answered over Olm if it is verified and we have the secret. */
-  async handleSecretRequest(event: ToDeviceEvent): Promise<void> {
+  async handleSecretRequest(event: ToDeviceEvent) {
     const c = event.content;
     if (event.sender !== this.userId || c.action !== "request" || typeof c.name !== "string" || c.requesting_device_id === this.deviceId)
       return;
@@ -266,7 +266,7 @@ export class KeySharing {
   }
 
   /** An m.secret.send (decrypted over Olm): accepted only from a device we asked, of ours and verified. */
-  async handleSecretSend(decrypted: DecryptedToDevice): Promise<void> {
+  async handleSecretSend(decrypted: DecryptedToDevice) {
     const c = decrypted.content;
     const pending = typeof c.request_id === "string" ? this.secrets.get(c.request_id) : undefined;
     if (!pending || decrypted.sender !== this.userId || typeof c.secret !== "string") return;

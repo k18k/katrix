@@ -46,7 +46,7 @@ export const SPEC_VERSIONS = [
   "v1.19",
 ];
 
-export function registerMiscRoutes(r: Router): void {
+export function registerMiscRoutes(r: Router) {
   r.get(
     "/_matrix/client/versions",
     procedure({

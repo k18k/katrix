@@ -27,7 +27,6 @@ import {
   type Membership,
   type PowerLevelsContent,
   type RoomEventFilter,
-  type SearchResponse,
   type ToDeviceEvent,
 } from "@katrix/shared";
 import { isAbortError, newAbortController, setTimer, sleep, type AbortControllerLike } from "./platform.ts";
@@ -124,7 +123,7 @@ interface StoredRoom {
 
 const MAX_BACKOFF_MS = 30_000;
 
-function isVerificationEvent(event: MatrixEvent): boolean {
+function isVerificationEvent(event: MatrixEvent) {
   return (
     event.type.startsWith("m.key.verification.") ||
     (event.type === "m.room.message" && (event.content as { msgtype?: unknown }).msgtype === "m.key.verification.request")
@@ -267,35 +266,35 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** A transaction ID unique for this device (random, so restarts never reuse one). */
-  makeTxnId(): string {
+  makeTxnId() {
     return `m${Date.now().toString(36)}.${(this.txnCounter++).toString(36)}.${encodeBase64(this.primitives.randomBytes(6), { urlSafe: true })}`;
   }
 
-  getRoom(roomId: string): Room | undefined {
+  getRoom(roomId: string) {
     return this.rooms.get(roomId);
   }
 
-  getRooms(): Room[] {
+  getRooms() {
     return [...this.rooms.values()];
   }
 
-  getAccountData(type: string): Record<string, unknown> | undefined {
+  getAccountData(type: string) {
     return this.accountData.get(type);
   }
 
   /** A user's latest presence from /sync (this.presence.get asks the server). */
-  getPresence(userId: string): ContentOf<"m.presence"> | undefined {
+  getPresence(userId: string) {
     return this.presenceByUser.get(userId);
   }
 
-  isPrepared(): boolean {
+  isPrepared() {
     return this.prepared;
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
   /** Load stored state, set up encryption, and start syncing. Resolves once the loop runs. */
-  start(): Promise<void> {
+  start() {
     if (!this.started) {
       this.started = (async () => {
         // Once per instance: after stop() and start() the rooms the app holds stay the same objects.
@@ -311,7 +310,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Stop syncing (in-flight sends finish). */
-  async stop(): Promise<void> {
+  async stop() {
     this.running = false;
     this.syncAbort?.abort();
     await this.loop?.catch(() => {}); // ts-pro-exception: stopping: the sync loop rejects with the abort
@@ -321,7 +320,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Resolves after the first sync round has been processed (immediately if it has). */
-  async waitForPrepared(): Promise<void> {
+  async waitForPrepared() {
     if (this.prepared) return;
     await this.waitFor("sync", (s) => s === "prepared");
   }
@@ -330,14 +329,14 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * Log out on the server and stop. The device's keys are gone on the server then, so its
    * stored state is useless: `clearStorage` (default true) deletes it, keys included.
    */
-  async logout(opts: { clearStorage?: boolean } = {}): Promise<void> {
+  async logout(opts: { clearStorage?: boolean } = {}) {
     await this.stop();
     await this.api.endpoint("POST /v3/logout", {}, { body: {} });
     if (opts.clearStorage !== false) await this.clearStorage();
   }
 
   /** Delete everything this client stored (rooms, sync token, crypto state). The client is unusable afterwards. */
-  async clearStorage(): Promise<void> {
+  async clearStorage() {
     await this.store.transaction(async (tx) => {
       for (const store of STORES) for (const [key] of await tx.list(store, "")) tx.delete(store, key);
     });
@@ -346,12 +345,12 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     this.syncToken = undefined;
   }
 
-  async close(): Promise<void> {
+  async close() {
     await this.stop();
     await this.store.close();
   }
 
-  private async syncLoop(): Promise<void> {
+  private async syncLoop() {
     let failures = 0;
     while (this.running) {
       this.syncAbort = newAbortController();
@@ -396,7 +395,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   // ─── Sync processing ──────────────────────────────────────────────────────
 
   /** Apply one sync result: crypto and rooms in one unit of work, then events and decryption. */
-  async processSync(result: SyncResult): Promise<void> {
+  async processSync(result: SyncResult) {
     const emits: Array<() => void> = [];
     const toDecrypt: Array<{ event: MatrixEvent; room: Room }> = [];
     const encryptedJoins = new Set<string>();
@@ -461,11 +460,11 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     }
   }
 
-  private async routeVerification(event: MatrixEvent): Promise<void> {
+  private async routeVerification(event: MatrixEvent) {
     await this.e2ee?.verification.handleRoomEvent(event).catch((e) => this.logger.warn("a verification event failed", describeError(e)));
   }
 
-  private notifyIfRulesSay(event: MatrixEvent, room: Room): void {
+  private notifyIfRulesSay(event: MatrixEvent, room: Room) {
     const outcome = this.push.evaluate(event, room);
     if (outcome.notify) this.emit("notification", event, room, outcome);
   }
@@ -476,7 +475,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * events after the user's latest receipt (their own messages count as read): `exact` is false
    * when that receipt is older than the timeline in memory, and the count is a lower bound then.
    */
-  getUnreadCounts(roomId: string): { notification: number; highlight: number; exact: boolean } {
+  getUnreadCounts(roomId: string) {
     const room = this.rooms.get(roomId);
     if (!room) return { notification: 0, highlight: 0, exact: true };
     if (!room.isEncrypted()) return { ...room.unreadNotifications, exact: true };
@@ -495,7 +494,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     return { notification, highlight, exact: room.timeline.atStart };
   }
 
-  private roomFor(roomId: string, membership: Membership, emits: Array<() => void>): Room {
+  private roomFor(roomId: string, membership: Membership, emits: Array<() => void>) {
     let room = this.rooms.get(roomId);
     if (!room) {
       room = new Room(roomId, this.userId, membership, { maxTimelineEvents: this.opts.maxTimelineEvents });
@@ -507,7 +506,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     return room;
   }
 
-  private setMembership(room: Room, membership: Membership, emits: Array<() => void>): void {
+  private setMembership(room: Room, membership: Membership, emits: Array<() => void>) {
     const previous = room.membership;
     if (previous === membership) return;
     room.membership = membership;
@@ -520,7 +519,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     membership: "invite" | "knock",
     stripped: Room["inviteState"],
     emits: Array<() => void>,
-  ): void {
+  ) {
     const room = this.roomFor(roomId, membership, emits);
     this.setMembership(room, membership, emits);
     room.inviteState = stripped.filter((e) => typeof e?.type === "string");
@@ -534,7 +533,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     emits: Array<() => void>,
     toDecrypt: Array<{ event: MatrixEvent; room: Room }>,
     encryptedJoins: Set<string>,
-  ): void {
+  ) {
     const room = this.roomFor(roomId, "join", emits);
     this.setMembership(room, "join", emits);
     room.inviteState = [];
@@ -586,7 +585,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     toDecrypt: Array<{ event: MatrixEvent; room: Room }>,
     encryptedJoins: Set<string>,
     stateAfter = false,
-  ): void {
+  ) {
     if (replaceState && state.length > 0 && room.state.all().length > 0) {
       for (const old of room.state.all()) tx.delete("room_state", `${room.roomId}|${old.wire.type}|${old.stateKey}`);
       room.state.clear();
@@ -643,7 +642,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     if (stateAfter) for (const raw of state) this.applyState(tx, room, { ...raw, room_id: room.roomId }, emits, encryptedJoins);
   }
 
-  private applyState(tx: Transaction, room: Room, raw: ClientEvent, emits: Array<() => void>, encryptedJoins: Set<string>): void {
+  private applyState(tx: Transaction, room: Room, raw: ClientEvent, emits: Array<() => void>, encryptedJoins: Set<string>) {
     if (typeof raw.type !== "string" || typeof raw.state_key !== "string") return;
     const event = new MatrixEvent(raw);
     const previous = room.state.set(event);
@@ -658,7 +657,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     emits.push(() => this.emit("room.state", event, room, previous));
   }
 
-  private applyRedaction(room: Room, redaction: ClientEvent, emits: Array<() => void>): void {
+  private applyRedaction(room: Room, redaction: ClientEvent, emits: Array<() => void>) {
     const target = redaction.redacts ?? (redaction.content as { redacts?: string }).redacts;
     if (typeof target !== "string") return;
     const event = room.timeline.find(target);
@@ -670,19 +669,14 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Index an event's relation; a server-bundled edit of it is decrypted along with it. */
-  private indexRelations(
-    event: MatrixEvent,
-    room: Room,
-    emits: Array<() => void>,
-    toDecrypt: Array<{ event: MatrixEvent; room: Room }>,
-  ): void {
+  private indexRelations(event: MatrixEvent, room: Room, emits: Array<() => void>, toDecrypt: Array<{ event: MatrixEvent; room: Room }>) {
     const target = room.applyRelations(event);
     const bundled = room.bundledReplacement(event);
     if (bundled?.isEncrypted() && bundled.decryptionStatus === "pending") toDecrypt.push({ event: bundled, room });
     if (relationOf(event)) emits.push(() => this.emit("room.relation", target, event, room));
   }
 
-  private applyEphemeral(room: Room, ev: ClientEvent, emits: Array<() => void>): void {
+  private applyEphemeral(room: Room, ev: ClientEvent, emits: Array<() => void>) {
     if (ev.type === "m.typing") {
       const ids = (ev.content as { user_ids?: unknown }).user_ids;
       room.typing = Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
@@ -701,7 +695,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     }
   }
 
-  private persistRoom(tx: Transaction, room: Room): void {
+  private persistRoom(tx: Transaction, room: Room) {
     tx.put("rooms", room.roomId, {
       membership: room.membership,
       summary: room.summary,
@@ -718,7 +712,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     tx.put("room_timeline", room.roomId, { events: recent.map((e) => e.wire), complete: recent.length === room.timeline.events.length });
   }
 
-  private async loadFromStore(): Promise<void> {
+  private async loadFromStore() {
     this.syncToken = await this.store.get<string>("sync", "token");
     for (const [key, value] of await this.store.list<Record<string, unknown>>("client", "account_data|"))
       this.accountData.set(key.slice("account_data|".length), value);
@@ -741,13 +735,13 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** After start(): decrypt the stored timelines (plaintext is never stored). */
-  async decryptStoredTimelines(): Promise<void> {
+  async decryptStoredTimelines() {
     for (const room of this.rooms.values())
       for (const event of room.timeline.events)
         if (event.isEncrypted() && event.decryptionStatus !== "decrypted") await this.decryptAndEmit(event, room);
   }
 
-  private async decryptAndEmit(event: MatrixEvent, room: Room): Promise<void> {
+  private async decryptAndEmit(event: MatrixEvent, room: Room) {
     if (!this.e2ee) {
       event.setDecryptionFailed("MISSING_ROOM_KEY");
       return;
@@ -784,7 +778,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     }
   }
 
-  private async retryAwaiting(roomId: string, sessionId: string): Promise<void> {
+  private async retryAwaiting(roomId: string, sessionId: string) {
     const key = `${roomId}|${sessionId}`;
     const events = this.awaitingKeys.get(key);
     const room = this.rooms.get(roomId);
@@ -811,7 +805,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       powerLevelContentOverride?: Record<string, unknown>;
       creationContent?: Record<string, unknown>;
     } = {},
-  ): Promise<string> {
+  ) {
     const initialState = [...(opts.initialState ?? [])];
     if (opts.encrypted) initialState.push({ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } });
     const res = await this.api.endpoint(
@@ -840,7 +834,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * Join a room. Accepting an invite that was sent as a direct chat (is_direct) also records the
    * room in m.direct, as the spec asks of the invitee's client.
    */
-  async joinRoom(roomIdOrAlias: string, opts: { via?: string[]; reason?: string } = {}): Promise<string> {
+  async joinRoom(roomIdOrAlias: string, opts: { via?: string[]; reason?: string } = {}) {
     const invite = this.rooms.get(roomIdOrAlias)?.inviteState.find((e) => e.type === "m.room.member" && e.state_key === this.userId);
     // A room ID without servers to go through: /rooms/{roomId}/join, which takes no via;
     // aliases, or a list of servers: /join/{roomIdOrAlias}.
@@ -863,7 +857,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   // ─── Direct chats (https://spec.matrix.org/v1.19/client-server-api/#direct-messaging) ──
 
   /** The m.direct map: user ID → the rooms that are direct chats with them. */
-  getDirectRooms(): Record<string, string[]> {
+  getDirectRooms() {
     const content = this.accountData.get("m.direct") ?? {};
     const out: Record<string, string[]> = {};
     for (const [userId, rooms] of Object.entries(content))
@@ -872,7 +866,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** The direct chat with a user this user is in and the other user has not left, newest first. */
-  findDirectRoom(userId: string): Room | undefined {
+  findDirectRoom(userId: string) {
     const candidates = (this.getDirectRooms()[userId] ?? [])
       .map((id) => this.rooms.get(id))
       .filter((r): r is Room => r !== undefined && r.membership === "join")
@@ -884,7 +878,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Start a direct chat (encrypted unless `encrypted: false`) and record it in m.direct. */
-  async createDirectRoom(userId: string, opts: { encrypted?: boolean } = {}): Promise<string> {
+  async createDirectRoom(userId: string, opts: { encrypted?: boolean } = {}) {
     const roomId = await this.createRoom({
       isDirect: true,
       invite: [userId],
@@ -899,7 +893,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * Record (or with `direct: false`, remove) a room as a direct chat with `userId` in m.direct.
    * Read from the server first, so a change made on another device since the last sync is kept.
    */
-  async markDirect(roomId: string, userId: string, direct = true): Promise<void> {
+  async markDirect(roomId: string, userId: string, direct = true) {
     const current = ((await this.account.getAccountData("m.direct")) ?? {}) as Record<string, unknown>;
     const next: Record<string, string[]> = {};
     for (const [u, rooms] of Object.entries(current))
@@ -914,7 +908,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * Join the room an upgraded room points to (m.room.tombstone), through the server of whoever
    * upgraded it. Resolves with the new room's ID, or undefined when the room was not upgraded.
    */
-  async followUpgrade(roomId: string): Promise<string | undefined> {
+  async followUpgrade(roomId: string) {
     const room = this.rooms.get(roomId);
     const successor = room?.successor();
     if (!successor) return undefined;
@@ -923,7 +917,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Ask to join a room whose join rule is `knock` (https://spec.matrix.org/v1.19/client-server-api/#knocking-on-rooms). */
-  async knockRoom(roomIdOrAlias: string, opts: { via?: string[]; reason?: string } = {}): Promise<string> {
+  async knockRoom(roomIdOrAlias: string, opts: { via?: string[]; reason?: string } = {}) {
     const res = await this.api.endpoint(
       "POST /v3/knock/:roomIdOrAlias",
       { roomIdOrAlias },
@@ -933,7 +927,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** The IDs of the rooms the user is joined to, from the server (getRooms has the synced ones). */
-  async getJoinedRooms(): Promise<string[]> {
+  async getJoinedRooms() {
     return (await this.api.endpoint("GET /v3/joined_rooms", {}, {})).joined_rooms ?? [];
   }
 
@@ -941,7 +935,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * Upgrade a room to a new room version (https://spec.matrix.org/v1.19/client-server-api/#room-upgrades):
    * the server creates the replacement room and tombstones this one. Resolves with the new room's ID.
    */
-  async upgradeRoom(roomId: string, newVersion: string, opts: { additionalCreators?: string[] } = {}): Promise<string> {
+  async upgradeRoom(roomId: string, newVersion: string, opts: { additionalCreators?: string[] } = {}) {
     const res = await this.api.endpoint(
       "POST /v3/rooms/:roomId/upgrade",
       { roomId },
@@ -951,7 +945,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** The rooms both this user and `userId` are joined to (all pages). */
-  async getMutualRooms(userId: string): Promise<string[]> {
+  async getMutualRooms(userId: string) {
     const rooms: string[] = [];
     let from: string | undefined;
     // Bounded, in case a server keeps returning a next_batch.
@@ -964,11 +958,11 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     return rooms;
   }
 
-  async leaveRoom(roomId: string, reason?: string): Promise<void> {
+  async leaveRoom(roomId: string, reason?: string) {
     await this.api.endpoint("POST /v3/rooms/:roomId/leave", { roomId }, { body: { reason } });
   }
 
-  async forgetRoom(roomId: string): Promise<void> {
+  async forgetRoom(roomId: string) {
     await this.api.endpoint("POST /v3/rooms/:roomId/forget", { roomId }, { body: {} });
     this.rooms.delete(roomId);
     await this.store.transaction(async (tx) => {
@@ -978,27 +972,24 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     });
   }
 
-  async invite(roomId: string, userId: string, reason?: string): Promise<void> {
+  async invite(roomId: string, userId: string, reason?: string) {
     await this.api.endpoint("POST /v3/rooms/:roomId/invite", { roomId }, { body: { user_id: userId, reason } });
   }
 
-  async kick(roomId: string, userId: string, reason?: string): Promise<void> {
+  async kick(roomId: string, userId: string, reason?: string) {
     await this.api.endpoint("POST /v3/rooms/:roomId/kick", { roomId }, { body: { user_id: userId, reason } });
   }
 
-  async ban(roomId: string, userId: string, reason?: string): Promise<void> {
+  async ban(roomId: string, userId: string, reason?: string) {
     await this.api.endpoint("POST /v3/rooms/:roomId/ban", { roomId }, { body: { user_id: userId, reason } });
   }
 
-  async unban(roomId: string, userId: string, reason?: string): Promise<void> {
+  async unban(roomId: string, userId: string, reason?: string) {
     await this.api.endpoint("POST /v3/rooms/:roomId/unban", { roomId }, { body: { user_id: userId, reason } });
   }
 
   /** Invite by email or phone number through an identity server (https://spec.matrix.org/v1.19/client-server-api/#third-party-invites). */
-  async inviteThirdParty(
-    roomId: string,
-    invite: { idServer: string; idAccessToken: string; medium: string; address: string },
-  ): Promise<void> {
+  async inviteThirdParty(roomId: string, invite: { idServer: string; idAccessToken: string; medium: string; address: string }) {
     await this.api.endpoint(
       "POST /v3/rooms/:roomId/invite",
       { roomId },
@@ -1006,7 +997,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     );
   }
 
-  async sendStateEvent<T extends string>(roomId: string, type: T, content: ContentOf<T>, stateKey = ""): Promise<string> {
+  async sendStateEvent<T extends string>(roomId: string, type: T, content: ContentOf<T>, stateKey = "") {
     const res = await this.api.endpoint(
       "PUT /v3/rooms/:roomId/state/:eventType/:stateKey",
       { roomId, eventType: type, stateKey },
@@ -1015,35 +1006,35 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     return res.event_id;
   }
 
-  setRoomName(roomId: string, name: string): Promise<string> {
+  setRoomName(roomId: string, name: string) {
     return this.sendStateEvent(roomId, "m.room.name", { name });
   }
 
-  setRoomTopic(roomId: string, topic: string): Promise<string> {
+  setRoomTopic(roomId: string, topic: string) {
     return this.sendStateEvent(roomId, "m.room.topic", { topic });
   }
 
-  setRoomAvatar(roomId: string, mxcUri: string, info?: Record<string, unknown>): Promise<string> {
+  setRoomAvatar(roomId: string, mxcUri: string, info?: Record<string, unknown>) {
     return this.sendStateEvent(roomId, "m.room.avatar", { url: mxcUri, ...(info ? { info } : {}) });
   }
 
-  setJoinRule(roomId: string, content: ContentOf<"m.room.join_rules">): Promise<string> {
+  setJoinRule(roomId: string, content: ContentOf<"m.room.join_rules">) {
     return this.sendStateEvent(roomId, "m.room.join_rules", content);
   }
 
-  setHistoryVisibility(roomId: string, visibility: ContentOf<"m.room.history_visibility">["history_visibility"]): Promise<string> {
+  setHistoryVisibility(roomId: string, visibility: ContentOf<"m.room.history_visibility">["history_visibility"]) {
     return this.sendStateEvent(roomId, "m.room.history_visibility", { history_visibility: visibility });
   }
 
-  setGuestAccess(roomId: string, access: ContentOf<"m.room.guest_access">["guest_access"]): Promise<string> {
+  setGuestAccess(roomId: string, access: ContentOf<"m.room.guest_access">["guest_access"]) {
     return this.sendStateEvent(roomId, "m.room.guest_access", { guest_access: access });
   }
 
-  setCanonicalAlias(roomId: string, alias: string | null, altAliases?: string[]): Promise<string> {
+  setCanonicalAlias(roomId: string, alias: string | null, altAliases?: string[]) {
     return this.sendStateEvent(roomId, "m.room.canonical_alias", { alias, ...(altAliases ? { alt_aliases: altAliases } : {}) });
   }
 
-  setPinnedEvents(roomId: string, eventIds: string[]): Promise<string> {
+  setPinnedEvents(roomId: string, eventIds: string[]) {
     return this.sendStateEvent(roomId, "m.room.pinned_events", { pinned: eventIds });
   }
 
@@ -1051,7 +1042,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * Set one user's power level (null resets it to users_default). Reads the current power levels
    * from the synced room state (or the server), so it must not race another change.
    */
-  async setPowerLevel(roomId: string, userId: string, level: number | null): Promise<string> {
+  async setPowerLevel(roomId: string, userId: string, level: number | null) {
     const current =
       (this.rooms.get(roomId)?.state.get("m.room.power_levels")?.content as PowerLevelsContent | undefined) ??
       ((await this.fetchStateEvent(roomId, "m.room.power_levels")) as PowerLevelsContent | undefined) ??
@@ -1063,7 +1054,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** A state event's content from the server; undefined when there is none. */
-  async fetchStateEvent(roomId: string, type: string, stateKey = ""): Promise<Record<string, unknown> | undefined> {
+  async fetchStateEvent(roomId: string, type: string, stateKey = "") {
     try {
       return await this.api.endpoint("GET /v3/rooms/:roomId/state/:eventType/:stateKey", { roomId, eventType: type, stateKey }, {});
     } catch (e) {
@@ -1073,13 +1064,13 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** The room's whole current state from the server. */
-  async fetchRoomState(roomId: string): Promise<MatrixEvent[]> {
+  async fetchRoomState(roomId: string) {
     const events = await this.api.endpoint("GET /v3/rooms/:roomId/state", { roomId }, {});
     return events.map((raw) => new MatrixEvent({ ...raw, room_id: roomId }));
   }
 
   /** Members with their display names and avatars, as the server has them now. */
-  async fetchJoinedMembers(roomId: string): Promise<Record<string, { displayName?: string; avatarUrl?: string }>> {
+  async fetchJoinedMembers(roomId: string) {
     const res = await this.api.endpoint("GET /v3/rooms/:roomId/joined_members", { roomId }, {});
     const out: Record<string, { displayName?: string; avatarUrl?: string }> = {};
     for (const [userId, m] of Object.entries(res.joined ?? {}))
@@ -1088,10 +1079,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Member events from the server, optionally at an earlier point (`at`, a sync token) or by membership. */
-  async fetchMembers(
-    roomId: string,
-    opts: { at?: string; membership?: Membership; notMembership?: Membership } = {},
-  ): Promise<MatrixEvent[]> {
+  async fetchMembers(roomId: string, opts: { at?: string; membership?: Membership; notMembership?: Membership } = {}) {
     const res = await this.api.endpoint(
       "GET /v3/rooms/:roomId/members",
       { roomId },
@@ -1101,7 +1089,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Turn on encryption (it cannot be turned off again). */
-  enableEncryption(roomId: string, opts: { rotationPeriodMs?: number; rotationPeriodMsgs?: number } = {}): Promise<string> {
+  enableEncryption(roomId: string, opts: { rotationPeriodMs?: number; rotationPeriodMsgs?: number } = {}) {
     return this.sendStateEvent(roomId, "m.room.encryption", {
       algorithm: "m.megolm.v1.aes-sha2",
       ...(opts.rotationPeriodMs !== undefined ? { rotation_period_ms: opts.rotationPeriodMs } : {}),
@@ -1110,7 +1098,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Fetch the full member list (with lazy loading, /sync only sends the members it needs). */
-  async loadMembers(roomId: string): Promise<void> {
+  async loadMembers(roomId: string) {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error(`Unknown room ${roomId}`);
     const res = await this.api.endpoint("GET /v3/rooms/:roomId/members", { roomId }, {});
@@ -1139,7 +1127,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   // ─── Timeline ─────────────────────────────────────────────────────────────
 
   /** Load up to `limit` older events into the room's timeline. Returns how many were added. */
-  async paginateBackwards(roomId: string, limit = 30): Promise<number> {
+  async paginateBackwards(roomId: string, limit = 30) {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error(`Unknown room ${roomId}`);
     if (room.timeline.atStart) return 0;
@@ -1172,17 +1160,13 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** One event from the server, decrypted when it is encrypted and its key is known. */
-  async fetchEvent(roomId: string, eventId: string): Promise<MatrixEvent> {
+  async fetchEvent(roomId: string, eventId: string) {
     const raw = await this.api.endpoint("GET /v3/rooms/:roomId/event/:eventId", { roomId, eventId }, {});
     return this.fetched(raw, roomId);
   }
 
   /** An event with the events around it (to jump to a reply's target, a search result, a permalink). */
-  async fetchContext(
-    roomId: string,
-    eventId: string,
-    opts: { limit?: number; filter?: RoomEventFilter } = {},
-  ): Promise<{ event?: MatrixEvent; before: MatrixEvent[]; after: MatrixEvent[]; state: MatrixEvent[]; start?: string; end?: string }> {
+  async fetchContext(roomId: string, eventId: string, opts: { limit?: number; filter?: RoomEventFilter } = {}) {
     const res = await this.api.endpoint(
       "GET /v3/rooms/:roomId/context/:eventId",
       { roomId, eventId },
@@ -1207,7 +1191,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     roomId: string,
     eventId: string,
     opts: { relType?: string; eventType?: string; from?: string; to?: string; limit?: number; dir?: "b" | "f"; recurse?: boolean } = {},
-  ): Promise<{ events: MatrixEvent[]; nextBatch?: string; prevBatch?: string }> {
+  ) {
     const query = { from: opts.from, to: opts.to, limit: opts.limit, dir: opts.dir, recurse: opts.recurse };
     const res =
       opts.relType === undefined
@@ -1231,10 +1215,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Thread roots of a room, newest activity first (https://spec.matrix.org/v1.19/client-server-api/#threads). */
-  async fetchThreads(
-    roomId: string,
-    opts: { include?: "all" | "participated"; limit?: number; from?: string } = {},
-  ): Promise<{ roots: MatrixEvent[]; nextBatch?: string }> {
+  async fetchThreads(roomId: string, opts: { include?: "all" | "participated"; limit?: number; from?: string } = {}) {
     const res = await this.api.endpoint(
       "GET /v1/rooms/:roomId/threads",
       { roomId },
@@ -1244,7 +1225,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** The event closest to a point in time, searching forwards or backwards (to jump to a date). */
-  async timestampToEvent(roomId: string, ts: number, dir: "f" | "b" = "f"): Promise<{ eventId: string; originServerTs: number }> {
+  async timestampToEvent(roomId: string, ts: number, dir: "f" | "b" = "f") {
     const res = await this.api.endpoint("GET /v1/rooms/:roomId/timestamp_to_event", { roomId }, { query: { ts, dir } });
     return { eventId: res.event_id, originServerTs: res.origin_server_ts };
   }
@@ -1264,7 +1245,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       groupBy?: Array<"room_id" | "sender">;
       nextBatch?: string;
     } = {},
-  ): Promise<SearchResponse> {
+  ) {
     return this.api.endpoint(
       "POST /v3/search",
       {},
@@ -1297,7 +1278,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * A room's state and latest messages without joining it (world-readable rooms;
    * https://spec.matrix.org/v1.19/client-server-api/#peeking).
    */
-  async peekRoom(roomId: string): Promise<{ state: MatrixEvent[]; messages: MatrixEvent[]; end?: string }> {
+  async peekRoom(roomId: string) {
     const res = await this.api.endpoint("GET /v3/rooms/:roomId/initialSync", { roomId }, {});
     return {
       state: (res.state ?? []).map((e) => new MatrixEvent({ ...e, room_id: roomId })),
@@ -1307,12 +1288,12 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** New events of a peeked room after `from` (the `end` of peekRoom), waiting up to `timeoutMs`. */
-  async peekEvents(roomId: string, from?: string, timeoutMs = 30_000): Promise<{ events: MatrixEvent[]; end?: string }> {
+  async peekEvents(roomId: string, from?: string, timeoutMs = 30_000) {
     const res = await this.api.endpoint("GET /v3/events", {}, { query: { room_id: roomId, from, timeout: timeoutMs } });
     return { events: (res.chunk ?? []).map((e) => new MatrixEvent({ ...e, room_id: roomId })), end: res.end };
   }
 
-  private async fetched(raw: ClientEvent, roomId: string): Promise<MatrixEvent> {
+  private async fetched(raw: ClientEvent, roomId: string) {
     const event = new MatrixEvent({ ...raw, room_id: roomId });
     if (event.isEncrypted()) {
       if (this.e2ee) await this.e2ee.decryptRoomEvent(event);
@@ -1331,7 +1312,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * In an encrypted room, an event is never sent in the clear: without the E2EE engine, sending
    * fails.
    */
-  async sendEvent<T extends string>(roomId: string, type: T, content: ContentOf<T>, opts: { txnId?: string } = {}): Promise<string> {
+  async sendEvent<T extends string>(roomId: string, type: T, content: ContentOf<T>, opts: { txnId?: string } = {}) {
     const room = this.rooms.get(roomId);
     const txnId = opts.txnId ?? this.makeTxnId();
     const echo = new MatrixEvent({
@@ -1361,7 +1342,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Send a failed event again, with its transaction ID (the server deduplicates). */
-  async resendEvent(event: MatrixEvent): Promise<string> {
+  async resendEvent(event: MatrixEvent) {
     if (event.localStatus !== "failed" || !event.txnId || !event.roomId) throw new Error("Only a failed local event can be resent");
     const room = this.rooms.get(event.roomId);
     event.localStatus = "sending";
@@ -1382,7 +1363,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     type: string,
     content: Record<string, unknown>,
     txnId: string,
-  ): Promise<string> {
+  ) {
     let sendType = type;
     let body: Record<string, unknown> = content;
     if (room?.isEncrypted() && type !== "m.room.encrypted") {
@@ -1432,11 +1413,11 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     return res.event_id;
   }
 
-  sendMessage(roomId: string, content: ContentOf<"m.room.message">): Promise<string> {
+  sendMessage(roomId: string, content: ContentOf<"m.room.message">) {
     return this.sendEvent(roomId, "m.room.message", content);
   }
 
-  sendText(roomId: string, body: string): Promise<string> {
+  sendText(roomId: string, body: string) {
     return this.sendMessage(roomId, { msgtype: "m.text", body });
   }
 
@@ -1456,7 +1437,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
       body?: string;
       info?: Record<string, unknown>;
     },
-  ): Promise<string> {
+  ) {
     const info = { mimetype: opts.contentType, size: data.length, ...opts.info };
     const encrypted = this.rooms.get(roomId)?.isEncrypted() ?? (await this.fetchStateEvent(roomId, "m.room.encryption")) !== undefined;
     const content: Record<string, unknown> = {
@@ -1475,7 +1456,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * edit's top-level body is a "* …" fallback for clients without edits; `m.mentions` at the top
    * level holds only the users newly mentioned, so they are not pinged twice.
    */
-  async sendEdit(roomId: string, eventId: string, newContent: ContentOf<"m.room.message">): Promise<string> {
+  async sendEdit(roomId: string, eventId: string, newContent: ContentOf<"m.room.message">) {
     const original = this.rooms.get(roomId)?.timeline.find(eventId) ?? (await this.fetchEvent(roomId, eventId));
     const { "m.relates_to": _dropped, ...replacement } = newContent as ContentOf<"m.room.message"> & { "m.relates_to"?: unknown };
     const before = new Set((original.latestContent as { "m.mentions"?: { user_ids?: string[] } })["m.mentions"]?.user_ids ?? []);
@@ -1494,7 +1475,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * Reply to an event (rich replies, https://spec.matrix.org/v1.19/client-server-api/#rich-replies).
    * The replied-to sender is mentioned. A reply to an event in a thread stays in the thread.
    */
-  async sendReply(roomId: string, inReplyTo: string, content: ContentOf<"m.room.message">): Promise<string> {
+  async sendReply(roomId: string, inReplyTo: string, content: ContentOf<"m.room.message">) {
     const target = this.rooms.get(roomId)?.timeline.find(inReplyTo) ?? (await this.fetchEvent(roomId, inReplyTo).catch(() => undefined)); // ts-pro-exception: a reply to an event the client cannot fetch is sent without the quote fallback
     const mentions = new Set(content["m.mentions"]?.user_ids ?? []);
     if (target?.sender && target.sender !== this.userId) mentions.add(target.sender);
@@ -1512,7 +1493,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
    * Send a message in a thread (https://spec.matrix.org/v1.19/client-server-api/#threading). It
    * carries a fallback reply to the thread's latest event, for clients without threads.
    */
-  async sendThreadMessage(roomId: string, rootId: string, content: ContentOf<"m.room.message">): Promise<string> {
+  async sendThreadMessage(roomId: string, rootId: string, content: ContentOf<"m.room.message">) {
     const room = this.rooms.get(roomId);
     const latest = room?.threadSummary(rootId)?.latestEvent?.eventId ?? rootId;
     return this.sendMessage(roomId, {
@@ -1522,7 +1503,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Take back this user's reaction with `key` on an event (redacts the reaction). Resolves false if there was none. */
-  async removeReaction(roomId: string, eventId: string, key: string): Promise<boolean> {
+  async removeReaction(roomId: string, eventId: string, key: string) {
     const mine = this.rooms
       .get(roomId)
       ?.reactions(eventId)
@@ -1532,11 +1513,11 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     return true;
   }
 
-  sendReaction(roomId: string, eventId: string, key: string): Promise<string> {
+  sendReaction(roomId: string, eventId: string, key: string) {
     return this.sendEvent(roomId, "m.reaction", { "m.relates_to": { rel_type: "m.annotation", event_id: eventId, key } });
   }
 
-  async redactEvent(roomId: string, eventId: string, reason?: string): Promise<string> {
+  async redactEvent(roomId: string, eventId: string, reason?: string) {
     const res = await this.api.endpoint(
       "PUT /v3/rooms/:roomId/redact/:eventId/:txnId",
       { roomId, eventId, txnId: this.makeTxnId() },
@@ -1556,7 +1537,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     eventId: string,
     type: "m.read" | "m.read.private" | "m.fully_read" = "m.read",
     opts: { threadId?: string } = {},
-  ): Promise<void> {
+  ) {
     await this.api.endpoint(
       "POST /v3/rooms/:roomId/receipt/:receiptType/:eventId",
       { roomId, receiptType: type, eventId },
@@ -1565,7 +1546,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   }
 
   /** Move the fully-read marker and the read receipts in one request (https://spec.matrix.org/v1.19/client-server-api/#fully-read-markers). */
-  async setReadMarkers(roomId: string, markers: { fullyRead?: string; read?: string; readPrivate?: string }): Promise<void> {
+  async setReadMarkers(roomId: string, markers: { fullyRead?: string; read?: string; readPrivate?: string }) {
     await this.api.endpoint(
       "POST /v3/rooms/:roomId/read_markers",
       { roomId },
@@ -1573,7 +1554,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     );
   }
 
-  async setTyping(roomId: string, typing: boolean, timeoutMs = 30_000): Promise<void> {
+  async setTyping(roomId: string, typing: boolean, timeoutMs = 30_000) {
     await this.api.endpoint(
       "PUT /v3/rooms/:roomId/typing/:userId",
       { roomId, userId: this.userId },
@@ -1586,27 +1567,27 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
   // ─── Reporting ────────────────────────────────────────────────────────────
 
   /** Report content to the server's administrators (https://spec.matrix.org/v1.19/client-server-api/#reporting-content). */
-  async reportEvent(roomId: string, eventId: string, reason?: string): Promise<void> {
+  async reportEvent(roomId: string, eventId: string, reason?: string) {
     await this.api.endpoint("POST /v3/rooms/:roomId/report/:eventId", { roomId, eventId }, { body: { reason } });
   }
 
-  async reportRoom(roomId: string, reason: string): Promise<void> {
+  async reportRoom(roomId: string, reason: string) {
     await this.api.endpoint("POST /v3/rooms/:roomId/report", { roomId }, { body: { reason } });
   }
 
-  async reportUser(userId: string, reason: string): Promise<void> {
+  async reportUser(userId: string, reason: string) {
     await this.api.endpoint("POST /v3/users/:userId/report", { userId }, { body: { reason } });
   }
 
   // ─── Tags (https://spec.matrix.org/v1.19/client-server-api/#room-tagging) ──
 
   /** A room's tags from the server (the synced ones are in the room's m.tag account data). */
-  async getTags(roomId: string): Promise<Record<string, { order?: number }>> {
+  async getTags(roomId: string) {
     return (await this.api.endpoint("GET /v3/user/:userId/rooms/:roomId/tags", { userId: this.userId, roomId }, {})).tags ?? {};
   }
 
   /** Tag a room: m.favourite, m.lowpriority, m.server_notice, or u.<anything>. `order` is in [0, 1]. */
-  async setTag(roomId: string, tag: string, order?: number): Promise<void> {
+  async setTag(roomId: string, tag: string, order?: number) {
     await this.api.endpoint(
       "PUT /v3/user/:userId/rooms/:roomId/tags/:tag",
       { userId: this.userId, roomId, tag },
@@ -1614,7 +1595,7 @@ export class MatrixClient extends TypedEmitter<ClientEvents> {
     );
   }
 
-  async deleteTag(roomId: string, tag: string): Promise<void> {
+  async deleteTag(roomId: string, tag: string) {
     await this.api.endpoint("DELETE /v3/user/:userId/rooms/:roomId/tags/:tag", { userId: this.userId, roomId, tag }, {});
   }
 }

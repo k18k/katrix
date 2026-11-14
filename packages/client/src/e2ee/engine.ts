@@ -1,6 +1,6 @@
 import type { MatrixHttpApi } from "../http/api.ts";
 import type { MatrixEvent } from "../models/event.ts";
-import { encodeBase64, type MegolmEncryptedContent, type ToDeviceEvent } from "@katrix/shared";
+import { encodeBase64, type ToDeviceEvent } from "@katrix/shared";
 import type { E2EEProtocol, PickleKey } from "../protocol/protocol.ts";
 import type { Store, Transaction } from "../storage/store.ts";
 import type { SyncResult } from "../sync/types.ts";
@@ -129,7 +129,7 @@ export class E2EEEngine {
       },
       signWithDevice: (obj) => signWithDevice(obj),
     });
-    const signWithDevice = async <T extends object>(obj: T): Promise<T> => {
+    const signWithDevice = async <T extends object>(obj: T) => {
       const { account } = await this.store.transaction((tx) => loadAccount(tx, this.pickler));
       return signObject(account, this.userId, this.deviceId, obj);
     };
@@ -216,7 +216,7 @@ export class E2EEEngine {
     };
   }
 
-  get identityKeys(): { curve25519: string; ed25519: string } {
+  get identityKeys() {
     return this.olm.identityKeys;
   }
 
@@ -224,7 +224,7 @@ export class E2EEEngine {
    * Load the account, or create one for a new device. Its keys are stored before they are
    * uploaded: if the upload succeeds and the app then dies, the server's keys are still ours.
    */
-  async init(): Promise<void> {
+  async init() {
     const record = await this.store.transaction(async (tx) => {
       let rec = await tx.get<AccountRecord>("account", "account");
       if (!rec) {
@@ -246,14 +246,14 @@ export class E2EEEngine {
    * advises, so keys the server still hands out are never dropped locally) and the fallback key
    * fresh once it has been used.
    */
-  async maintainKeys(counts: Record<string, number> | undefined, unusedFallbackKeyTypes: string[] | undefined): Promise<void> {
+  async maintainKeys(counts: Record<string, number> | undefined, unusedFallbackKeyTypes: string[] | undefined) {
     const needFallback = unusedFallbackKeyTypes !== undefined && !unusedFallbackKeyTypes.includes("signed_curve25519");
     const count = counts?.signed_curve25519;
     if (count === undefined && !needFallback) return;
     await this.uploadKeys({ oneTimeKeyCount: count, fallback: needFallback });
   }
 
-  private uploadKeys(opts: { deviceKeys?: boolean; oneTimeKeyCount?: number; fallback?: boolean }): Promise<void> {
+  private uploadKeys(opts: { deviceKeys?: boolean; oneTimeKeyCount?: number; fallback?: boolean }) {
     return this.keysMutex.run(async () => {
       const body = await this.store.transaction(async (tx) => {
         const { record, account } = await loadAccount(tx, this.pickler);
@@ -288,7 +288,7 @@ export class E2EEEngine {
    * stored with its results): device list changes, then to-device messages. Room keys are stored
    * here; network work (key queries, unwedging, key uploads) comes after the commit.
    */
-  async processSync(tx: Transaction, sync: SyncResult): Promise<ToDeviceOutcome> {
+  async processSync(tx: Transaction, sync: SyncResult) {
     await this.devices.handleDeviceLists(tx, sync.deviceLists);
     const outcome: ToDeviceOutcome = { events: [], newSessions: [], wedged: [] };
     for (const event of sync.toDevice) {
@@ -341,7 +341,7 @@ export class E2EEEngine {
   }
 
   /** After the sync's unit of work committed: key upload, unwedging, key sharing, backup. */
-  async afterSync(sync: SyncResult, outcome: ToDeviceOutcome): Promise<void> {
+  async afterSync(sync: SyncResult, outcome: ToDeviceOutcome) {
     for (const { event, decrypted } of outcome.sharing ?? []) {
       try {
         if (decrypted?.type === "m.forwarded_room_key") {
@@ -373,7 +373,7 @@ export class E2EEEngine {
    * https://spec.matrix.org/v1.16/client-server-api/#recovering-from-undecryptable-messages: start
    * a new Olm session with the device and send it an m.dummy, so it can send to us again.
    */
-  private async unwedge(userId: string, senderKey: string): Promise<void> {
+  private async unwedge(userId: string, senderKey: string) {
     const key = `unwedge|${senderKey}`;
     const last = await this.store.get<number>("client", key);
     if (last && Date.now() - last < UNWEDGE_INTERVAL_MS) return;
@@ -392,12 +392,12 @@ export class E2EEEngine {
     this.logger.info("sent m.dummy to unwedge an Olm session", { userId, deviceId: device.deviceId });
   }
 
-  encryptRoomEvent(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>): Promise<MegolmEncryptedContent> {
+  encryptRoomEvent(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>) {
     return this.megolm.encrypt(room, type, content);
   }
 
   /** Decrypt in place; on failure, the event is marked failed with a code (never throws). */
-  async decryptRoomEvent(event: MatrixEvent): Promise<boolean> {
+  async decryptRoomEvent(event: MatrixEvent) {
     try {
       const { clear, info } = await this.megolm.decrypt(event);
       event.setDecrypted(clear, info);
@@ -422,7 +422,7 @@ export class E2EEEngine {
    * An event's room key is missing: try the key backup (once per session per run), else ask the
    * user's other devices. Sessions found come through onNewSessions.
    */
-  async keyMissing(event: MatrixEvent): Promise<void> {
+  async keyMissing(event: MatrixEvent) {
     const content = event.wire.content as { session_id?: unknown; sender_key?: unknown };
     const roomId = event.roomId;
     if (!roomId || typeof content.session_id !== "string") return;
@@ -448,7 +448,7 @@ export class E2EEEngine {
    * After this device and another of ours verified each other: ask it for the cross-signing and
    * backup keys this device lacks (it answers only verified devices), and use them.
    */
-  async afterOwnVerification(): Promise<void> {
+  async afterOwnVerification() {
     const have = await this.crossSigning.privateKeys();
     const [ssk, usk] = await Promise.all([
       have.selfSigning ? undefined : this.sharing.requestSecret(SECRET_NAMES.selfSigning),
@@ -471,7 +471,7 @@ export class E2EEEngine {
   }
 
   /** Share keys only with verified devices: everywhere (`roomId` omitted), or in one room (undefined: as everywhere). */
-  async setOnlyVerifiedDevices(only: boolean | undefined, roomId?: string): Promise<void> {
+  async setOnlyVerifiedDevices(only: boolean | undefined, roomId?: string) {
     if (roomId === undefined) {
       if (only !== undefined) this.onlyVerified = only;
       return;
@@ -483,12 +483,12 @@ export class E2EEEngine {
   }
 
   /** A membership change in an encrypted room: start tracking new members' devices. */
-  async trackUsers(userIds: string[]): Promise<void> {
+  async trackUsers(userIds: string[]) {
     await this.store.transaction((tx) => this.devices.track(tx, userIds));
   }
 
   /** Send an encrypted to-device message (for apps: verification and the like build on this). */
-  async sendEncryptedToDevice(devices: DeviceInfo[], type: string, content: Record<string, unknown>): Promise<void> {
+  async sendEncryptedToDevice(devices: DeviceInfo[], type: string, content: Record<string, unknown>) {
     await this.olm.ensureSessions(devices);
     const messages: Array<{ device: DeviceInfo; content: Record<string, unknown> }> = [];
     await this.store.transaction(async (tx) => {

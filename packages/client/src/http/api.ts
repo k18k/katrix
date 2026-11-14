@@ -46,7 +46,7 @@ function isMediaBody(body: unknown): body is MediaBody {
 }
 
 /** The file name of a Content-Disposition header (`filename*=UTF-8''…` or `filename="…"`). */
-function dispositionFilename(header: string | undefined): string | undefined {
+function dispositionFilename(header: string | undefined) {
   if (!header) return undefined;
   const star = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header);
   if (star) {
@@ -77,7 +77,7 @@ export class MatrixHttpApi {
     this.logger = opts.logger ?? noopLogger;
   }
 
-  setTokenProvider(tokens: TokenProvider | undefined): void {
+  setTokenProvider(tokens: TokenProvider | undefined) {
     this.tokens = tokens;
   }
 
@@ -85,7 +85,7 @@ export class MatrixHttpApi {
    * Call an endpoint of the shared endpoint map: the body and the response are typed by it, and
    * path parameters are filled in from `params`, each percent-encoded as one segment.
    */
-  endpoint<K extends ClientEndpoint>(key: K, params: EndpointParams<K>, opts: EndpointOptions<K>): Promise<EndpointResponse<K>> {
+  endpoint<K extends ClientEndpoint>(key: K, params: EndpointParams<K>, opts: EndpointOptions<K>) {
     const space = key.indexOf(" ");
     const template = key.slice(space + 1);
     return this.request<EndpointResponse<K>>(
@@ -100,12 +100,12 @@ export class MatrixHttpApi {
   }
 
   /** The URL of a path under the server's base URL (for links the app opens itself, such as SSO redirects). */
-  url(path: string, query?: Record<string, QueryValue>): string {
+  url(path: string, query?: Record<string, QueryValue>) {
     const q = query ? encodeQuery(query) : "";
     return `${this.baseUrl}${path}${q ? `?${q}` : ""}`;
   }
 
-  async request<T = Record<string, unknown>>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+  async request<T = Record<string, unknown>>(method: string, path: string, opts: RequestOptions = {}) {
     const prefix = opts.prefix ?? "/_matrix/client";
     let refreshed = false;
     for (let attempt = 0; ; attempt++) {
@@ -130,7 +130,7 @@ export class MatrixHttpApi {
     }
   }
 
-  private async once<T>(method: string, path: string, opts: RequestOptions): Promise<T> {
+  private async once<T>(method: string, path: string, opts: RequestOptions) {
     const query = opts.query ? encodeQuery(opts.query) : "";
     const url = `${this.baseUrl}${path}${query ? `?${query}` : ""}`;
     const headers: Record<string, string> = { accept: "application/json" };

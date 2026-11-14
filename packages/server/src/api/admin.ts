@@ -42,7 +42,7 @@ const adminGuard = async (ctx: RequestContext) => {
 };
 
 /** Admin HTTP API using Synapse-compatible paths, so existing tooling keeps working. */
-export function registerAdminRoutes(r: Router): void {
+export function registerAdminRoutes(r: Router) {
   const notice = async (ctx: ProcedureContext<"none", v.output<typeof noticeBody>>) => {
     const body = ctx.input;
     const eventId = await ctx.hs.admin.sendServerNotice(body.user_id, body.content, {

@@ -5,7 +5,7 @@ import { hmac } from "@noble/hashes/hmac.js";
 import { pbkdf2 } from "@noble/hashes/pbkdf2.js";
 import { sha256, sha512 } from "@noble/hashes/sha2.js";
 import { platformRandomValues } from "../platform.ts";
-import { CryptoPrimitiveError, type CryptoPrimitives, type KeyPair } from "./primitives.ts";
+import { CryptoPrimitiveError, type CryptoPrimitives } from "./primitives.ts";
 
 /**
  * The default primitives, on @noble/curves, @noble/ciphers and @noble/hashes: audited, pure
@@ -41,7 +41,7 @@ export function nobleCryptoPrimitives(opts: { randomValues?: (array: Uint8Array)
     },
     hkdfSha256: (ikm, salt, info, length) => hkdf(sha256, ikm, salt && salt.length > 0 ? salt : undefined, info, length),
 
-    x25519GenerateKeyPair(): KeyPair {
+    x25519GenerateKeyPair() {
       const secretKey = randomBytes(32);
       return { secretKey, publicKey: x25519.getPublicKey(secretKey) };
     },
@@ -61,7 +61,7 @@ export function nobleCryptoPrimitives(opts: { randomValues?: (array: Uint8Array)
       }
     },
 
-    ed25519GenerateKeyPair(): KeyPair {
+    ed25519GenerateKeyPair() {
       const secretKey = randomBytes(32);
       return { secretKey, publicKey: ed25519.getPublicKey(secretKey) };
     },

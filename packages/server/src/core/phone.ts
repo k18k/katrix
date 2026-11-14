@@ -252,7 +252,7 @@ const CALLING_CODES: Record<string, string> = {
  * Numbers given in international form ("+48 ...", "0048 ...") keep their own country code.
  * Returns null for numbers that cannot be valid.
  */
-export function toMsisdn(country: string, phoneNumber: string): string | null {
+export function toMsisdn(country: string, phoneNumber: string) {
   const raw = phoneNumber.trim();
   let digits = raw.replace(/[\s().\-/]/g, "");
   if (!/^\+?\d+$/.test(digits)) return null;

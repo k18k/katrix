@@ -32,12 +32,12 @@ const OPS: Record<string, string> = { eq: "=", ne: "<>", lt: "<", lte: "<=", gt:
  * Generic SQL adapter. Works with any driver that can run parameterised
  * queries; see `sqliteAdapter` and `postgresAdapter` for ready-made wrappers.
  */
-export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", transaction }: SqlAdapterOptions): DatabaseAdapter {
+export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", transaction }: SqlAdapterOptions) {
   let schema: Schema = {};
   const q = (ident: string) => (dialect === "mysql" ? `\`${ident}\`` : `"${ident}"`);
   const t = (model: string) => q(tablePrefix + model);
 
-  const columnType = (type: FieldType, isKey: boolean): string => {
+  const columnType = (type: FieldType, isKey: boolean) => {
     switch (type) {
       case "string":
         return dialect === "mysql" ? (isKey ? "VARCHAR(255)" : "TEXT") : "TEXT";
@@ -50,7 +50,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
     }
   };
 
-  const columnsOf = async (executor: SqlExecutor, table: string): Promise<Set<string>> => {
+  const columnsOf = async (executor: SqlExecutor, table: string) => {
     const rows =
       dialect === "sqlite"
         ? await executor.query(`PRAGMA table_info(${q(table)})`, [])
@@ -66,9 +66,9 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
     return new Set(rows.map((r) => String(r.name)));
   };
 
-  const fieldType = (model: string, field: string): FieldType => schema[model]?.fields[field]?.type ?? "string";
+  const fieldType = (model: string, field: string) => schema[model]?.fields[field]?.type ?? "string";
 
-  const toDb = (model: string, field: string, value: unknown): unknown => {
+  const toDb = (model: string, field: string, value: unknown) => {
     if (value === undefined || value === null) return null;
     switch (fieldType(model, field)) {
       case "json":
@@ -80,7 +80,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
     }
   };
 
-  const fromDb = (model: string, row: Row): Row => {
+  const fromDb = (model: string, row: Row) => {
     const out: Row = {};
     for (const [field, value] of Object.entries(row)) {
       if (value === null || value === undefined) {
@@ -106,14 +106,14 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
 
   const placeholder = (i: number) => (dialect === "postgres" ? `$${i}` : "?");
   // #40: a limit is a parameter, so the statement's text does not change with it.
-  const limitClause = (limit: number, params: unknown[]): string => {
+  const limitClause = (limit: number, params: unknown[]) => {
     const n = Math.max(0, Math.floor(limit));
     if (dialect === "mysql") return ` LIMIT ${n}`;
     params.push(n);
     return ` LIMIT ${placeholder(params.length)}`;
   };
 
-  const buildWhere = (model: string, where: WhereClause[] = [], params: unknown[]): string => {
+  const buildWhere = (model: string, where: WhereClause[] = [], params: unknown[]) => {
     if (where.length === 0) return "";
     const parts = where.map((w) => {
       const op = w.operator ?? "eq";
@@ -142,7 +142,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
     return ` WHERE ${parts.join(" AND ")}`;
   };
 
-  const build = (executor: SqlExecutor, inTx: boolean): DatabaseAdapter => {
+  const build = (executor: SqlExecutor, inTx: boolean) => {
     // Rows written by one statement share their columns: `insert` is called per group of rows
     // with the same defined fields.
     const insert = async (model: string, data: Row | Row[], mode: "insert" | "upsert") => {
@@ -299,8 +299,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
       },
     };
     if (transaction) {
-      adapter.transaction = <T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T> =>
-        inTx ? fn(adapter) : transaction((ex) => fn(build(ex, true)));
+      adapter.transaction = <T>(fn: (tx: DatabaseAdapter) => Promise<T>) => (inTx ? fn(adapter) : transaction((ex) => fn(build(ex, true))));
     }
     return adapter;
   };
@@ -335,7 +334,7 @@ export function sqliteAdapter(
      */
     synchronous?: "normal" | "full";
   } = {},
-): DatabaseAdapter {
+) {
   try {
     db.exec("PRAGMA journal_mode = WAL");
     // https://github.com/k18k/katrix/issues/46: with the default (FULL), every
@@ -374,7 +373,7 @@ export function sqliteAdapter(
   // later microtask, and a transaction could claim the gate and BEGIN in between: the statement then ran inside
   // that transaction and was undone by its rollback, though it had reported success. The check that the gate is
   // still free and the statement now run in the same synchronous step; a gate claimed meanwhile is waited for.
-  const run = async <T>(statement: () => T): Promise<T> => {
+  const run = async <T>(statement: () => T) => {
     if (inTransaction.getStore()) return statement();
     for (;;) {
       const current = gate;
@@ -439,7 +438,7 @@ export interface PgPoolLike extends PgQueryable {
  * event ended the process. The pool replaces broken idle clients, and a query on a broken client fails on its
  * own, so the event needs no more than a listener.
  */
-export const ignorePgError = (): void => {};
+export const ignorePgError = () => {};
 
 /**
  * https://github.com/k18k/katrix/issues/40: unnamed statements are parsed and
@@ -514,7 +513,7 @@ export function postgresAdapter(
      */
     preparedStatements?: boolean;
   } = {},
-): DatabaseAdapter {
+) {
   const namer = statementNamer(options.preparedStatements ?? true);
   pool.on?.("error", ignorePgError);
   return sqlAdapter({
@@ -562,7 +561,7 @@ const mysqlExecutor = (conn: MysqlQueryable): SqlExecutor => ({
 });
 
 /** MySQL / MariaDB adapter for `mysql2/promise` pools. */
-export function mysqlAdapter(pool: MysqlPoolLike, options: { tablePrefix?: string } = {}): DatabaseAdapter {
+export function mysqlAdapter(pool: MysqlPoolLike, options: { tablePrefix?: string } = {}) {
   return sqlAdapter({
     dialect: "mysql",
     tablePrefix: options.tablePrefix,

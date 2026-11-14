@@ -10,7 +10,6 @@ import {
   splitStateKey,
   stateKey,
   toClientEvent,
-  type ClientEvent,
   type PDU,
 } from "#core/events.ts";
 import {
@@ -112,7 +111,7 @@ class LruCache<K, V> {
   constructor(max: number) {
     this.max = max;
   }
-  get(k: K): V | undefined {
+  get(k: K) {
     const v = this.map.get(k);
     if (v !== undefined) {
       this.map.delete(k);
@@ -120,15 +119,15 @@ class LruCache<K, V> {
     }
     return v;
   }
-  set(k: K, v: V): void {
+  set(k: K, v: V) {
     this.map.delete(k);
     this.map.set(k, v);
     if (this.map.size > this.max) this.map.delete(this.map.keys().next().value as K);
   }
-  clear(): void {
+  clear() {
     this.map.clear();
   }
-  delete(k: K): void {
+  delete(k: K) {
     this.map.delete(k);
   }
 }
@@ -138,7 +137,7 @@ const MAX_EVENT_SIZE = 65536;
 const SNAPSHOT_INTERVAL = 64;
 
 /** Reject malformed power level content with 400 before it reaches the auth rules. */
-export function validatePowerLevelContent(content: Record<string, unknown>, creators: Set<string>): void {
+export function validatePowerLevelContent(content: Record<string, unknown>, creators: Set<string>) {
   const check = (v: unknown) => {
     if (typeof v === "number" && Math.abs(v) > Number.MAX_SAFE_INTEGER) throw errors.badJson("Power level out of range");
   };
@@ -180,7 +179,7 @@ export class RoomService {
   }
 
   /** Serialise writes per room (cluster-wide) so forward extremities stay consistent. */
-  async withLock<T>(roomId: string, fn: () => Promise<T>): Promise<T> {
+  async withLock<T>(roomId: string, fn: () => Promise<T>) {
     return this.hs.cluster.lock(`room:${roomId}`, async () => {
       // Another instance may have written to the room since our caches were filled.
       if (this.hs.cluster !== this.localClusterMarker) this.invalidateLocal({ rooms: [roomId] });
@@ -189,7 +188,7 @@ export class RoomService {
   }
 
   /** Drop cached data (for this instance only). */
-  private invalidateLocal(msg: { rooms?: string[]; events?: string[]; sharing?: boolean }): void {
+  private invalidateLocal(msg: { rooms?: string[]; events?: string[]; sharing?: boolean }) {
     for (const roomId of msg.rooms ?? []) {
       this.stateCache.delete(roomId);
       this.extremityCache.delete(roomId);
@@ -202,7 +201,7 @@ export class RoomService {
   }
 
   /** Tell other instances to drop cached data. */
-  invalidate(msg: { rooms?: string[]; events?: string[]; sharing?: boolean }): void {
+  invalidate(msg: { rooms?: string[]; events?: string[]; sharing?: boolean }) {
     // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
     // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
     void this.hs.cluster
@@ -210,19 +209,19 @@ export class RoomService {
       .catch((err) => this.hs.logger.warn("Cluster cache invalidation failed; other instances may serve stale state", err));
   }
 
-  forgetEventCache(eventId: string): void {
+  forgetEventCache(eventId: string) {
     this.eventCache.delete(eventId);
   }
 
   /** Drop all cached data for a room (after it was purged). */
-  forgetRoom(roomId: string): void {
+  forgetRoom(roomId: string) {
     this.versions.delete(roomId);
     this.extremityCache.delete(roomId);
     this.stateCache.delete(roomId);
     this.sharingCache.clear();
   }
 
-  async roomVersion(roomId: string): Promise<string | null> {
+  async roomVersion(roomId: string) {
     const cached = this.versions.get(roomId);
     if (cached) return cached;
     const room = await this.hs.db.findOne("rooms", [{ field: "room_id", value: roomId }]);
@@ -231,17 +230,17 @@ export class RoomService {
     return room.room_version;
   }
 
-  async exists(roomId: string): Promise<boolean> {
+  async exists(roomId: string) {
     return (await this.roomVersion(roomId)) !== null;
   }
 
-  rowToStored(row: Row): StoredEvent {
+  rowToStored(row: Row) {
     // v12 create events carry no room_id in their PDU; add it back for local use.
     const pdu = row.json.room_id ? row.json : { ...row.json, room_id: row.room_id };
     return { pdu, stream: row.stream, snapshot: row.state_snapshot, txnId: row.txn_id, txnToken: row.txn_token, gap: !!row.gap };
   }
 
-  async getEvent(eventId: string): Promise<StoredEvent | null> {
+  async getEvent(eventId: string) {
     const cached = this.eventCache.get(eventId);
     if (cached) return cached;
     const row = await this.hs.db.findOne("events", [{ field: "event_id", value: eventId }]);
@@ -251,7 +250,7 @@ export class RoomService {
     return stored;
   }
 
-  async getEvents(eventIds: string[]): Promise<Map<string, StoredEvent>> {
+  async getEvents(eventIds: string[]) {
     const out = new Map<string, StoredEvent>();
     const missing: string[] = [];
     for (const id of eventIds) {
@@ -284,12 +283,12 @@ export class RoomService {
     return state;
   }
 
-  async stateAtSnapshot(snapshotId: number): Promise<StateMap> {
+  async stateAtSnapshot(snapshotId: number) {
     // State events may be outliers (e.g. state received when joining over federation).
     return this.stateIdsToMap(await this.snapshotIds(snapshotId));
   }
 
-  async currentState(roomId: string): Promise<StateMap> {
+  async currentState(roomId: string) {
     const cached = this.stateCache.get(roomId);
     if (cached) return cached;
     const rows = await this.hs.db.findMany("current_state", { where: [{ field: "room_id", value: roomId }] });
@@ -303,14 +302,14 @@ export class RoomService {
     return state;
   }
 
-  async currentStateIds(roomId: string): Promise<StateIds> {
+  async currentStateIds(roomId: string) {
     const ids: StateIds = {};
     for (const [k, ev] of await this.currentState(roomId)) ids[k] = ev.event_id!;
     return ids;
   }
 
   /** Forward extremities: the latest events in the room DAG, used as prev_events of new events. */
-  async extremities(roomId: string): Promise<string[]> {
+  async extremities(roomId: string) {
     const cached = this.extremityCache.get(roomId);
     if (cached) return cached;
     const rows = await this.hs.db.findMany("forward_extremities", { where: [{ field: "room_id", value: roomId }] });
@@ -323,7 +322,7 @@ export class RoomService {
   // Event lookup across the timeline and the outlier store
   // ---------------------------------------------------------------------------
 
-  async getOutlier(eventId: string): Promise<Outlier | null> {
+  async getOutlier(eventId: string) {
     const cached = this.outlierCache.get(eventId);
     if (cached) return cached;
     const row = await this.hs.db.findOne("outliers", [{ field: "event_id", value: eventId }]);
@@ -335,14 +334,14 @@ export class RoomService {
   }
 
   /** Any known PDU (timeline event or non-rejected outlier). */
-  async getPdu(eventId: string): Promise<PDU | null> {
+  async getPdu(eventId: string) {
     const ev = await this.getEvent(eventId);
     if (ev) return ev.pdu;
     const o = await this.getOutlier(eventId);
     return o && !o.rejected ? o.pdu : null;
   }
 
-  async getPdus(eventIds: string[]): Promise<Map<string, PDU>> {
+  async getPdus(eventIds: string[]) {
     const out = new Map<string, PDU>();
     const timeline = await this.getEvents(eventIds);
     for (const [id, ev] of timeline) out.set(id, ev.pdu);
@@ -355,19 +354,19 @@ export class RoomService {
   }
 
   /** Whether we have seen this event at all (including rejected ones). */
-  async knowsEvent(eventId: string): Promise<boolean> {
+  async knowsEvent(eventId: string) {
     return !!(await this.getEvent(eventId)) || !!(await this.getOutlier(eventId));
   }
 
   /** Snapshot ID of the state after an event, or null when the state is unknown. */
-  async snapshotOf(eventId: string): Promise<number | null> {
+  async snapshotOf(eventId: string) {
     const ev = await this.getEvent(eventId);
     if (ev) return ev.snapshot;
     const o = await this.getOutlier(eventId);
     return o && !o.rejected && o.snapshot !== null ? o.snapshot : null;
   }
 
-  async stateIdsToMap(ids: StateIds): Promise<StateMap> {
+  async stateIdsToMap(ids: StateIds) {
     const events = await this.getPdus(Object.values(ids));
     const state: StateMap = new Map();
     for (const [k, id] of Object.entries(ids)) {
@@ -377,7 +376,7 @@ export class RoomService {
     return state;
   }
 
-  async createEventOf(roomId: string): Promise<PDU | undefined> {
+  async createEventOf(roomId: string) {
     return getState(await this.currentState(roomId), M.ROOM.CREATE);
   }
 
@@ -386,7 +385,7 @@ export class RoomService {
    * predecessor, or the resolution of several. Throws MissingStateError when a
    * predecessor's state is unknown.
    */
-  async stateBefore(roomId: string, version: string, prevIds: string[], createEvent?: PDU): Promise<StateBefore> {
+  async stateBefore(roomId: string, version: string, prevIds: string[], createEvent?: PDU) {
     if (prevIds.length === 0) return { ids: {}, snapshot: 0 };
     const snapshots: number[] = [];
     const missing: string[] = [];
@@ -429,7 +428,7 @@ export class RoomService {
     sender: string,
     draft: EventDraft,
     opts: { txnId?: string; deviceId?: string; skipAuth?: boolean; ts?: number } = {},
-  ): Promise<string> {
+  ) {
     return this.withLock(roomId, async () => {
       if (opts.txnId && opts.deviceId) {
         const token = txnTokenOf(sender, opts.deviceId);
@@ -448,7 +447,7 @@ export class RoomService {
   }
 
   /** Build and sign (but do not persist) a local event on top of the current forward extremities. */
-  async buildLocalEvent(roomId: string, version: string, sender: string, draft: EventDraft, skipAuth = false, ts?: number): Promise<PDU> {
+  async buildLocalEvent(roomId: string, version: string, sender: string, draft: EventDraft, skipAuth = false, ts?: number) {
     const features = roomVersionFeatures(version);
     const extremities = await this.extremities(roomId);
     const prevs = [...(await this.getPdus(extremities)).values()].sort((a, b) => b.depth - a.depth).slice(0, 10);
@@ -607,13 +606,7 @@ export class RoomService {
    * remote event against its now complete state (events wrongly accepted become rejected), then
    * rebuild the room's current state. Caller holds the room lock.
    */
-  async completePartialState(
-    roomId: string,
-    version: string,
-    joinEventId: string,
-    fullBefore: StateIds,
-    notified: Set<string>,
-  ): Promise<string[]> {
+  async completePartialState(roomId: string, version: string, joinEventId: string, fullBefore: StateIds, notified: Set<string>) {
     const features = roomVersionFeatures(version);
     const join = await this.getEvent(joinEventId);
     if (!join) return [];
@@ -814,7 +807,7 @@ export class RoomService {
   }
 
   /** The create event, also when the room's current state is not known yet (v12 joins). */
-  private async findCreateEvent(roomId: string): Promise<PDU | undefined> {
+  private async findCreateEvent(roomId: string) {
     const id = `$${roomId.slice(1)}`;
     return (await this.getPdu(id)) ?? undefined;
   }
@@ -1078,7 +1071,7 @@ export class RoomService {
     return { eventId, status: "persisted" };
   }
 
-  private async snapshotDepth(id: number): Promise<number> {
+  private async snapshotDepth(id: number) {
     const cached = this.snapshotDepths.get(id);
     if (cached !== undefined) return cached;
     const row = await this.hs.db.findOne("state_snapshots", [{ field: "id", value: id }]);
@@ -1087,18 +1080,18 @@ export class RoomService {
     return depth;
   }
 
-  async membership(roomId: string, userId: string): Promise<string> {
+  async membership(roomId: string, userId: string) {
     return membershipOf(await this.currentState(roomId), userId);
   }
 
-  async requireJoined(roomId: string, userId: string): Promise<StateMap> {
+  async requireJoined(roomId: string, userId: string) {
     if (!(await this.exists(roomId))) throw errors.forbidden("You are not in this room");
     const state = await this.currentState(roomId);
     if (membershipOf(state, userId) !== "join") throw errors.forbidden("You are not joined to this room");
     return state;
   }
 
-  async joinedMembers(roomId: string): Promise<string[]> {
+  async joinedMembers(roomId: string) {
     const rows = await this.hs.db.findMany("memberships", {
       where: [
         { field: "room_id", value: roomId },
@@ -1109,12 +1102,12 @@ export class RoomService {
   }
 
   /** Users that should be woken up for events in this room. */
-  private async interestedUsers(roomId: string): Promise<string[]> {
+  private async interestedUsers(roomId: string) {
     const rows = await this.hs.db.findMany("memberships", { where: [{ field: "room_id", value: roomId }] });
     return rows.map((r) => r.user_id);
   }
 
-  async roomsForUser(userId: string, membership = "join"): Promise<string[]> {
+  async roomsForUser(userId: string, membership = "join") {
     const rows = await this.hs.db.findMany("memberships", {
       where: [
         { field: "user_id", value: userId },
@@ -1132,7 +1125,7 @@ export class RoomService {
    * read every membership change on the server since their token and kept those in the user's
    * rooms; while many users joined, each sync parsed thousands of rows. This reads those rooms only.
    */
-  async membershipChangesSince(userId: string, since: number, mine?: Row[]): Promise<Row[]> {
+  async membershipChangesSince(userId: string, since: number, mine?: Row[]) {
     const own = mine ?? (await this.hs.db.findMany("memberships", { where: [{ field: "user_id", value: userId }] }));
     const rooms = [...new Set(own.map((m) => m.room_id as string))];
     if (rooms.length === 0) return [];
@@ -1145,7 +1138,7 @@ export class RoomService {
   }
 
   /** All users sharing at least one joined room with `userId` (including themselves). */
-  async usersSharingRooms(userId: string): Promise<Set<string>> {
+  async usersSharingRooms(userId: string) {
     const cached = this.sharingCache.get(userId);
     if (cached) return new Set(cached);
     const out = new Set<string>([userId]);
@@ -1157,11 +1150,7 @@ export class RoomService {
     return new Set(out);
   }
 
-  private async prepareRedaction(
-    targetId: string,
-    redaction: PDU,
-    version: string,
-  ): Promise<{ targetId: string; target: StoredEvent; redacted: PDU } | null> {
+  private async prepareRedaction(targetId: string, redaction: PDU, version: string) {
     const target = await this.getEvent(targetId);
     if (!target || target.pdu.room_id !== redaction.room_id) return null;
     const state = await this.currentState(redaction.room_id);
@@ -1174,7 +1163,7 @@ export class RoomService {
     return { targetId, target, redacted };
   }
 
-  private commitRedaction(r: { targetId: string; target: StoredEvent; redacted: PDU }, roomId: string): void {
+  private commitRedaction(r: { targetId: string; target: StoredEvent; redacted: PDU }, roomId: string) {
     const view = r.redacted.room_id ? r.redacted : { ...r.redacted, room_id: roomId };
     this.eventCache.set(r.targetId, { ...r.target, pdu: view });
     if (r.target.pdu.state_key !== undefined) {
@@ -1185,7 +1174,7 @@ export class RoomService {
   }
 
   /** Check whether a redaction would be permitted, before sending it. */
-  async checkRedactionAllowed(roomId: string, sender: string, targetId: string): Promise<void> {
+  async checkRedactionAllowed(roomId: string, sender: string, targetId: string) {
     const version = (await this.roomVersion(roomId))!;
     const state = await this.currentState(roomId);
     const pl = powerLevels(state, version);
@@ -1199,7 +1188,7 @@ export class RoomService {
    * Room state shared with invitees and knockers (MSC4311): full PDUs in federation
    * format, including the create event. Clients receive stripped versions.
    */
-  strippedState(state: StateMap): Record<string, unknown>[] {
+  strippedState(state: StateMap) {
     const types = [M.ROOM.CREATE, M.ROOM.JOIN_RULES, M.ROOM.NAME, M.ROOM.AVATAR, M.ROOM.CANONICAL_ALIAS, M.ROOM.ENCRYPTION, M.ROOM.TOPIC];
     const create = getState(state, M.ROOM.CREATE);
     const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
@@ -1214,7 +1203,7 @@ export class RoomService {
   // ---------------------------------------------------------------------------
 
   /** Filter events down to those `userId` may see according to history visibility. */
-  async filterVisible(userId: string | null, roomId: string, events: StoredEvent[]): Promise<StoredEvent[]> {
+  async filterVisible(userId: string | null, roomId: string, events: StoredEvent[]) {
     if (events.length === 0) return events;
     let memberHistory: { stream: number; membership: string }[] | null = null;
     const loadHistory = async () => {
@@ -1273,7 +1262,7 @@ export class RoomService {
   }
 
   /** Whether the user may view the room's current state / history at all (`world_readable` or member). */
-  async canPeek(roomId: string, userId: string): Promise<{ joined: boolean; worldReadable: boolean; membership: string }> {
+  async canPeek(roomId: string, userId: string) {
     const state = await this.currentState(roomId);
     const membership = membershipOf(state, userId);
     const hv = getState(state, M.ROOM.HISTORY_VISIBILITY)?.content?.history_visibility ?? "shared";
@@ -1281,13 +1270,13 @@ export class RoomService {
   }
 
   /** The state snapshot visible to a user who is no longer joined (state at their leave). */
-  async membershipEvent(roomId: string, userId: string): Promise<StoredEvent | null> {
+  async membershipEvent(roomId: string, userId: string) {
     const state = await this.currentState(roomId);
     const ev = getState(state, M.ROOM.MEMBER, userId);
     return ev?.event_id ? this.getEvent(ev.event_id) : null;
   }
 
-  formatEvent(ev: StoredEvent, viewer?: { userId: string; deviceId: string } | null, opts: { includeRoomId?: boolean } = {}): ClientEvent {
+  formatEvent(ev: StoredEvent, viewer?: { userId: string; deviceId: string } | null, opts: { includeRoomId?: boolean } = {}) {
     const client = toClientEvent(ev.pdu, opts);
     if (viewer && ev.txnToken && ev.txnToken === txnTokenOf(viewer.userId, viewer.deviceId)) {
       client.unsigned = { ...client.unsigned, transaction_id: ev.txnId };
@@ -1296,7 +1285,7 @@ export class RoomService {
     return client;
   }
 
-  stateToList(state: StateMap): PDU[] {
+  stateToList(state: StateMap) {
     return [...state.values()];
   }
 
@@ -1304,7 +1293,7 @@ export class RoomService {
   // Room lifecycle
   // ---------------------------------------------------------------------------
 
-  async createRoom(sender: string, body: Record<string, unknown>): Promise<{ room_id: string; room_alias?: string }> {
+  async createRoom(sender: string, body: Record<string, unknown>) {
     const req = parseCreateRoom(body, this.hs.config.defaultRoomVersion);
     const { version, visibility, preset } = req;
     const features = roomVersionFeatures(version);
@@ -1440,12 +1429,12 @@ export class RoomService {
     return alias ? { room_id: roomId, room_alias: alias } : { room_id: roomId };
   }
 
-  async resolveRoomIdOrAlias(idOrAlias: string): Promise<string> {
+  async resolveRoomIdOrAlias(idOrAlias: string) {
     return (await this.resolveRoom(idOrAlias)).roomId;
   }
 
   /** Resolve a room ID or alias, including remote aliases; returns candidate servers for joining. */
-  async resolveRoom(idOrAlias: string): Promise<{ roomId: string; servers: string[] }> {
+  async resolveRoom(idOrAlias: string) {
     if (idOrAlias.startsWith("!")) return { roomId: idOrAlias, servers: [] };
     if (idOrAlias.startsWith("#")) {
       const row = await this.hs.db.findOne("room_aliases", [{ field: "alias", value: idOrAlias }]);
@@ -1467,14 +1456,14 @@ export class RoomService {
   }
 
   /** Whether the room was created on this server and we still have its state. */
-  async isLocallyHosted(roomId: string): Promise<boolean> {
+  async isLocallyHosted(roomId: string) {
     if (!(await this.exists(roomId))) return false;
     const create = await this.createEventOf(roomId);
     return !!create && this.hs.isLocalUser(create.sender);
   }
 
   /** Whether any local user is joined to the room (i.e. this server participates in it). */
-  async serverIsJoined(roomId: string): Promise<boolean> {
+  async serverIsJoined(roomId: string) {
     if (!(await this.exists(roomId))) return false;
     for (const [key, ev] of await this.currentState(roomId)) {
       const [type, userId] = splitStateKey(key);
@@ -1484,7 +1473,7 @@ export class RoomService {
   }
 
   /** Servers that might help with a remote membership change for `userId` in `roomId`. */
-  private async remoteServersFor(roomId: string, userId: string, extra: string[] = []): Promise<string[]> {
+  private async remoteServersFor(roomId: string, userId: string, extra: string[] = []) {
     const servers = [...extra];
     const row = await this.hs.db.findOne("memberships", [
       { field: "room_id", value: roomId },
@@ -1505,7 +1494,7 @@ export class RoomService {
    * Record a membership event for a room this server may not participate in (remote
    * invites, rejections, knocks) so that it shows up in /sync.
    */
-  async recordRemoteMembership(pdu: PDU, version: string): Promise<void> {
+  async recordRemoteMembership(pdu: PDU, version: string) {
     void version;
     await this.hs.db.upsert("outliers", {
       event_id: pdu.event_id,
@@ -1533,11 +1522,7 @@ export class RoomService {
     this.hs.notifier.notify([pdu.state_key!]);
   }
 
-  async join(
-    userId: string,
-    roomId: string,
-    extra: { reason?: string; content?: Record<string, unknown>; servers?: string[] } = {},
-  ): Promise<string> {
+  async join(userId: string, roomId: string, extra: { reason?: string; content?: Record<string, unknown>; servers?: string[] } = {}) {
     const version = await this.roomVersion(roomId);
     // https://github.com/k18k/katrix/issues/87 — improper authorization (CWE-285): guests could
     // join any room, also rooms whose admins keep guests out. The spec allows guests only in rooms whose
@@ -1578,12 +1563,7 @@ export class RoomService {
     return this.joinLocal(userId, roomId, version, extra);
   }
 
-  private async joinLocal(
-    userId: string,
-    roomId: string,
-    version: string,
-    extra: { reason?: string; content?: Record<string, unknown> },
-  ): Promise<string> {
+  private async joinLocal(userId: string, roomId: string, version: string, extra: { reason?: string; content?: Record<string, unknown> }) {
     this.hs.logger.debug("Local join", userId, roomId);
     const state = await this.currentState(roomId);
     const content: Record<string, unknown> = { ...extra.content, membership: "join", ...(await this.hs.profile(userId)) };
@@ -1624,7 +1604,7 @@ export class RoomService {
   }
 
   /** Whether an allowed room exists that we can't check (or the user is joined to), so another server might authorise. */
-  private async mayQualifyRemotely(userId: string, state: StateMap): Promise<boolean> {
+  private async mayQualifyRemotely(userId: string, state: StateMap) {
     const allow = getState(state, M.ROOM.JOIN_RULES)?.content?.allow;
     if (!Array.isArray(allow)) return false;
     for (const rule of allow) {
@@ -1635,7 +1615,7 @@ export class RoomService {
     return false;
   }
 
-  private async findRestrictedAuthoriser(userId: string, state: StateMap, version: string): Promise<string | null> {
+  private async findRestrictedAuthoriser(userId: string, state: StateMap, version: string) {
     const allow = getState(state, M.ROOM.JOIN_RULES)?.content?.allow;
     if (!Array.isArray(allow)) return null;
     let permitted = false;
@@ -1662,7 +1642,7 @@ export class RoomService {
     sender: string,
     target: string,
     opts: { reason?: string; isDirect?: boolean; thirdPartyInvite?: { display_name: string; signed: Record<string, unknown> } } = {},
-  ): Promise<void> {
+  ) {
     if (!isValidUserId(target)) throw errors.invalidParam("Invalid user ID");
     const local = this.hs.isLocalUser(target);
     if (
@@ -1705,7 +1685,7 @@ export class RoomService {
   }
 
   /** Make this server's guests leave a room that no longer allows guests (spec, guest access module; #87). */
-  private async removeGuests(roomId: string): Promise<void> {
+  private async removeGuests(roomId: string) {
     for (const [k, ev] of await this.currentState(roomId)) {
       const [type, userId] = splitStateKey(k);
       if (type !== M.ROOM.MEMBER || ev.content?.membership !== "join" || !this.hs.isLocalUser(userId)) continue;
@@ -1721,7 +1701,7 @@ export class RoomService {
     membership: "leave" | "ban" | "knock",
     reason?: string,
     via: string[] = [],
-  ): Promise<void> {
+  ) {
     // Rejecting invites / rescinding knocks / knocking on rooms we don't participate in goes over federation.
     // (A room we hold locally, e.g. an invite to an empty local room, is handled with a local event.)
     const remote = !(await this.serverIsJoined(roomId)) && (membership === "knock" || !(await this.isLocallyHosted(roomId)));
@@ -1739,13 +1719,7 @@ export class RoomService {
     await this.sendEvent(roomId, sender, { type: M.ROOM.MEMBER, state_key: target, content });
   }
 
-  private async remoteMembership(
-    roomId: string,
-    userId: string,
-    membership: "leave" | "knock",
-    reason?: string,
-    via: string[] = [],
-  ): Promise<void> {
+  private async remoteMembership(roomId: string, userId: string, membership: "leave" | "knock", reason?: string, via: string[] = []) {
     const row = await this.hs.db.findOne("memberships", [
       { field: "room_id", value: roomId },
       { field: "user_id", value: userId },
@@ -1792,7 +1766,7 @@ export class RoomService {
   }
 
   /** Update the member event in every joined room after a profile change. */
-  async propagateProfile(userId: string): Promise<void> {
+  async propagateProfile(userId: string) {
     const profile = await this.hs.profile(userId);
     for (const roomId of await this.roomsForUser(userId)) {
       const prev = getState(await this.currentState(roomId), M.ROOM.MEMBER, userId);

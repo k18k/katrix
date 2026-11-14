@@ -51,7 +51,7 @@ export interface ResolvedUserAuth {
   validatePassword(password: string): Promise<string | null>;
 }
 
-export function resolveUserAuth(adapter: UserAuthAdapter = {}): ResolvedUserAuth {
+export function resolveUserAuth(adapter: UserAuthAdapter = {}) {
   return {
     registrationEnabled: adapter.registrationEnabled ?? false,
     registrationRequiresToken: adapter.registrationRequiresToken ?? false,

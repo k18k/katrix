@@ -28,7 +28,7 @@ export function consoleLogger(prefix = "[matrix]"): Logger {
 }
 
 /** A safe summary of an error for a log line: its class, code and message, never a stack of data. */
-export function describeError(e: unknown): Record<string, unknown> {
+export function describeError(e: unknown) {
   if (e instanceof Error) {
     const code = (e as { code?: unknown; errcode?: unknown }).errcode ?? (e as { code?: unknown }).code;
     return { error: e.name, ...(code !== undefined ? { code } : {}), message: e.message };
