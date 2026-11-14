@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { sqliteAdapter } from "#storage/sql.ts";
+import { sqlAdapter, sqliteAdapter } from "#storage/sql.ts";
 import type { Schema } from "#storage/types.ts";
 
 const schema: Schema = {
@@ -57,4 +57,34 @@ test("in-lists of any length read the same rows", async () => {
     const rows = await a.findMany("items", { where: [{ field: "id", operator: "in", value: ids }], limit: 10 });
     assert.equal(rows.length, Math.min(ids.length, 10));
   }
+});
+
+test("a read with an empty in-list does not reach the database", async () => {
+  const sent: string[] = [];
+  const adapter = sqlAdapter({
+    dialect: "postgres",
+    executor: {
+      query: async (sql) => {
+        sent.push(sql);
+        // A batch read answers each part with its index and rows.
+        return [...sql.matchAll(/SELECT (\d+) AS i/g)].map((m) => ({ i: Number(m[1]), r: [{ owner: "o", id: 1, tags: [] }] }));
+      },
+      execute: async () => 0,
+    },
+  });
+  await adapter.migrate!(schema);
+  sent.length = 0;
+  const nothing = { where: [{ field: "id", operator: "in" as const, value: [] }] };
+  assert.deepEqual(await adapter.findMany("items", nothing), []);
+  assert.deepEqual(await adapter.findManyBatch!([{ model: "items", opts: nothing }]), [[]]);
+  assert.deepEqual(sent, []);
+
+  // In a batch, the other reads still go, in one statement, and keep their places.
+  const rows = await adapter.findManyBatch!([
+    { model: "items", opts: nothing },
+    { model: "items", opts: { where: [{ field: "owner", value: "o" }] } },
+  ]);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(rows[0], []);
+  assert.equal(rows[1].length, 1);
 });

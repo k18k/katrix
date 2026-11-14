@@ -113,6 +113,11 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
     return ` LIMIT ${placeholder(params.length)}`;
   };
 
+  // A read with an empty `in` list matches no row. It went to the database as `1=0` all the same: under load, one /sync in
+  // two had such a read (the presence of users newly sharing a room, usually none), a round trip for nothing.
+  const matchesNothing = (where: WhereClause[] = []) =>
+    where.some((w) => w.operator === "in" && Array.isArray(w.value) && w.value.length === 0);
+
   const buildWhere = (model: string, where: WhereClause[] = [], params: unknown[]) => {
     if (where.length === 0) return "";
     const parts = where.map((w) => {
@@ -238,6 +243,7 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
         return rows[0] ? fromDb(model, rows[0]) : null;
       },
       async findMany(model, opts = {}) {
+        if (matchesNothing(opts.where)) return [];
         const params: unknown[] = [];
         const columns = opts.fields?.length ? opts.fields.map(q).join(", ") : "*";
         let sql = `SELECT ${columns} FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
@@ -254,9 +260,11 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
       ...(dialect === "postgres"
         ? {
             async findManyBatch(queries: BatchQuery[], options?: BatchOptions) {
-              if (queries.length === 0) return [];
+              const out: Row[][] = queries.map(() => []);
+              const asked = queries.flatMap((query, i) => (matchesNothing(query.opts?.where) ? [] : [{ query, i }]));
+              if (asked.length === 0) return out;
               const params: unknown[] = [];
-              const parts = queries.map(({ model, opts = {} }, i) => {
+              const parts = asked.map(({ query: { model, opts = {} }, i }) => {
                 // The sort column is needed outside the subquery to order the aggregate.
                 const fields =
                   opts.fields?.length && opts.sortBy && !opts.fields.includes(opts.sortBy.field)
@@ -271,7 +279,6 @@ export function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", 
                 return `SELECT ${i} AS i, (SELECT json_agg(b${aggOrder}) FROM (${inner}) b) AS r`;
               });
               const rows = await executor.query(parts.join(" UNION ALL "), params, options);
-              const out: Row[][] = queries.map(() => []);
               for (const row of rows) {
                 const list = typeof row.r === "string" ? JSON.parse(row.r) : row.r;
                 const model = queries[Number(row.i)].model;
