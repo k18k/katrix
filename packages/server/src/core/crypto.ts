@@ -1,4 +1,4 @@
-import { canonicalJson } from "@katrix/shared";
+import { canonicalJson, isObject, isSignatures, type Signatures } from "@katrix/shared";
 import {
   createHash,
   verify,
@@ -81,14 +81,13 @@ export function loadSigningKey(keyId: string, seed?: string): SigningKey {
 }
 
 /** Sign a JSON object in place according to the Matrix signing algorithm. */
-export function signJson<T extends Record<string, any>>(
-  obj: T,
-  serverName: string,
-  key: SigningKey,
-): T & { signatures: Record<string, Record<string, string>> } {
-  const { signatures, unsigned, ...rest } = obj;
+// https://github.com/k18k/katrix/issues/128: the objects were Record<string, any>; existing signatures are kept only when
+// they are well-formed (isSignatures), and a signature is read only from an object.
+export function signJson<T extends object>(obj: T, serverName: string, key: SigningKey) {
+  const fields: object = obj;
+  const { signatures, unsigned, ...rest }: Record<string, unknown> = { ...fields };
   const sig = unpaddedBase64(sign(null, Buffer.from(canonicalJson(rest)), key.privateKey));
-  const merged = { ...signatures };
+  const merged: Signatures = isSignatures(signatures) ? { ...signatures } : {};
   merged[serverName] = { ...merged[serverName], [`ed25519:${key.keyId}`]: sig };
   return Object.assign(obj, { signatures: merged });
 }
@@ -105,10 +104,11 @@ export function publicKeyFromBase64(key: string): KeyObject {
 }
 
 /** Verify one ed25519 signature on a JSON object (signatures/unsigned excluded). */
-export function verifyJsonSignature(obj: Record<string, any>, serverName: string, keyId: string, publicKey: KeyObject): boolean {
-  const sig = obj.signatures?.[serverName]?.[keyId];
+export function verifyJsonSignature(obj: object, serverName: string, keyId: string, publicKey: KeyObject): boolean {
+  const { signatures, unsigned, ...rest }: Record<string, unknown> = { ...obj };
+  const byServer = isObject(signatures) ? signatures[serverName] : undefined;
+  const sig = isObject(byServer) ? byServer[keyId] : undefined;
   if (typeof sig !== "string") return false;
-  const { signatures, unsigned, ...rest } = obj;
   try {
     return verify(null, Buffer.from(canonicalJson(rest)), publicKey, decodeBase64(sig));
   } catch {

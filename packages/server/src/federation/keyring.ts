@@ -98,8 +98,9 @@ export class KeyRing {
   }
 
   /** Verify that `obj` carries a valid signature from `serverName`. */
-  async verifySignedBy(obj: Record<string, any>, serverName: string, minValidUntil?: number): Promise<boolean> {
-    const sigs = obj.signatures?.[serverName];
+  async verifySignedBy(obj: object, serverName: string, minValidUntil?: number): Promise<boolean> {
+    const { signatures }: Record<string, unknown> = { ...obj };
+    const sigs = isObject(signatures) ? signatures[serverName] : undefined;
     if (!isObject(sigs)) return false;
     for (const keyId of Object.keys(sigs)) {
       if (!keyId.startsWith("ed25519:")) continue;
@@ -110,10 +111,10 @@ export class KeyRing {
   }
 
   /** Cached keys in `/_matrix/key/v2/query` format (we act as a basic notary for keys we know). */
-  async knownKeys(serverName: string): Promise<Record<string, any>[]> {
+  async knownKeys(serverName: string) {
     const rows = await this.hs.db.findMany("remote_server_keys", { where: [{ field: "server_name", value: serverName }] });
     if (!rows.length) return [];
-    const verify_keys: Record<string, any> = {};
+    const verify_keys: Record<string, { key: string }> = {};
     let until = 0;
     for (const r of rows) {
       verify_keys[r.key_id] = { key: r.key };
