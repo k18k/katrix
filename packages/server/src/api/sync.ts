@@ -1,6 +1,6 @@
 import { M, UNSTABLE, type InvitedRoom, type JoinedRoom, type KnockedRoom, type LeftRoom, type SyncResponse } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
-import { getState } from "#core/authrules.ts";
+import { getState, type StateMap } from "#core/authrules.ts";
 import { eventIdOf, previousMembership, splitStateKey, stateKey, strippedState, toClientEvent, type PDU } from "#core/events.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Session } from "#core/auth.ts";
@@ -296,21 +296,43 @@ async function accountData(hs: Homeserver, p: SyncParams, roomId: string, prefet
 /** The state events a room summary is computed from: members for the counts and heroes, the name and alias for whether heroes are needed. */
 const SUMMARY_TYPES = new Set<string>([M.ROOM.MEMBER, M.ROOM.NAME, M.ROOM.CANONICAL_ALIAS]);
 
-export async function roomSummary(hs: Homeserver, roomId: string, userId: string) {
-  const state = await hs.rooms.currentState(roomId);
+/**
+ * What a room's summary is made of, by state map: the room service replaces a room's map when its state changes, so a
+ * map's members never change. A join wakes every member of the room, and each of their syncs needed the same lists.
+ */
+const summaryParts = new WeakMap<StateMap, { joined: number; invited: number; members: string[]; named: boolean }>();
+
+function summaryPartsOf(state: StateMap) {
+  const known = summaryParts.get(state);
+  if (known) return known;
   let joined = 0;
   let invited = 0;
-  const heroes: string[] = [];
+  /** Joined and invited members, in state order: the first of them become the heroes. */
+  const members: string[] = [];
   for (const [key, ev] of state) {
     const [type, sk] = splitStateKey(key);
     if (type !== M.ROOM.MEMBER) continue;
     const m = ev.content?.membership;
     if (m === "join") joined++;
     if (m === "invite") invited++;
-    if ((m === "join" || m === "invite") && sk !== userId && heroes.length < 5) heroes.push(sk);
+    if (m === "join" || m === "invite") members.push(sk);
   }
-  const named = getState(state, M.ROOM.NAME)?.content?.name || getState(state, M.ROOM.CANONICAL_ALIAS)?.content?.alias;
-  return { [M.JOINED_MEMBER_COUNT]: joined, [M.INVITED_MEMBER_COUNT]: invited, ...(named ? {} : { [M.HEROES]: heroes.sort() }) };
+  const named = !!(getState(state, M.ROOM.NAME)?.content?.name || getState(state, M.ROOM.CANONICAL_ALIAS)?.content?.alias);
+  const parts = { joined, invited, members, named };
+  summaryParts.set(state, parts);
+  return parts;
+}
+
+export async function roomSummary(hs: Homeserver, roomId: string, userId: string) {
+  const { joined, invited, members, named } = summaryPartsOf(await hs.rooms.currentState(roomId));
+  const counts = { [M.JOINED_MEMBER_COUNT]: joined, [M.INVITED_MEMBER_COUNT]: invited };
+  if (named) return counts;
+  const heroes: string[] = [];
+  for (const m of members) {
+    if (heroes.length === 5) break;
+    if (m !== userId) heroes.push(m);
+  }
+  return { ...counts, [M.HEROES]: heroes.sort() };
 }
 
 /**

@@ -999,7 +999,10 @@ export class RoomService {
 
       const memberChanges = stateChanges.filter((c) => c.key.startsWith("m.room.member\u0000"));
       if (memberChanges.length) {
-        this.sharingCache.clear();
+        this.forgetSharing(
+          newState,
+          memberChanges.map((c) => splitStateKey(c.key)[1]),
+        );
         for (const c of memberChanges) {
           const userId = splitStateKey(c.key)[1];
           if (this.hs.isLocalUser(userId) || c.eventId === eventId) await this.hs.keys.markDeviceListChanged(userId, false);
@@ -1121,6 +1124,19 @@ export class RoomService {
     });
   }
 
+  /**
+   * Drop the cached sets of users sharing a room that a membership change in a room can change: those of the users whose
+   * membership changed and of the room's joined members. Every join cleared them all, so each sync it woke (every member
+   * of the room) computed its own again.
+   */
+  private forgetSharing(state: StateMap, changedUsers: string[]) {
+    for (const u of changedUsers) this.sharingCache.delete(u);
+    for (const [key, ev] of state) {
+      const [type, member] = splitStateKey(key);
+      if (type === M.ROOM.MEMBER && ev.content?.membership === "join") this.sharingCache.delete(member);
+    }
+  }
+
   /** All users sharing at least one joined room with `userId` (including themselves). */
   async usersSharingRooms(userId: string) {
     const cached = this.sharingCache.get(userId);
@@ -1153,7 +1169,8 @@ export class RoomService {
     if (r.target.pdu.state_key !== undefined) {
       const key = stateKey(r.target.pdu.type, r.target.pdu.state_key);
       const cur = this.stateCache.get(roomId);
-      if (cur?.get(key)?.event_id === r.targetId) cur.set(key, view);
+      // A new map, not a change of the cached one: readers key what they derive from a state map on the map (api/sync.ts).
+      if (cur?.get(key)?.event_id === r.targetId) this.stateCache.set(roomId, new Map(cur).set(key, view));
     }
   }
 

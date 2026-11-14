@@ -241,3 +241,33 @@ test("a room is created only from a request that is valid as a whole", async () 
     await t.close();
   }
 });
+
+test("the users sharing a room stay right as members join and leave", async () => {
+  const t = await testServer();
+  try {
+    const [alice, bob, carol, dave] = await Promise.all(["alice", "bob", "carol", "dave"].map((u) => t.user(u)));
+    const create = async (token: string) =>
+      (await t.call("POST", "/_matrix/client/v3/createRoom", { token, body: { preset: "public_chat" } })).json.room_id as string;
+    const join = (token: string, room: string) =>
+      t.call("POST", `/_matrix/client/v3/join/${encodeURIComponent(room)}`, { token, body: {} });
+    const sharing = async (user: string) => [...(await t.hs.rooms.usersSharingRooms(`@${user}:localhost`))].sort();
+    const a = await create(alice);
+    const b = await create(dave);
+    await join(bob, a);
+    // Warm every cached set before each change, so that a stale one would show.
+    const warm = () => Promise.all(["alice", "bob", "carol", "dave"].map(sharing));
+    await warm();
+    await join(carol, a);
+    assert.deepEqual(await sharing("alice"), ["@alice:localhost", "@bob:localhost", "@carol:localhost"]);
+    assert.deepEqual(await sharing("carol"), ["@alice:localhost", "@bob:localhost", "@carol:localhost"]);
+    assert.deepEqual(await sharing("dave"), ["@dave:localhost"]);
+    await warm();
+    await t.call("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(a)}/leave`, { token: carol, body: {} });
+    await join(carol, b);
+    assert.deepEqual(await sharing("bob"), ["@alice:localhost", "@bob:localhost"]);
+    assert.deepEqual(await sharing("carol"), ["@carol:localhost", "@dave:localhost"]);
+    assert.deepEqual(await sharing("dave"), ["@carol:localhost", "@dave:localhost"]);
+  } finally {
+    await t.close();
+  }
+});
