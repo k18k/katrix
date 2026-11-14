@@ -1,5 +1,5 @@
 import { isObject, M } from "@katrix/shared";
-import type { Row } from "#storage/types.ts";
+import type { Row, WhereClause } from "#storage/types.ts";
 import { errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
 import { toClientEvent, type PDU } from "#core/events.ts";
@@ -102,7 +102,7 @@ export async function paginate(
     return back ? c <= 0 : c > 0;
   };
   for (;;) {
-    const where: any[] = [{ field: "room_id", value: roomId }];
+    const where: WhereClause[] = [{ field: "room_id", value: roomId }];
     if (cursor) where.push({ field: "depth", operator: back ? "lte" : "gte", value: cursor.depth });
     if (streamBound !== null) where.push({ field: "stream", operator: back ? "lte" : "gt", value: streamBound });
     let rows = await hs.db.findMany("events", { where, sortBy: { field: "depth", direction: back ? "desc" : "asc" }, limit: batch });

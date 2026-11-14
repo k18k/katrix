@@ -193,7 +193,7 @@ export class FederationClient {
       );
       req.on("socket", (socket) => {
         // Fail fast when the peer is unreachable, independently of the response timeout.
-        if ((socket as any).connecting) {
+        if (socket.connecting) {
           connectTimer = setTimeout(() => req.destroy(new Error("Connection timed out")), Math.min(5_000, timeoutMs));
           socket.once("connect", () => {
             if (connectTimer) clearTimeout(connectTimer);

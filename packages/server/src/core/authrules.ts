@@ -1,6 +1,6 @@
 import { isObject, isValidUserId, M, stringOrUndefined } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
-import { roomVersionFeatures, stateKey, versionNum, type PDU } from "#core/events.ts";
+import { eventIdOf, roomVersionFeatures, stateKey, versionNum, type PDU } from "#core/events.ts";
 import { publicKeyFromBase64, verifyJsonSignature } from "#core/crypto.ts";
 
 export type StateMap = Map<string, PDU>;
@@ -219,7 +219,7 @@ export function checkAuth(event: PDU, state: StateMap, roomVersion: string, opts
     switch (membership) {
       case "join": {
         // The creator's own first join.
-        const prev = Array.isArray(event.prev_events) ? event.prev_events.map((p: any) => (Array.isArray(p) ? p[0] : p)) : [];
+        const prev = Array.isArray(event.prev_events) ? event.prev_events.map(eventIdOf) : [];
         const creator = roomCreator(state, roomVersion);
         if (prev.length === 1 && prev[0] === create!.event_id && target === creator && event.sender === target) return;
         if (state.size === 1 && creator === target && event.sender === target) return;

@@ -148,7 +148,7 @@ async function fetchRemote(hs: Homeserver, roomId: string, req: WalkRequest, rem
   if (!version || !hs.federation.enabled) return false;
   const servers = [...hs.federation.serversInRoom(await hs.rooms.currentState(roomId))].filter((s) => s !== hs.serverName);
   for (const server of servers) {
-    let res: any;
+    let res: Record<string, unknown>;
     try {
       res = await hs.federation.client.request(server, "POST", "/_matrix/federation/unstable/event_relationships", {
         body: { ...req, room_id: roomId },

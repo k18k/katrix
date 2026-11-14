@@ -1,4 +1,5 @@
 import type { Homeserver } from "#homeserver.ts";
+import type { WhereClause } from "#storage/types.ts";
 
 /** Security-relevant actions recorded in the audit log. */
 export type AuditAction =
@@ -95,7 +96,7 @@ export class AuditService {
   }
 
   async query(opts: { actor?: string; target?: string; action?: string; since?: number; before?: number; limit?: number } = {}) {
-    const where: any[] = [];
+    const where: WhereClause[] = [];
     if (opts.actor) where.push({ field: "actor", value: opts.actor });
     if (opts.target) where.push({ field: "target", value: opts.target });
     if (opts.action) where.push({ field: "action", value: opts.action });

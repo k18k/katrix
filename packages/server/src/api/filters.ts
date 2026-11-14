@@ -50,7 +50,7 @@ function globMatch(pattern: string, value: string): boolean {
 
 export function matchesFilter(
   filter: EventFilter | undefined,
-  ev: { type: string; sender?: string; room_id?: string; content?: any },
+  ev: { type: string; sender?: string; room_id?: string; content?: unknown },
 ): boolean {
   if (!filter) return true;
   if (filter.not_types?.some((t) => globMatch(t, ev.type))) return false;
@@ -66,12 +66,13 @@ export function matchesFilter(
   const relTypes = filter.rel_types ?? filter[UNSTABLE.ORG.MATRIX.MSC3874.REL_TYPES];
   const notRelTypes = filter.not_rel_types ?? filter[UNSTABLE.ORG.MATRIX.MSC3874.NOT_REL_TYPES];
   if (relTypes || notRelTypes) {
-    const relType = ev.content?.[M.RELATES_TO]?.rel_type;
-    if (relTypes && !relTypes.includes(relType)) return false;
+    const relation = isObject(ev.content) ? ev.content[M.RELATES_TO] : undefined;
+    const relType = isObject(relation) ? relation.rel_type : undefined;
+    if (relTypes && (typeof relType !== "string" || !relTypes.includes(relType))) return false;
     if (notRelTypes && typeof relType === "string" && notRelTypes.includes(relType)) return false;
   }
   if (filter.contains_url !== undefined) {
-    const has = typeof ev.content?.url === "string";
+    const has = isObject(ev.content) && typeof ev.content.url === "string";
     if (has !== filter.contains_url) return false;
   }
   return true;

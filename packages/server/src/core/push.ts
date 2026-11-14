@@ -5,7 +5,7 @@ import { readOnlyRules } from "#core/pushrules.ts";
 import { isSubscribed } from "#api/threadsubs.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Homeserver } from "#homeserver.ts";
-import type { Row } from "#storage/types.ts";
+import type { Row, WhereClause } from "#storage/types.ts";
 import { upsertMany } from "#storage/batch.ts";
 import { freeze } from "#core/changes.ts";
 
@@ -216,7 +216,7 @@ export class PushService {
 
   /** Rows for `GET /notifications`. */
   async list(userId: string, opts: { from: number | null; limit: number; onlyHighlight: boolean }) {
-    const where: any[] = [{ field: "user_id", value: userId }];
+    const where: WhereClause[] = [{ field: "user_id", value: userId }];
     if (opts.from !== null) where.push({ field: "stream", operator: "lt", value: opts.from });
     if (opts.onlyHighlight) where.push({ field: "highlight", value: true });
     const rows = await this.hs.db.findMany("notifications", { where, sortBy: { field: "stream", direction: "desc" }, limit: opts.limit });

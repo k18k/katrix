@@ -1,6 +1,7 @@
 import { isObject, M } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import type { Homeserver } from "#homeserver.ts";
+import type { WhereClause } from "#storage/types.ts";
 import type { RequestContext, Router } from "#http/router.ts";
 import { procedure } from "#http/procedure.ts";
 
@@ -150,7 +151,7 @@ export async function threadSubscriptionsExtension(
   to: number,
 ) {
   const limit = Math.min(Math.max(Number(ext.limit ?? 100) || 100, 1), 1000);
-  const where: any[] = [{ field: "user_id", value: userId }];
+  const where: WhereClause[] = [{ field: "user_id", value: userId }];
   if (since !== null) where.push({ field: "stream", operator: "gt", value: since });
   const rows = (await hs.db.findMany("thread_subscriptions", { where }))
     .filter((r) => r.stream <= to && (since !== null || r.subscribed))
