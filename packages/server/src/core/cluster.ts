@@ -157,7 +157,12 @@ export class StreamManager {
   /** The position of the last published busy state: below every position still being allocated. */
   private lastPos = 0;
   private heartbeat: ReturnType<typeof setInterval>;
-  private positionCache: { value: number; at: number } | null = null;
+  private positionCache: { value: number; at: number; gen: number } | null = null;
+  /** Counts completed writes of this instance: a position read that began before the latest one may not show it. */
+  private gen = 0;
+  /** The position read in flight, and the one queued to start after it (see `position`). */
+  private reading: { gen: number; value: Promise<number> } | null = null;
+  private queuedRead: Promise<number> | null = null;
   private highestAllocated = 0;
   /** Called after a write of this instance completed, when the position may have moved (#50). */
   onAdvance: () => void = () => {};
@@ -250,7 +255,7 @@ export class StreamManager {
         clearTimeout(slow);
         this.inflight.delete(id);
         await this.flush();
-        this.positionCache = null;
+        this.gen++;
         this.onAdvance();
       },
     };
@@ -282,7 +287,33 @@ export class StreamManager {
    * 20 ms cache, for a caller that knows a change has completed elsewhere.
    */
   async position(fresh = false) {
-    if (!fresh && this.positionCache && Date.now() - this.positionCache.at < 20) return this.positionCache.value;
+    const cache = this.positionCache;
+    if (!fresh && cache && cache.gen === this.gen && Date.now() - cache.at < 20) return cache.value;
+    // Load test (#50, #51): a message wakes all of a room's members at once after a write, which also expires the cache, and
+    // each of their syncs read the position itself: under load, these identical reads queued for the cluster pool. A read
+    // in flight is shared now when it began after this instance's latest write; a fresh caller (or one that needs a newer
+    // write) waits for the next read, which starts after it asked and is shared by everyone who asked meanwhile.
+    const reading = this.reading;
+    if (!reading) return this.readPosition();
+    if (!fresh && reading.gen === this.gen) return reading.value;
+    return (this.queuedRead ??= reading.value
+      .catch(() => 0)
+      .then(() => {
+        this.queuedRead = null;
+        return this.readPosition();
+      }));
+  }
+
+  private readPosition() {
+    const gen = this.gen;
+    const value = this.readPositionNow(gen).finally(() => {
+      if (this.reading?.value === value) this.reading = null;
+    });
+    this.reading = { gen, value };
+    return value;
+  }
+
+  private async readPositionNow(gen: number) {
     // Read the global sequence first, then the writers (see class comment).
     const global = await this.cluster.currentId("stream");
     let pos = global;
@@ -290,7 +321,7 @@ export class StreamManager {
       if (w?.busy) pos = Math.min(pos, w.pos);
     }
     if (this.inflight.size) pos = Math.min(pos, Math.min(...this.inflight) - 1);
-    this.positionCache = { value: pos, at: Date.now() };
+    this.positionCache = { value: pos, at: Date.now(), gen };
     return pos;
   }
 

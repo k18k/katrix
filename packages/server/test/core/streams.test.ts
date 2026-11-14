@@ -79,3 +79,53 @@ test("readers never pass a position that is still being written, across several 
   // Once everything is written, readers see all of it.
   assert.equal(await new StreamManager(cluster, "late").position(), total);
 });
+
+// Position reads in flight are shared, but never with a caller that needs a newer one.
+test("position reads are shared by callers that a read in flight can answer", async () => {
+  const c = localCluster();
+  let reads = 0;
+  let release: () => void = () => {};
+  // Only position reads list the writers.
+  const cluster = {
+    ...c,
+    entries: async <T>(prefix: string) => {
+      reads++;
+      await new Promise<void>((r) => (release = r));
+      return c.entries<T>(prefix);
+    },
+  } satisfies ClusterAdapter;
+  const streams = new StreamManager(cluster, "a");
+  try {
+    const first = [streams.position(), streams.position(), streams.position()];
+    await sleep(1);
+    assert.equal(reads, 1, "one read for callers that accept a recent position");
+    const fresh = [streams.position(true), streams.position(true)];
+    await sleep(1);
+    assert.equal(reads, 1, "fresh callers wait for the read in flight to end");
+    release();
+    await Promise.all(first);
+    await sleep(1);
+    assert.equal(reads, 2, "then share one new read");
+    release();
+    await Promise.all(fresh);
+
+    // A write that completes makes reads begun before it too old for everyone.
+    const lease = await streams.allocate();
+    const before = streams.position(true);
+    await sleep(1);
+    const readsBefore = reads;
+    await lease.done();
+    const after = streams.position();
+    await sleep(1);
+    assert.equal(reads, readsBefore, "the caller after the write waits for the read in flight");
+    release();
+    await before;
+    await sleep(1);
+    assert.equal(reads, readsBefore + 1);
+    release();
+    assert.equal(await after, lease.id, "and sees the write");
+  } finally {
+    release();
+    await streams.stop();
+  }
+});
