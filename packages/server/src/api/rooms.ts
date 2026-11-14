@@ -1,4 +1,4 @@
-import { isValidAlias, isValidRoomId, isValidUserId, M, UNSTABLE } from "@katrix/shared";
+import { isObject, isValidAlias, isValidRoomId, isValidUserId, M, UNSTABLE } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { getState, ownerOfStateKey, powerLevels, roomCreators, userLevel, type StateMap } from "#core/authrules.ts";
 import { validatePowerLevelContent } from "#core/rooms.ts";
@@ -58,7 +58,7 @@ async function validateStateEvent(
   hs: Homeserver,
   roomId: string,
   type: string,
-  content: Record<string, any>,
+  content: Record<string, unknown>,
   stateKeyValue = "",
 ): Promise<void> {
   if (type === M.ROOM.CREATE) throw errors.badJson("The create event cannot be sent");
@@ -74,9 +74,8 @@ async function validateStateEvent(
     validatePowerLevelContent(content, roomCreators(await hs.rooms.currentState(roomId), version));
   }
   if (type === M.ROOM.CANONICAL_ALIAS) {
-    const aliases = [content.alias, ...(Array.isArray(content.alt_aliases) ? content.alt_aliases : [])].filter(
-      (a) => a !== undefined && a !== null,
-    );
+    const alt: unknown[] = Array.isArray(content.alt_aliases) ? content.alt_aliases : [];
+    const aliases = [content.alias, ...alt].filter((a) => a !== undefined && a !== null);
     if (content.alt_aliases !== undefined && !Array.isArray(content.alt_aliases))
       throw new MatrixError(400, "M_INVALID_PARAM", "alt_aliases must be a list");
     for (const alias of aliases) {
@@ -96,7 +95,7 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
   if (userLevel(pl, s.userId) < tombstoneLevel) throw errors.forbidden("You cannot upgrade this room");
 
   const create = getState(state, M.ROOM.CREATE)!;
-  const creationContent: Record<string, any> = {};
+  const creationContent: Record<string, unknown> = {};
   for (const k of [M.FEDERATE, "type"]) if (create.content[k] !== undefined) creationContent[k] = create.content[k];
   const toV12 = roomVersionFeatures(newVersion).v12;
   if (toV12) {
@@ -125,25 +124,19 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
     M.ROOM.JOIN_RULES,
     M.ROOM.POWER_LEVELS,
   ];
-  const initialState: any[] = [];
-  for (const t of copyTypes) {
+  const initialState = copyTypes.flatMap((t) => {
     const ev = getState(state, t);
-    if (ev && t !== M.ROOM.POWER_LEVELS) initialState.push({ type: t, state_key: "", content: ev.content });
-  }
-  let oldPl: Record<string, any> = structuredClone(getState(state, M.ROOM.POWER_LEVELS)?.content ?? {});
+    return ev && t !== M.ROOM.POWER_LEVELS ? [{ type: t, state_key: "", content: ev.content }] : [];
+  });
+  const plContent: Record<string, unknown> = structuredClone(getState(state, M.ROOM.POWER_LEVELS)?.content ?? {});
+  const oldUsers = isObject(plContent.users) ? plContent.users : {};
   const isPublic = (await hs.db.findOne("rooms", [{ field: "room_id", value: roomId }]))?.is_public;
-  let override: Record<string, any>;
-  if (toV12) {
-    // Creators of the new room have unlimited power and must not appear in `users`.
-    const creators = new Set([s.userId, ...(Array.isArray(additionalCreators) ? additionalCreators : [])]);
-    const users = { ...oldPl.users };
-    for (const u of creators) delete users[u];
-    oldPl = { ...oldPl, users };
-    override = oldPl;
-  } else {
-    const level = userLevel(pl, s.userId);
-    override = { ...oldPl, users: { ...oldPl.users, [s.userId]: Number.isFinite(level) ? Math.max(level, 100) : 100 } };
-  }
+  // v12: creators of the new room have unlimited power and must not appear in `users`.
+  const extra: unknown[] = Array.isArray(additionalCreators) ? additionalCreators : [];
+  const creators = new Set([s.userId, ...extra]);
+  const oldPl = toV12 ? { ...plContent, users: Object.fromEntries(Object.entries(oldUsers).filter(([u]) => !creators.has(u))) } : plContent;
+  const level = userLevel(pl, s.userId);
+  const override = toV12 ? oldPl : { ...oldPl, users: { ...oldUsers, [s.userId]: Number.isFinite(level) ? Math.max(level, 100) : 100 } };
   const { room_id: newRoomId } = await hs.rooms.createRoom(s.userId, {
     room_version: newVersion,
     creation_content: creationContent,
@@ -185,7 +178,7 @@ async function upgradeRoom(hs: Homeserver, s: Session, roomId: string, newVersio
     content: { body: "This room has been replaced", replacement_room: newRoomId },
   });
   // Restrict the old room so people move over.
-  const restricted = { ...oldPl, events_default: Math.max(50, oldPl.events_default ?? 0), invite: Math.max(50, oldPl.invite ?? 0) };
+  const restricted = { ...oldPl, events_default: Math.max(50, pl.events_default), invite: Math.max(50, pl.invite) };
   await hs.rooms
     .sendEvent(roomId, s.userId, { type: M.ROOM.POWER_LEVELS, state_key: "", content: restricted })
     .catch((err) => hs.logger.warn("Room upgrade: restricting the old room's power levels failed", err));
@@ -405,7 +398,7 @@ export function registerRoomRoutes(r: Router): void {
         const { joined: isJoined, worldReadable } = await ctx.hs.rooms.canPeek(ctx.params.roomId, s.userId);
         if (!isJoined && !worldReadable) throw errors.forbidden("You are not joined to this room");
         const state = await ctx.hs.rooms.currentState(ctx.params.roomId);
-        const joined: Record<string, any> = {};
+        const joined: Record<string, { display_name: unknown; avatar_url: unknown }> = {};
         for (const [k, ev] of state) {
           const [type, key] = splitStateKey(k);
           if (type !== M.ROOM.MEMBER || ev.content?.membership !== "join") continue;
@@ -429,8 +422,7 @@ export function registerRoomRoutes(r: Router): void {
         await requireRoom(ctx.hs, roomId);
         if (!(await ownEvent(ctx.hs, s.userId, ctx.params.eventId))) await assertNotSuspended(ctx.hs, s, roomId);
         await ctx.hs.rooms.checkRedactionAllowed(roomId, s.userId, ctx.params.eventId);
-        const content: Record<string, any> = {};
-        if (typeof body.reason === "string") content.reason = body.reason;
+        const content = typeof body.reason === "string" ? { reason: body.reason } : {};
         const eventId = await ctx.hs.rooms.sendEvent(
           roomId,
           s.userId,
@@ -667,7 +659,7 @@ export function registerRoomRoutes(r: Router): void {
         if (userId !== s.userId && !s.isAdmin) throw errors.forbidden("Only server admins can look up other users");
         if (!ctx.hs.isLocalUser(userId)) throw errors.notFound("Unknown user");
         const devices = await ctx.hs.db.findMany("devices", { where: [{ field: "user_id", value: userId }] });
-        const out: Record<string, any> = {};
+        const out: Record<string, { sessions: { connections: { ip: string; last_seen: number }[] }[] }> = {};
         for (const d of devices) {
           out[d.device_id] = { sessions: [{ connections: d.last_seen_ip ? [{ ip: d.last_seen_ip, last_seen: d.last_seen_ts }] : [] }] };
         }
