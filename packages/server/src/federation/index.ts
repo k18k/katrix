@@ -1,4 +1,4 @@
-import { isObject, isStrings, M, parseId } from "@katrix/shared";
+import { isObject, isOneTimeKey, isStrings, M, parseId, type KeyObject, type KeysClaimResponse } from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { globMatch } from "@katrix/shared";
 import { getState, membershipOf, type StateMap } from "#core/authrules.ts";
@@ -1087,17 +1087,14 @@ export class FederationService {
     return { results, failures };
   }
 
-  async claimKeys(
-    oneTimeKeys: Record<string, Record<string, string>>,
-    timeoutMs = 10_000,
-  ): Promise<{ results: Record<string, unknown>; failures: Record<string, unknown> }> {
+  async claimKeys(oneTimeKeys: Record<string, Record<string, string>>, timeoutMs = 10_000) {
     const byServer = new Map<string, Record<string, Record<string, string>>>();
     for (const [userId, devices] of Object.entries(oneTimeKeys)) {
       const server = domainOf(userId);
       if (server === this.hs.serverName) continue;
       (byServer.get(server) ?? byServer.set(server, {}).get(server)!)[userId] = devices;
     }
-    const results: Record<string, unknown> = {};
+    const results: KeysClaimResponse["one_time_keys"] = {};
     const failures: Record<string, unknown> = {};
     await Promise.all(
       [...byServer].map(async ([server, query]) => {
@@ -1107,7 +1104,7 @@ export class FederationService {
             body: { one_time_keys: query },
             timeoutMs,
           });
-          Object.assign(results, res.one_time_keys ?? {});
+          Object.assign(results, claimedKeys(query, res.one_time_keys));
         } catch (err) {
           failures[server] = { status: 503, message: err instanceof Error ? err.message : String(err) };
         }
@@ -1265,6 +1262,24 @@ export class FederationService {
   error(status: number, errcode: string, message: string): MatrixError {
     return new MatrixError(status, errcode, message);
   }
+}
+
+// https://github.com/k18k/katrix/issues/135: each server's answer was merged as it came, so a server could answer for users it
+// was not asked about (local users among them, whose keys the client endpoint then replaced) or with values that are not keys
+// (improper validation of remote data, CWE-20). Only the users and devices asked of that server, with well-formed keys, are kept.
+/** The one-time keys a server returned for what it was asked: user → device → key ID → key. */
+function claimedKeys(asked: Record<string, Record<string, string>>, answer: unknown) {
+  const out: KeysClaimResponse["one_time_keys"] = {};
+  for (const [userId, devices] of Object.entries(isObject(answer) ? answer : {})) {
+    if (!asked[userId] || !isObject(devices)) continue;
+    for (const [deviceId, keys] of Object.entries(devices)) {
+      if (asked[userId][deviceId] === undefined || !isObject(keys)) continue;
+      const valid: Record<string, KeyObject | string> = {};
+      for (const [keyId, key] of Object.entries(keys)) if (isOneTimeKey(key)) valid[keyId] = key;
+      if (Object.keys(valid).length) (out[userId] ??= {})[deviceId] = valid;
+    }
+  }
+  return out;
 }
 
 function filenameFromDisposition(header: string | undefined): string | null {

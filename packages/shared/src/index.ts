@@ -8,6 +8,7 @@ export { canonicalJson, CanonicalJsonError, signingJson } from "./canonical-json
 export { decodeUtf8, encodeUtf8, Utf8Error } from "./utf8.ts";
 export { isValidAlias, isValidRoomId, isValidServerName, isValidUserId, LOCALPART_RE, parseId } from "./ids.ts";
 export { isObject, isStringRecord, isStrings, stringOrUndefined } from "./json.ts";
+export { isCrossSigningKey, isDeviceKeys, isOneTimeKey, isSignatures } from "./keys.ts";
 export { M, UNSTABLE } from "./m.ts";
 export type * from "./errors.ts";
 export type * from "./events.ts";

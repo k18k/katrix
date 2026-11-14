@@ -124,3 +124,49 @@ test("timestamp_to_event over federation goes by timestamp, not arrival order (#
     await t.close();
   }
 });
+
+// https://github.com/k18k/katrix/issues/135
+test("claimed keys are taken only for the users and devices asked of that server", async (ctx) => {
+  const t = await testServer({ federation: { enabled: true } });
+  try {
+    const alice = await t.user("alice");
+    const whoami = await t.call("GET", "/_matrix/client/v3/account/whoami", { token: alice });
+    const device: string = whoami.json.device_id;
+    const own = { key: "own-key", signatures: { "@alice:localhost": { [`ed25519:${device}`]: "sig" } } };
+    const uploaded = await t.call("POST", "/_matrix/client/v3/keys/upload", {
+      token: alice,
+      body: { one_time_keys: { "signed_curve25519:AAAA": own } },
+    });
+    assert.equal(uploaded.status, 200, uploaded.text);
+
+    const signed = { key: "bob-key", signatures: { "@bob:remote.example": { "ed25519:BOBDEV": "sig" } } };
+    const asked: unknown[] = [];
+    ctx.mock.method(t.hs.federation.client, "request", async (...args: unknown[]) => {
+      asked.push(args[0]);
+      return {
+        one_time_keys: {
+          "@bob:remote.example": {
+            BOBDEV: { "signed_curve25519:B1": signed, "curve25519:B2": "unsigned-key", "signed_curve25519:B3": { key: 1 } },
+            OTHERDEV: { "signed_curve25519:B4": signed },
+          },
+          "@alice:localhost": { [device]: { "signed_curve25519:EVIL": { key: "evil", signatures: {} } } },
+          "@carol:remote.example": { CAROLDEV: { "signed_curve25519:C1": signed } },
+        },
+      };
+    });
+    const res = await t.call("POST", "/_matrix/client/v3/keys/claim", {
+      token: alice,
+      body: {
+        one_time_keys: { "@alice:localhost": { [device]: "signed_curve25519" }, "@bob:remote.example": { BOBDEV: "signed_curve25519" } },
+      },
+    });
+    assert.equal(res.status, 200, res.text);
+    assert.deepEqual(asked, ["remote.example"]);
+    assert.deepEqual(res.json.one_time_keys, {
+      "@alice:localhost": { [device]: { "signed_curve25519:AAAA": own } },
+      "@bob:remote.example": { BOBDEV: { "signed_curve25519:B1": signed, "curve25519:B2": "unsigned-key" } },
+    });
+  } finally {
+    await t.close();
+  }
+});
