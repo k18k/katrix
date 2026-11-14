@@ -47,7 +47,7 @@ export interface StoredEvent {
 
 export interface EventDraft {
   type: string;
-  content: Record<string, any>;
+  content: Record<string, unknown>;
   state_key?: string;
   redacts?: string;
 }
@@ -138,7 +138,7 @@ const MAX_EVENT_SIZE = 65536;
 const SNAPSHOT_INTERVAL = 64;
 
 /** Reject malformed power level content with 400 before it reaches the auth rules. */
-export function validatePowerLevelContent(content: Record<string, any>, creators: Set<string>): void {
+export function validatePowerLevelContent(content: Record<string, unknown>, creators: Set<string>): void {
   const check = (v: unknown) => {
     if (typeof v === "number" && Math.abs(v) > Number.MAX_SAFE_INTEGER) throw errors.badJson("Power level out of range");
   };
@@ -855,7 +855,7 @@ export class RoomService {
             : { id: snapshot, room_id: roomId, prev: null, depth: 0, state: afterIds };
       }
 
-      const unsigned: Record<string, any> = { ...pdu.unsigned };
+      const unsigned: Record<string, unknown> = { ...pdu.unsigned };
       if (prevState) {
         unsigned.prev_content = prevState.content;
         unsigned.prev_sender = prevState.sender;
@@ -1199,7 +1199,7 @@ export class RoomService {
    * Room state shared with invitees and knockers (MSC4311): full PDUs in federation
    * format, including the create event. Clients receive stripped versions.
    */
-  strippedState(state: StateMap): Record<string, any>[] {
+  strippedState(state: StateMap): Record<string, unknown>[] {
     const types = [M.ROOM.CREATE, M.ROOM.JOIN_RULES, M.ROOM.NAME, M.ROOM.AVATAR, M.ROOM.CANONICAL_ALIAS, M.ROOM.ENCRYPTION, M.ROOM.TOPIC];
     const create = getState(state, M.ROOM.CREATE);
     const version = typeof create?.content?.room_version === "string" ? create.content.room_version : "1";
@@ -1536,7 +1536,7 @@ export class RoomService {
   async join(
     userId: string,
     roomId: string,
-    extra: { reason?: string; content?: Record<string, any>; servers?: string[] } = {},
+    extra: { reason?: string; content?: Record<string, unknown>; servers?: string[] } = {},
   ): Promise<string> {
     const version = await this.roomVersion(roomId);
     // https://github.com/k18k/katrix/issues/87 — improper authorization (CWE-285): guests could
@@ -1566,7 +1566,7 @@ export class RoomService {
         }
         throw errors.notFound("Room not found");
       }
-      const content: Record<string, any> = { ...extra.content, membership: "join", ...(await this.hs.profile(userId)) };
+      const content: Record<string, unknown> = { ...extra.content, membership: "join", ...(await this.hs.profile(userId)) };
       if (extra.reason) content.reason = extra.reason;
       this.hs.logger.debug("Remote join", userId, roomId, "via", servers);
       await this.hs.federation.joinRemoteRoom(userId, roomId, servers, content);
@@ -1582,11 +1582,11 @@ export class RoomService {
     userId: string,
     roomId: string,
     version: string,
-    extra: { reason?: string; content?: Record<string, any> },
+    extra: { reason?: string; content?: Record<string, unknown> },
   ): Promise<string> {
     this.hs.logger.debug("Local join", userId, roomId);
     const state = await this.currentState(roomId);
-    const content: Record<string, any> = { ...extra.content, membership: "join", ...(await this.hs.profile(userId)) };
+    const content: Record<string, unknown> = { ...extra.content, membership: "join", ...(await this.hs.profile(userId)) };
     if (extra.reason) content.reason = extra.reason;
     const existing = getState(state, M.ROOM.MEMBER, userId);
     if (existing?.content?.membership === "join" && JSON.stringify(existing.content) === JSON.stringify(content)) return roomId;
@@ -1661,7 +1661,7 @@ export class RoomService {
     roomId: string,
     sender: string,
     target: string,
-    opts: { reason?: string; isDirect?: boolean; thirdPartyInvite?: { display_name: string; signed: Record<string, any> } } = {},
+    opts: { reason?: string; isDirect?: boolean; thirdPartyInvite?: { display_name: string; signed: Record<string, unknown> } } = {},
   ): Promise<void> {
     if (!isValidUserId(target)) throw errors.invalidParam("Invalid user ID");
     const local = this.hs.isLocalUser(target);
@@ -1678,7 +1678,7 @@ export class RoomService {
     await this.requireJoined(roomId, sender);
     const state = await this.currentState(roomId);
     if (membershipOf(state, target) === "invite") return; // Idempotent re-invite.
-    const content: Record<string, any> = { membership: "invite" };
+    const content: Record<string, unknown> = { membership: "invite" };
     if (local) Object.assign(content, await this.hs.profile(target));
     if (opts.reason) content.reason = opts.reason;
     if (opts.isDirect) content.is_direct = true;
@@ -1696,7 +1696,7 @@ export class RoomService {
       const inviteState = [...this.strippedState(await this.currentState(roomId))];
       const senderMember = getState(await this.currentState(roomId), M.ROOM.MEMBER, sender);
       if (senderMember) {
-        const { unsigned, ...full } = senderMember as PDU & Record<string, any>;
+        const { unsigned, ...full } = senderMember;
         inviteState.push(this.hs.federation.toFederationPdu(full as PDU, version));
       }
       const signed = await this.hs.federation.sendInvite(pdu, version, inviteState);
@@ -1730,7 +1730,7 @@ export class RoomService {
       return;
     }
     if (!(await this.exists(roomId))) throw errors.notFound("Room not found");
-    const content: Record<string, any> = { membership };
+    const content: Record<string, unknown> = { membership };
     if (reason) content.reason = reason;
     if (membership === "ban" || (membership === "leave" && sender !== target)) {
       const prev = getState(await this.currentState(roomId), M.ROOM.MEMBER, target);
@@ -1769,7 +1769,7 @@ export class RoomService {
     } catch (err) {
       // The remote side is unreachable: reject locally so the user is not stuck with the invite.
       this.hs.logger.debug("Remote leave failed, rejecting locally", err);
-      const content: Record<string, any> = { membership: "leave" };
+      const content: Record<string, unknown> = { membership: "leave" };
       if (reason) content.reason = reason;
       leave = finalisePdu(
         {
