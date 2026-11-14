@@ -1,5 +1,5 @@
-import { encodeBase64 } from "../../shared/base64.js";
 import { canonicalJson } from "../../shared/canonical-json.js";
+import { encodeBase64 } from "../../shared/base64.js";
 import { encodeUtf8 } from "../../shared/utf8.js";
 // src/e2ee/verification/sas.ts
 const SAS_METHOD = "m.sas.v1";

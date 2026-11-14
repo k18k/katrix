@@ -1,6 +1,6 @@
-import { PresenceResponse, PresenceState } from "../shared/api/account.js";
-import { ProfileResponse } from "../shared/api/rooms.js";
 import { MatrixHttpApi } from "../http/api.js";
+import { ProfileResponse } from "../shared/api/rooms.js";
+import { PresenceResponse, PresenceState } from "../shared/api/account.js";
 /**
  * Profiles (https://spec.matrix.org/v1.19/client-server-api/#profiles): the display name, the
  * avatar, the time zone (`m.tz`) and custom fields (v1.16; the server's `m.profile_fields`

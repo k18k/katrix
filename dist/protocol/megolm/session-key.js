@@ -1,5 +1,5 @@
-import { decodeBase64, encodeBase64 } from "../../shared/base64.js";
 import { concatBytes, readUint32BE, writeUint32BE } from "../../shared/bytes.js";
+import { decodeBase64, encodeBase64 } from "../../shared/base64.js";
 import { ProtocolError } from "../protocol.js";
 import { ratchetBytes, ratchetFromBytes } from "./ratchet.js";
 // src/protocol/megolm/session-key.ts

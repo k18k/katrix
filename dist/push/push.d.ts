@@ -1,9 +1,9 @@
-import { PushAction, PushCondition, PushRule, PushRuleKind, PushRuleset, Pusher, SetPusherRequest } from "../shared/api/push.js";
-import { NotificationsResponse } from "../shared/api/rooms.js";
-import { LooseRule } from "../shared/push.js";
 import { MatrixHttpApi } from "../http/api.js";
+import { NotificationsResponse } from "../shared/api/rooms.js";
+import { PushRuleSet } from "../shared/push.js";
 import { MatrixEvent } from "../models/event.js";
 import { Room } from "../models/room.js";
+import { PushAction, PushCondition, PushRule, PushRuleKind, PushRuleset, Pusher, SetPusherRequest } from "../shared/api/push.js";
 /** What the push rules say about an event for this user. */
 export interface PushOutcome {
   notify: boolean;
@@ -78,12 +78,17 @@ export declare class PushApi {
     only?: "highlight";
   }): Promise<NotificationsResponse>;
   /** The rules in effect: the synced m.push_rules account data, else the spec's defaults. */
-  currentRules(): Readonly<Record<string, readonly LooseRule[] | undefined>>;
+  currentRules(): PushRuleSet;
   /**
    * Evaluate the push rules on an event as the server would, with the room's current state: its
    * joined member count, this user's display name in it, and the sender's power level. Pass a
    * decrypted event to get what an encrypted one really should do.
    */
-  evaluate(event: MatrixEvent, room: Room): PushOutcome;
+  evaluate(event: MatrixEvent, room: Room): {
+    notify: boolean;
+    highlight: boolean;
+    sound: string | undefined;
+    actions: unknown[];
+  };
 }
 //# sourceMappingURL=push.d.ts.map

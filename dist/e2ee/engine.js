@@ -1,14 +1,14 @@
-import { describeError } from "../util/logger.js";
 import { encodeBase64 } from "../shared/base64.js";
+import { describeError } from "../util/logger.js";
 import { Mutex } from "../util/mutex.js";
 import { Pickler, loadAccount, saveAccount } from "./crypto-store.js";
-import { deviceKeysObject, oneTimeKeysObject, signObject } from "./keys.js";
-import { DeviceTracker } from "./devices.js";
 import { CrossSigning, seedFromSecret } from "./cross-signing.js";
+import { DeviceTracker } from "./devices.js";
+import { deviceKeysObject, oneTimeKeysObject, signObject } from "./keys.js";
 import { KeyBackup } from "./backup.js";
-import { SecretStorage } from "./secret-storage.js";
 import { Recovery, SECRET_NAMES } from "./recovery.js";
 import { SecretBox } from "./secret-box.js";
+import { SecretStorage } from "./secret-storage.js";
 import { KeySharing } from "./sharing.js";
 import { VerificationManager } from "./verification/manager.js";
 import { MegolmDecryptionError, MegolmService } from "./megolm.js";

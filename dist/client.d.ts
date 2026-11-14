@@ -1,32 +1,32 @@
-import { StorageAdapter } from "./storage/adapter.js";
-import { Logger } from "./util/logger.js";
-import { HttpAdapter } from "./http/adapter.js";
-import { Credentials, CredentialsStore, TokenProvider } from "./auth/types.js";
-import { ClientEvent, ContentOf, Membership, ToDeviceEvent } from "./shared/events.js";
-import { RoomEventFilter } from "./shared/api/account.js";
-import { SearchResponse } from "./shared/api/rooms.js";
-import { MatrixHttpApi } from "./http/api.js";
 import { AccountApi } from "./account/account.js";
 import { AdminApi } from "./account/admin.js";
 import { DevicesApi } from "./account/devices.js";
+import { SearchResponse } from "./shared/api/rooms.js";
 import { PresenceApi, ProfileApi } from "./account/profile.js";
+import { Credentials, CredentialsStore, TokenProvider } from "./auth/types.js";
 import { CryptoPrimitives } from "./crypto/primitives.js";
-import { MatrixEvent } from "./models/event.js";
-import { E2EEProtocol, PickleKey } from "./protocol/protocol.js";
-import { Store } from "./storage/store.js";
-import { SyncResult, SyncTransport } from "./sync/types.js";
-import { DecryptedToDevice } from "./e2ee/olm.js";
-import { TypedEmitter } from "./util/emitter.js";
 import { E2EEEngine } from "./e2ee/engine.js";
+import { DecryptedToDevice } from "./e2ee/olm.js";
+import { HttpAdapter } from "./http/adapter.js";
+import { MatrixHttpApi } from "./http/api.js";
 import { MatrixError } from "./http/errors.js";
 import { DirectoryApi } from "./directory/directory.js";
 import { MediaApi } from "./media/media.js";
-import { Room } from "./models/room.js";
 import { PushApi, PushOutcome } from "./push/push.js";
 import { SpacesApi } from "./spaces/spaces.js";
 import { PeerConnectionFactory } from "./voip/call.js";
 import { CallsApi } from "./voip/calls.js";
+import { MatrixEvent } from "./models/event.js";
+import { Room } from "./models/room.js";
+import { ClientEvent, ContentOf, Membership, ToDeviceEvent } from "./shared/events.js";
+import { RoomEventFilter } from "./shared/api/account.js";
+import { E2EEProtocol, PickleKey } from "./protocol/protocol.js";
+import { StorageAdapter } from "./storage/adapter.js";
+import { Store } from "./storage/store.js";
+import { SyncResult, SyncTransport } from "./sync/types.js";
 import { V3SyncOptions } from "./sync/v3.js";
+import { TypedEmitter } from "./util/emitter.js";
+import { Logger } from "./util/logger.js";
 export interface ClientOptions {
   baseUrl: string;
   /** From a login (Auth.loginWithPassword, OAuth); refreshed automatically when it has a refresh token. */
@@ -162,7 +162,12 @@ export declare class MatrixClient extends TypedEmitter<ClientEvents> {
   getRooms(): Room[];
   getAccountData(type: string): Record<string, unknown> | undefined;
   /** A user's latest presence from /sync (this.presence.get asks the server). */
-  getPresence(userId: string): ContentOf<"m.presence"> | undefined;
+  getPresence(userId: string): {
+    presence: "online" | "offline" | "unavailable";
+    last_active_ago?: number;
+    status_msg?: string;
+    currently_active?: boolean;
+  } | undefined;
   isPrepared(): boolean;
   /** Load stored state, set up encryption, and start syncing. Resolves once the loop runs. */
   start(): Promise<void>;
@@ -242,7 +247,7 @@ export declare class MatrixClient extends TypedEmitter<ClientEvents> {
   /** The m.direct map: user ID → the rooms that are direct chats with them. */
   getDirectRooms(): Record<string, string[]>;
   /** The direct chat with a user this user is in and the other user has not left, newest first. */
-  findDirectRoom(userId: string): Room | undefined;
+  findDirectRoom(userId: string): Room;
   /** Start a direct chat (encrypted unless `encrypted: false`) and record it in m.direct. */
   createDirectRoom(userId: string, opts?: {
     encrypted?: boolean;
@@ -301,9 +306,11 @@ export declare class MatrixClient extends TypedEmitter<ClientEvents> {
    */
   setPowerLevel(roomId: string, userId: string, level: number | null): Promise<string>;
   /** A state event's content from the server; undefined when there is none. */
-  fetchStateEvent(roomId: string, type: string, stateKey?: string): Promise<Record<string, unknown> | undefined>;
+  fetchStateEvent(roomId: string, type: string, stateKey?: string): Promise<{
+    [x: string]: unknown;
+  } | undefined>;
   /** The room's whole current state from the server. */
-  fetchRoomState(roomId: string): Promise<MatrixEvent[]>;
+  fetchRoomState(roomId: string): Promise<MatrixEvent<string>[]>;
   /** Members with their display names and avatars, as the server has them now. */
   fetchJoinedMembers(roomId: string): Promise<Record<string, {
     displayName?: string;
@@ -314,7 +321,7 @@ export declare class MatrixClient extends TypedEmitter<ClientEvents> {
     at?: string;
     membership?: Membership;
     notMembership?: Membership;
-  }): Promise<MatrixEvent[]>;
+  }): Promise<MatrixEvent<string>[]>;
   /** Turn on encryption (it cannot be turned off again). */
   enableEncryption(roomId: string, opts?: {
     rotationPeriodMs?: number;
@@ -325,18 +332,18 @@ export declare class MatrixClient extends TypedEmitter<ClientEvents> {
   /** Load up to `limit` older events into the room's timeline. Returns how many were added. */
   paginateBackwards(roomId: string, limit?: number): Promise<number>;
   /** One event from the server, decrypted when it is encrypted and its key is known. */
-  fetchEvent(roomId: string, eventId: string): Promise<MatrixEvent>;
+  fetchEvent(roomId: string, eventId: string): Promise<MatrixEvent<string>>;
   /** An event with the events around it (to jump to a reply's target, a search result, a permalink). */
   fetchContext(roomId: string, eventId: string, opts?: {
     limit?: number;
     filter?: RoomEventFilter;
   }): Promise<{
-    event?: MatrixEvent;
-    before: MatrixEvent[];
-    after: MatrixEvent[];
-    state: MatrixEvent[];
-    start?: string;
-    end?: string;
+    event: MatrixEvent<string> | undefined;
+    before: MatrixEvent<string>[];
+    after: MatrixEvent<string>[];
+    state: MatrixEvent<string>[];
+    start: string | undefined;
+    end: string | undefined;
   }>;
   /**
    * The events that relate to an event (https://spec.matrix.org/v1.19/client-server-api/#relationship-types):
@@ -352,9 +359,9 @@ export declare class MatrixClient extends TypedEmitter<ClientEvents> {
     dir?: "b" | "f";
     recurse?: boolean;
   }): Promise<{
-    events: MatrixEvent[];
-    nextBatch?: string;
-    prevBatch?: string;
+    events: MatrixEvent<string>[];
+    nextBatch: string | undefined;
+    prevBatch: string | undefined;
   }>;
   /** Thread roots of a room, newest activity first (https://spec.matrix.org/v1.19/client-server-api/#threads). */
   fetchThreads(roomId: string, opts?: {
@@ -362,8 +369,8 @@ export declare class MatrixClient extends TypedEmitter<ClientEvents> {
     limit?: number;
     from?: string;
   }): Promise<{
-    roots: MatrixEvent[];
-    nextBatch?: string;
+    roots: MatrixEvent<string>[];
+    nextBatch: string | undefined;
   }>;
   /** The event closest to a point in time, searching forwards or backwards (to jump to a date). */
   timestampToEvent(roomId: string, ts: number, dir?: "f" | "b"): Promise<{
@@ -392,14 +399,14 @@ export declare class MatrixClient extends TypedEmitter<ClientEvents> {
    * https://spec.matrix.org/v1.19/client-server-api/#peeking).
    */
   peekRoom(roomId: string): Promise<{
-    state: MatrixEvent[];
-    messages: MatrixEvent[];
-    end?: string;
+    state: MatrixEvent<string>[];
+    messages: MatrixEvent<string>[];
+    end: string | undefined;
   }>;
   /** New events of a peeked room after `from` (the `end` of peekRoom), waiting up to `timeoutMs`. */
   peekEvents(roomId: string, from?: string, timeoutMs?: number): Promise<{
-    events: MatrixEvent[];
-    end?: string;
+    events: MatrixEvent<string>[];
+    end: string | undefined;
   }>;
   private fetched;
   /**

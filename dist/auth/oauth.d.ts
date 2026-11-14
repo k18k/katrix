@@ -1,7 +1,7 @@
-import { HttpAdapter } from "../http/adapter.js";
-import { AuthMetadata } from "../shared/api/auth.js";
-import { MatrixHttpApi } from "../http/api.js";
 import { CryptoPrimitives } from "../crypto/primitives.js";
+import { AuthMetadata } from "../shared/api/auth.js";
+import { HttpAdapter } from "../http/adapter.js";
+import { MatrixHttpApi } from "../http/api.js";
 /**
  * OAuth 2.0 login, the "next-generation auth" of the Matrix spec
  * (https://spec.matrix.org/v1.16/client-server-api/#oauth-20-api): server metadata discovery,
@@ -15,7 +15,11 @@ export interface OAuthTokens {
   refreshToken?: string;
   expiresAt?: number;
 }
-export declare function refreshOAuthToken(http: HttpAdapter, tokenEndpoint: string, clientId: string, refreshToken: string): Promise<OAuthTokens>;
+export declare function refreshOAuthToken(http: HttpAdapter, tokenEndpoint: string, clientId: string, refreshToken: string): Promise<{
+  accessToken: string;
+  refreshToken: string | undefined;
+  expiresAt: number | undefined;
+}>;
 /** Dynamic client registration (RFC 7591), as the spec requires clients to do. */
 export declare function registerClient(http: HttpAdapter, metadata: AuthMetadata, client: Record<string, unknown>): Promise<string>;
 export interface AuthorizationRequest {
@@ -32,12 +36,22 @@ export declare function createAuthorizationRequest(p: CryptoPrimitives, opts: {
   redirectUri: string;
   deviceId?: string;
   responseMode?: "query" | "fragment";
-}): AuthorizationRequest;
+}): {
+  url: string;
+  state: string;
+  codeVerifier: string;
+  deviceId: string;
+  redirectUri: string;
+};
 /** Exchange the code from the redirect for tokens, after checking `state` (CSRF). */
 export declare function completeAuthorization(http: HttpAdapter, opts: {
   metadata: AuthMetadata;
   clientId: string;
   request: AuthorizationRequest;
   callbackUrl: string;
-}): Promise<OAuthTokens>;
+}): Promise<{
+  accessToken: string;
+  refreshToken: string | undefined;
+  expiresAt: number | undefined;
+}>;
 //# sourceMappingURL=oauth.d.ts.map

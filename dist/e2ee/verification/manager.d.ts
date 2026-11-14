@@ -1,7 +1,7 @@
-import { ToDeviceEvent } from "../../shared/events.js";
 import { MatrixHttpApi } from "../../http/api.js";
 import { MatrixEvent } from "../../models/event.js";
 import { TypedEmitter } from "../../util/emitter.js";
+import { ToDeviceEvent } from "../../shared/events.js";
 import { VerificationContext, VerificationRequest } from "./request.js";
 export interface VerificationManagerEvents {
   /** Another user or device asks to verify: show it, then accept() or cancel(). */

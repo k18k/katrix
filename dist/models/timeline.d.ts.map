@@ -1,1 +1,1 @@
-{"version":3,"file":"timeline.d.ts","names":[],"sources":["../../src/models/timeline.ts"],"mappings":";;;;;;;qBAQa;EACX,QAAQ;;EAER;;EAEA;UACQ;;EAER;EAEA,YAAY;EAIZ,KAAK,kBAAkB;;EAKvB,OAAO,QAAQ,gBAAgB;;EAmB/B,QAAQ,aAAa,eAAe,oCAAoC;;EAcxE,MAAM;;EAQN,MAAM,OAAO;EAIb,OAAO,OAAO"}
+{"version":3,"file":"timeline.d.ts","names":[],"sources":["../../src/models/timeline.ts"],"mappings":";;;;;;;qBAQa;EACX,QAAQ;;EAER;;EAEA;UACQ;;EAER;EAEA,YAAY;EAIZ,KAAK,kBAAe;;EAKpB,OAAO,QAAQ,gBAAa;;EAmB5B,QAAQ,aAAa,eAAe,oCAAiC;;EAcrE,MAAM;;EAQN,MAAM,OAAO;EAIb,OAAO,OAAO"}

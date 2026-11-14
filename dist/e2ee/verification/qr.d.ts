@@ -11,7 +11,7 @@ export interface QrData {
   secondKey: Uint8Array;
   secret: Uint8Array;
 }
-export declare function encodeQr(d: QrData): Uint8Array;
+export declare function encodeQr(d: QrData): Uint8Array<ArrayBufferLike>;
 /** Parse a scanned code; throws if it is not a Matrix verification code of version 2. */
 export declare function decodeQr(bytes: Uint8Array): QrData;
 //# sourceMappingURL=qr.d.ts.map

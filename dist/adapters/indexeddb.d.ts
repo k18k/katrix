@@ -1,4 +1,4 @@
-import { StorageAdapter } from "../storage/adapter.js";
+import { StorageAdapter, StoreName, WriteOp } from "../storage/adapter.js";
 /**
  * A StorageAdapter on IndexedDB, for browsers: one object store per client store, one readwrite
  * transaction per batch (all or nothing; IndexedDB aborts the whole transaction on any error).
@@ -48,6 +48,15 @@ export interface IDBFactoryLike {
 export interface IDBKeyRangeLike {
   bound(lower: string, upper: string, lowerOpen?: boolean, upperOpen?: boolean): unknown;
 }
+declare class IndexedDbStorage implements StorageAdapter {
+  private readonly db;
+  private readonly keyRange;
+  constructor(factory: IDBFactoryLike, keyRange: IDBKeyRangeLike, name: string);
+  get(store: StoreName, key: string): Promise<string | undefined>;
+  list(store: StoreName, prefix: string): Promise<[string, string][]>;
+  write(batch: readonly WriteOp[]): Promise<void>;
+  close(): Promise<void>;
+}
 /**
  * Storage in an IndexedDB database (default name "katrix"). `indexedDB` and `IDBKeyRange` default
  * to the browser's.
@@ -56,6 +65,6 @@ export declare function indexedDbStorage(opts?: {
   name?: string;
   indexedDB?: IDBFactoryLike;
   IDBKeyRange?: IDBKeyRangeLike;
-}): StorageAdapter;
+}): IndexedDbStorage;
 export {};
 //# sourceMappingURL=indexeddb.d.ts.map

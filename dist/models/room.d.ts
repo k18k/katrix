@@ -1,8 +1,8 @@
-import { Membership } from "../shared/events.js";
+import { ReactionGroup, Relations } from "./relations.js";
 import { MatrixEvent } from "./event.js";
-import { ReactionGroup, Relations, ThreadSummary } from "./relations.js";
 import { RoomState } from "./room-state.js";
 import { Timeline } from "./timeline.js";
+import { Membership } from "../shared/events.js";
 export interface RoomSummary {
   heroes?: string[];
   joinedMemberCount?: number;
@@ -51,32 +51,37 @@ export declare class Room {
    * (for a target that just arrived) the edits that came before it. Returns the event whose
    * relations changed, if it is loaded.
    */
-  applyRelations(event: MatrixEvent): MatrixEvent | undefined;
+  applyRelations(event: MatrixEvent): MatrixEvent<string> | undefined;
   /** Forget a redacted or dropped event's relation. Returns the event it related to, if loaded. */
-  removeRelations(event: MatrixEvent): MatrixEvent | undefined;
+  removeRelations(event: MatrixEvent): MatrixEvent<string> | undefined;
   private refreshReplacement;
   /** The server's bundled edit of an event, to decrypt when it is encrypted. */
-  bundledReplacement(original: MatrixEvent): MatrixEvent | undefined;
+  bundledReplacement(original: MatrixEvent): MatrixEvent<string> | undefined;
   private readonly bundled;
   reactions(eventId: string): ReactionGroup[];
   /**
    * A thread's summary: the server's bundled count and latest event (on the root's unsigned
    * m.relations), updated with the replies that arrived here since.
    */
-  threadSummary(rootId: string): ThreadSummary | undefined;
+  threadSummary(rootId: string): {
+    rootId: string;
+    count: number;
+    latestEvent: MatrixEvent<string> | undefined;
+    participated: boolean;
+  } | undefined;
   /** The thread roots seen in this room (fetch the full list with MatrixClient.fetchThreads). */
   threadRoots(): string[];
   /** The events of the main timeline: without thread replies (those that are not in a thread). */
-  mainTimeline(): MatrixEvent[];
+  mainTimeline(): MatrixEvent<string>[];
   /** The room this one was upgraded to (m.room.tombstone), if any. */
   successor(): {
     roomId: string;
-    reason?: string;
+    reason: string;
   } | undefined;
   /** The room this one replaced (m.room.create's predecessor), if any. */
   predecessor(): {
     roomId: string;
-    eventId?: string;
+    eventId: string | undefined;
   } | undefined;
   /** The room type from m.room.create: "m.space" for spaces. */
   type(): string | undefined;
@@ -95,7 +100,7 @@ export declare class Room {
   /** Members we encrypt for: joined, and invited when history visibility lets them read. */
   encryptionTargets(): string[];
   /** The newest event of the live timeline. */
-  lastEvent(): MatrixEvent | undefined;
+  lastEvent(): MatrixEvent<string>;
   readReceipt(userId: string, type?: string): Receipt | undefined;
 }
 //# sourceMappingURL=room.d.ts.map

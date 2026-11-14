@@ -1,7 +1,7 @@
+import { decodeBase58, encodeBase58 } from "../util/base58.js";
 import { Base64Error, decodeBase64, encodeBase64 } from "../shared/base64.js";
 import { constantTimeEqual } from "../shared/bytes.js";
 import { decodeUtf8, encodeUtf8 } from "../shared/utf8.js";
-import { decodeBase58, encodeBase58 } from "../util/base58.js";
 // src/e2ee/secret-storage.ts
 /**
 * Secret storage (https://spec.matrix.org/v1.19/client-server-api/#storage): secrets (the

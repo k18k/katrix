@@ -1,5 +1,5 @@
-import { decodeBase64, encodeBase64 } from "../shared/base64.js";
 import { concatBytes, constantTimeEqual } from "../shared/bytes.js";
+import { decodeBase64, encodeBase64 } from "../shared/base64.js";
 import { decodeUtf8, encodeUtf8 } from "../shared/utf8.js";
 import { ProtocolError } from "./protocol.js";
 // src/protocol/pickle.ts

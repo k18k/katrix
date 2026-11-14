@@ -1,9 +1,9 @@
-import { Logger } from "../util/logger.js";
 import { HttpAdapter } from "../http/adapter.js";
-import { Credentials, CredentialsStore, TokenProvider } from "./types.js";
-import { LoginFlow, UserIdentifier, VersionsResponse, WellKnownSupport } from "../shared/api/auth.js";
 import { RequestTokenResponse } from "../shared/api/account.js";
+import { Logger } from "../util/logger.js";
+import { Credentials, CredentialsStore, TokenProvider } from "./types.js";
 import { UiaCallback } from "./uia.js";
+import { LoginFlow, UserIdentifier, VersionsResponse, WellKnownSupport } from "../shared/api/auth.js";
 export interface LoginOptions {
   deviceId?: string;
   initialDeviceDisplayName?: string;

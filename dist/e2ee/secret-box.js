@@ -1,5 +1,5 @@
-import { decodeBase64, encodeBase64 } from "../shared/base64.js";
 import { concatBytes, constantTimeEqual } from "../shared/bytes.js";
+import { decodeBase64, encodeBase64 } from "../shared/base64.js";
 import { encodeUtf8 } from "../shared/utf8.js";
 // src/e2ee/secret-box.ts
 /**

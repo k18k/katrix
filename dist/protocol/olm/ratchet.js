@@ -1,7 +1,7 @@
 import { bytesEqual, constantTimeEqual } from "../../shared/bytes.js";
 import { encodeUtf8 } from "../../shared/utf8.js";
-import { ProtocolError } from "../protocol.js";
 import { b64, field } from "../pickle.js";
+import { ProtocolError } from "../protocol.js";
 import { decodeNormal, encodeNormalBody, withMac } from "./message.js";
 // src/protocol/olm/ratchet.ts
 /**

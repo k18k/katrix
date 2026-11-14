@@ -1,7 +1,7 @@
-import { Logger } from "../util/logger.js";
+import { MatrixEvent } from "../models/event.js";
 import { MegolmEncryptedContent } from "../shared/events.js";
-import { DecryptionInfo, MatrixEvent } from "../models/event.js";
 import { Store, Transaction } from "../storage/store.js";
+import { Logger } from "../util/logger.js";
 import { DeviceInfo, Pickler } from "./crypto-store.js";
 import { DeviceTracker } from "./devices.js";
 import { DecryptedToDevice, OlmService } from "./olm.js";
@@ -42,7 +42,14 @@ export declare class MegolmService {
     txnId: () => string;
   });
   /** Encrypt an event for a room: rotate the session if due, share it with new devices, encrypt. */
-  encrypt(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>): Promise<MegolmEncryptedContent>;
+  encrypt(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>): Promise<{
+    algorithm: string;
+    ciphertext: string;
+    session_id: string;
+    sender_key: string;
+    device_id: string;
+    "m.relates_to"?: MegolmEncryptedContent["m.relates_to"];
+  }>;
   /** Devices to share with: every device with Megolm of every target user, except this one. */
   private targetDevices;
   /**
@@ -77,7 +84,12 @@ export declare class MegolmService {
       type: string;
       content: Record<string, unknown>;
     };
-    info: DecryptionInfo;
+    info: {
+      senderCurve25519Key: string;
+      claimedEd25519Key: string | undefined;
+      senderDeviceId: string | undefined;
+      authenticity: "authenticated" | "unauthenticated" | "unknown_device";
+    };
   }>;
 }
 //# sourceMappingURL=megolm.d.ts.map

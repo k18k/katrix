@@ -85,7 +85,7 @@ export declare class MatrixEvent<T extends string = string> {
   setDecryptionFailed(code: DecryptionFailureCode): void;
   /** Apply a redaction: content is reduced as the redaction algorithm does for the event's keys. */
   applyRedaction(redaction: ClientEvent): void;
-  toJSON(): ClientEvent;
+  toJSON(): ClientEvent<string>;
 }
 export declare function redactContent(type: string, content: Record<string, unknown>): Record<string, unknown>;
 //# sourceMappingURL=event.d.ts.map

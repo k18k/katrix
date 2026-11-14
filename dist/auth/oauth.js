@@ -1,8 +1,8 @@
 import { MatrixError } from "../http/errors.js";
-import { encodeQuery, parseQuery } from "../util/query.js";
 import { encodeBase64 } from "../shared/base64.js";
 import { encodeUtf8 } from "../shared/utf8.js";
 import { isObject } from "../shared/json.js";
+import { encodeQuery, parseQuery } from "../util/query.js";
 // src/auth/oauth.ts
 /**
 * OAuth 2.0 login, the "next-generation auth" of the Matrix spec

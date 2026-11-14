@@ -23,7 +23,7 @@ export interface AccountDataAccess {
 /** A 32-byte key as a recovery key (https://spec.matrix.org/v1.19/appendices/#cryptographic-key-representation). */
 export declare function encodeRecoveryKey(key: Uint8Array): string;
 /** Whitespace is ignored; a wrong prefix, length, character or parity is refused. */
-export declare function decodeRecoveryKey(text: string): Uint8Array;
+export declare function decodeRecoveryKey(text: string): Uint8Array<ArrayBuffer>;
 export declare class SecretStorage {
   private readonly primitives;
   private readonly accountData;
@@ -44,12 +44,12 @@ export declare class SecretStorage {
     setDefault?: boolean;
   }): Promise<{
     keyId: string;
-    key: Uint8Array;
+    key: Uint8Array<ArrayBufferLike>;
     recoveryKey: string;
   }>;
   private deriveKey;
   /** The key a passphrase stands for, by the key's description. */
-  keyFromPassphrase(passphrase: string, keyId?: string): Promise<Uint8Array>;
+  keyFromPassphrase(passphrase: string, keyId?: string): Promise<Uint8Array<ArrayBufferLike>>;
   /** Whether `key` is the key with this ID (by its check MAC; a key description without one accepts any key). */
   checkKey(key: Uint8Array, keyId?: string): Promise<boolean>;
   /** Encrypt a secret (a string, as the spec has them) under a key and store it in account data. */

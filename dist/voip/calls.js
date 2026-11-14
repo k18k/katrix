@@ -1,5 +1,5 @@
-import { describeError } from "../util/logger.js";
 import { TypedEmitter } from "../util/emitter.js";
+import { describeError } from "../util/logger.js";
 import { MatrixCall, isStreamMetadata, sdpOf } from "./call.js";
 // src/voip/calls.ts
 /**

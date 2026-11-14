@@ -1,5 +1,5 @@
-import { ClientEvent, EventContentMap, Membership, PowerLevelsContent } from "../shared/events.js";
 import { MatrixEvent } from "./event.js";
+import { ClientEvent, EventContentMap, Membership, PowerLevelsContent } from "../shared/events.js";
 export interface RoomMember {
   userId: string;
   membership: Membership;
@@ -17,12 +17,12 @@ export declare class RoomState {
   membersLoaded: boolean;
   get<K extends keyof EventContentMap>(type: K, stateKey?: string): MatrixEvent<K> | undefined;
   get(type: string, stateKey?: string): MatrixEvent | undefined;
-  getAll(type: string): MatrixEvent[];
+  getAll(type: string): MatrixEvent<string>[];
   /** Every state event (for persisting). */
-  all(): MatrixEvent[];
+  all(): MatrixEvent<string>[];
   /** Set a state event; returns the event it replaced. */
-  set(event: MatrixEvent): MatrixEvent | undefined;
-  setRaw(raw: ClientEvent): MatrixEvent | undefined;
+  set(event: MatrixEvent): MatrixEvent<string> | undefined;
+  setRaw(raw: ClientEvent): MatrixEvent<string> | undefined;
   clear(): void;
   membership(userId: string): Membership | undefined;
   powerLevels(): PowerLevelsContent;
@@ -34,8 +34,22 @@ export declare class RoomState {
   powerLevel(userId: string): number;
   /** Whether `userId` may send `type` (state or message) by the power levels. */
   maySend(userId: string, type: string, state: boolean): boolean;
-  members(): RoomMember[];
-  member(userId: string): RoomMember | undefined;
+  members(): {
+    userId: string;
+    membership: Membership;
+    rawDisplayName: string | undefined;
+    name: string;
+    avatarUrl: string | undefined;
+    powerLevel: number;
+  }[];
+  member(userId: string): {
+    userId: string;
+    membership: Membership;
+    rawDisplayName: string | undefined;
+    name: string;
+    avatarUrl: string | undefined;
+    powerLevel: number;
+  } | undefined;
   isEncrypted(): boolean;
 }
 //# sourceMappingURL=room-state.d.ts.map

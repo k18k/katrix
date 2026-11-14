@@ -1,7 +1,8 @@
-import { Logger } from "../util/logger.js";
-import { ToDeviceEvent } from "../shared/events.js";
 import { MatrixHttpApi } from "../http/api.js";
+import { ToDeviceEvent } from "../shared/events.js";
+import { OlmMessage } from "../protocol/protocol.js";
 import { Store, Transaction } from "../storage/store.js";
+import { Logger } from "../util/logger.js";
 import { DeviceInfo, OlmSessionRecord, Pickler } from "./crypto-store.js";
 import { DeviceTracker } from "./devices.js";
 /** A decrypted to-device event and what the Olm layer proved about its origin. */
@@ -63,14 +64,27 @@ export declare class OlmService {
    * Encrypt a to-device payload for `device` (which must have a session: ensureSessions). The
    * payload binds sender and recipient, as the spec requires, so it cannot be redirected.
    */
-  encrypt(tx: Transaction, device: DeviceInfo, type: string, content: Record<string, unknown>): Promise<Record<string, unknown> | undefined>;
+  encrypt(tx: Transaction, device: DeviceInfo, type: string, content: Record<string, unknown>): Promise<{
+    algorithm: string;
+    sender_key: string;
+    ciphertext: {
+      [device.curve25519]: OlmMessage;
+    };
+  } | undefined>;
   /**
    * Decrypt an m.room.encrypted to-device event. A pre-key message that no existing session
    * matches starts a new inbound session (using up our one-time key); one that an existing
    * session matches but that does not decrypt is refused (a replay must not start a second
    * session from a fallback key).
    */
-  decrypt(tx: Transaction, event: ToDeviceEvent): Promise<DecryptedToDevice>;
+  decrypt(tx: Transaction, event: ToDeviceEvent): Promise<{
+    type: string;
+    content: Record<string, unknown>;
+    sender: string;
+    senderKey: string;
+    claimedEd25519Key: string;
+    senderDevice: DeviceInfo | undefined;
+  }>;
   /** PUT /sendToDevice, in chunks (large rooms can mean thousands of devices). */
   sendToDevice(type: string, messages: Array<{
     device: DeviceInfo;

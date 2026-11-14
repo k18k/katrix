@@ -15,11 +15,11 @@ export declare class Timeline {
   /** Events kept in memory; older ones are dropped and can be paginated again. */
   maxEvents: number;
   constructor(maxEvents?: number);
-  find(eventId: string): MatrixEvent | undefined;
+  find(eventId: string): MatrixEvent<string> | undefined;
   /** Append live events. Returns those that were new (not already present by event ID). */
-  append(events: MatrixEvent[]): MatrixEvent[];
+  append(events: MatrixEvent[]): MatrixEvent<string>[];
   /** Prepend older events (from back-pagination, given newest first as /messages returns them). */
-  prepend(newestFirst: MatrixEvent[], nextBackToken: string | undefined): MatrixEvent[];
+  prepend(newestFirst: MatrixEvent[], nextBackToken: string | undefined): MatrixEvent<string>[];
   /** A gap: start over with a new segment. */
   reset(backToken: string | undefined): void;
   /** Replace a local echo by its event ID once the server confirmed it. */

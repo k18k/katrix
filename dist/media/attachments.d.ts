@@ -1,5 +1,5 @@
-import { EncryptedFile } from "../shared/events.js";
 import { CryptoPrimitives } from "../crypto/primitives.js";
+import { EncryptedFile } from "../shared/events.js";
 /**
  * Attachments in encrypted rooms (https://spec.matrix.org/v1.19/client-server-api/#sending-encrypted-attachments):
  * the file is encrypted with AES-256-CTR under a fresh key, the ciphertext is uploaded, and the
@@ -18,5 +18,5 @@ export declare function encryptAttachment(primitives: CryptoPrimitives, plaintex
  * Decrypt a downloaded attachment. The SHA-256 of the ciphertext is checked first, so a file
  * swapped on the server is rejected instead of being decrypted into garbage.
  */
-export declare function decryptAttachment(primitives: CryptoPrimitives, ciphertext: Uint8Array, file: EncryptedFile): Uint8Array;
+export declare function decryptAttachment(primitives: CryptoPrimitives, ciphertext: Uint8Array, file: EncryptedFile): Uint8Array<ArrayBufferLike>;
 //# sourceMappingURL=attachments.d.ts.map

@@ -1,6 +1,6 @@
 import { MatrixError } from "../http/errors.js";
-import { isObject } from "../shared/json.js";
 import { defaultPushRules, evaluatePushRules, pushTweaks } from "../shared/push.js";
+import { isObject } from "../shared/json.js";
 // src/push/push.ts
 /**
 * Push notifications (https://spec.matrix.org/v1.19/client-server-api/#push-notifications):

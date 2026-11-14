@@ -13,6 +13,6 @@ export declare class SecretBox {
   private keys;
   seal(name: string, secret: Uint8Array): string;
   /** Throws when the sealed value was made with another pickle key or was changed. */
-  open(name: string, sealed: string): Uint8Array;
+  open(name: string, sealed: string): Uint8Array<ArrayBufferLike>;
 }
 //# sourceMappingURL=secret-box.d.ts.map

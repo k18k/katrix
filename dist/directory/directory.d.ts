@@ -17,7 +17,7 @@ export declare class DirectoryApi {
   deleteAlias(alias: string): Promise<void>;
   /** The local aliases of a room on this server. */
   roomAliases(roomId: string): Promise<string[]>;
-  getVisibility(roomId: string): Promise<"public" | "private">;
+  getVisibility(roomId: string): Promise<"private" | "public">;
   setVisibility(roomId: string, visibility: "public" | "private"): Promise<void>;
   /** As an application service: publish a room in the directory of one of its third-party networks. */
   setAppserviceVisibility(networkId: string, roomId: string, visibility: "public" | "private"): Promise<void>;

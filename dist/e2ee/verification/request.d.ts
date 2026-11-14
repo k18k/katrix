@@ -1,8 +1,8 @@
-import { Logger } from "../../util/logger.js";
 import { CryptoPrimitives } from "../../crypto/primitives.js";
-import { DeviceTracker } from "../devices.js";
-import { CrossSigning } from "../cross-signing.js";
 import { TypedEmitter } from "../../util/emitter.js";
+import { Logger } from "../../util/logger.js";
+import { CrossSigning } from "../cross-signing.js";
+import { DeviceTracker } from "../devices.js";
 export type VerificationPhase = "requested" | "ready" | "started" | "done" | "cancelled";
 /** How the messages of one verification travel: to-device, or as events in a room. */
 export interface VerificationChannel {
@@ -109,12 +109,12 @@ export declare class VerificationRequest extends TypedEmitter<VerificationEvents
    * The QR code to show the other side (its bytes, to draw as a byte-mode QR code), when it can
    * scan and we can show one; undefined otherwise.
    */
-  qrCode(): Promise<Uint8Array | undefined>;
+  qrCode(): Promise<Uint8Array<ArrayBufferLike> | undefined>;
   /**
    * We scanned the other side's QR code: check its keys against what we know, verify the other
    * side, and tell it (m.reciprocate.v1). Throws (and cancels) if the code does not match.
    */
-  scanQrCode(bytes: Uint8Array): Promise<void>;
+  scanQrCode(bytes: Uint8Array): Promise<undefined>;
   private onReciprocate;
   /** The user confirms the other device scanned our QR code (it showed success): verify it, finish. */
   confirmQrScanned(): Promise<void>;

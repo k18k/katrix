@@ -1,6 +1,7 @@
-import { Capabilities, Filter, LoginTokenResponse, OpenIdToken, RequestTokenResponse, ThirdPartyIdentifier, ThreePidMedium } from "../shared/api/account.js";
+import { WhoamiResponse } from "../shared/api/auth.js";
 import { MatrixHttpApi } from "../http/api.js";
 import { UiaCallback } from "../auth/uia.js";
+import { Capabilities, Filter, LoginTokenResponse, OpenIdToken, RequestTokenResponse, ThirdPartyIdentifier, ThreePidMedium } from "../shared/api/account.js";
 /**
  * The logged-in account (https://spec.matrix.org/v1.19/client-server-api/#account-registration-and-management):
  * password, deactivation, third-party IDs, account data, filters, ignored users, OpenID and login
@@ -12,11 +13,7 @@ export declare class AccountApi {
   private readonly userId;
   private capabilitiesCache?;
   constructor(api: MatrixHttpApi, userId: string);
-  whoami(): Promise<{
-    user_id: string;
-    device_id?: string;
-    is_guest?: boolean;
-  }>;
+  whoami(): Promise<WhoamiResponse>;
   /** What the server lets this account do (https://spec.matrix.org/v1.19/client-server-api/#capabilities-negotiation). */
   capabilities(opts?: {
     refresh?: boolean;
@@ -32,7 +29,7 @@ export declare class AccountApi {
   deactivate(auth: UiaCallback, opts?: {
     erase?: boolean;
     idServer?: string;
-  }): Promise<"success" | "no-support">;
+  }): Promise<"no-support" | "success">;
   threePids(): Promise<ThirdPartyIdentifier[]>;
   /** Start adding an email address: the server sends a link or code to it. */
   requestEmailToken(req: {
@@ -57,12 +54,16 @@ export declare class AccountApi {
     idServer: string;
     idAccessToken: string;
   }): Promise<void>;
-  deleteThreePid(medium: ThreePidMedium, address: string, idServer?: string): Promise<"success" | "no-support">;
-  unbindThreePid(medium: ThreePidMedium, address: string, idServer?: string): Promise<"success" | "no-support">;
+  deleteThreePid(medium: ThreePidMedium, address: string, idServer?: string): Promise<"no-support" | "success">;
+  unbindThreePid(medium: ThreePidMedium, address: string, idServer?: string): Promise<"no-support" | "success">;
   /** Global account data from the server (MatrixClient.getAccountData has what sync delivered). Undefined when unset. */
-  getAccountData(type: string): Promise<Record<string, unknown> | undefined>;
+  getAccountData(type: string): Promise<{
+    [x: string]: unknown;
+  } | undefined>;
   setAccountData(type: string, content: Record<string, unknown>): Promise<void>;
-  getRoomAccountData(roomId: string, type: string): Promise<Record<string, unknown> | undefined>;
+  getRoomAccountData(roomId: string, type: string): Promise<{
+    [x: string]: unknown;
+  } | undefined>;
   setRoomAccountData(roomId: string, type: string, content: Record<string, unknown>): Promise<void>;
   /** The users whose events the server hides from this account (m.ignored_user_list). */
   ignoredUsers(): Promise<string[]>;

@@ -1,8 +1,8 @@
-import { describeError } from "../../util/logger.js";
-import { decodeBase64, encodeBase64 } from "../../shared/base64.js";
-import { bytesEqual, constantTimeEqual } from "../../shared/bytes.js";
-import { isStringRecord } from "../../shared/json.js";
 import { TypedEmitter } from "../../util/emitter.js";
+import { describeError } from "../../util/logger.js";
+import { bytesEqual, constantTimeEqual } from "../../shared/bytes.js";
+import { decodeBase64, encodeBase64 } from "../../shared/base64.js";
+import { isStringRecord } from "../../shared/json.js";
 import { QR_SCAN, QR_SHOW, RECIPROCATE, decodeQr, encodeQr } from "./qr.js";
 import { HASH, KEY_AGREEMENT, MAC_METHOD, SAS_METHOD, SAS_TYPES, sasBytes, sasCommitment, sasDecimals, sasEmoji, sasInfo, sasMac } from "./sas.js";
 // src/e2ee/verification/request.ts

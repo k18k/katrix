@@ -1,7 +1,7 @@
-import { Logger } from "../util/logger.js";
 import { MatrixHttpApi } from "../http/api.js";
 import { E2EEProtocol } from "../protocol/protocol.js";
 import { Store, Transaction } from "../storage/store.js";
+import { Logger } from "../util/logger.js";
 import { DeviceInfo, UserDevicesRecord, UserTrustRecord } from "./crypto-store.js";
 /**
  * Device list tracking (https://spec.matrix.org/v1.16/client-server-api/#tracking-the-device-list-for-a-user):

@@ -1,7 +1,7 @@
-import { clearTimer, setTimer } from "../platform.js";
-import { describeError } from "../util/logger.js";
 import { isObject } from "../shared/json.js";
+import { clearTimer, setTimer } from "../platform.js";
 import { TypedEmitter } from "../util/emitter.js";
+import { describeError } from "../util/logger.js";
 // src/voip/call.ts
 function isStreamMetadata(value) {
 	return isObject(value) && Object.values(value).every((m) => isObject(m) && typeof m.purpose === "string" && (m.audio_muted === void 0 || typeof m.audio_muted === "boolean") && (m.video_muted === void 0 || typeof m.video_muted === "boolean"));

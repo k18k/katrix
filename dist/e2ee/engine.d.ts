@@ -1,22 +1,22 @@
-import { Logger } from "../util/logger.js";
-import { MegolmEncryptedContent, ToDeviceEvent } from "../shared/events.js";
 import { MatrixHttpApi } from "../http/api.js";
-import { CryptoPrimitives } from "../crypto/primitives.js";
 import { MatrixEvent } from "../models/event.js";
+import { MegolmEncryptedContent, ToDeviceEvent } from "../shared/events.js";
 import { E2EEProtocol, PickleKey } from "../protocol/protocol.js";
 import { Store, Transaction } from "../storage/store.js";
 import { SyncResult } from "../sync/types.js";
+import { Logger } from "../util/logger.js";
 import { DeviceInfo } from "./crypto-store.js";
-import { DeviceTracker } from "./devices.js";
-import { SecretBox } from "./secret-box.js";
 import { CrossSigning } from "./cross-signing.js";
+import { DeviceTracker } from "./devices.js";
 import { KeyBackup } from "./backup.js";
-import { AccountDataAccess, SecretStorage } from "./secret-storage.js";
 import { Recovery } from "./recovery.js";
-import { DecryptedToDevice, OlmService } from "./olm.js";
+import { SecretBox } from "./secret-box.js";
+import { AccountDataAccess, SecretStorage } from "./secret-storage.js";
 import { KeySharing } from "./sharing.js";
 import { VerificationManager } from "./verification/manager.js";
+import { CryptoPrimitives } from "../crypto/primitives.js";
 import { MegolmService, RoomEncryptionInfo } from "./megolm.js";
+import { DecryptedToDevice, OlmService } from "./olm.js";
 export interface E2EEOptions {
   api: MatrixHttpApi;
   primitives: CryptoPrimitives;
@@ -129,7 +129,14 @@ export declare class E2EEEngine {
    * a new Olm session with the device and send it an m.dummy, so it can send to us again.
    */
   private unwedge;
-  encryptRoomEvent(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>): Promise<MegolmEncryptedContent>;
+  encryptRoomEvent(room: RoomEncryptionInfo, type: string, content: Record<string, unknown>): Promise<{
+    algorithm: string;
+    ciphertext: string;
+    session_id: string;
+    sender_key: string;
+    device_id: string;
+    "m.relates_to"?: MegolmEncryptedContent["m.relates_to"];
+  }>;
   /** Decrypt in place; on failure, the event is marked failed with a code (never throws). */
   decryptRoomEvent(event: MatrixEvent): Promise<boolean>;
   /**

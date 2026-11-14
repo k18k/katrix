@@ -1,8 +1,8 @@
-import { MatrixError } from "../http/errors.js";
-import { dummyAuth, withUserInteractiveAuth } from "./uia.js";
 import { MatrixHttpApi } from "../http/api.js";
+import { MatrixError } from "../http/errors.js";
 import { Mutex } from "../util/mutex.js";
 import { refreshOAuthToken } from "./oauth.js";
+import { dummyAuth, withUserInteractiveAuth } from "./uia.js";
 // src/auth/login.ts
 function credentialsFrom(res) {
 	if (typeof res.user_id !== "string" || typeof res.access_token !== "string" || typeof res.device_id !== "string") throw new Error("Login response is missing user_id, device_id or access_token");

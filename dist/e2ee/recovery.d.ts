@@ -1,7 +1,7 @@
-import { Logger } from "../util/logger.js";
 import { UiaCallback } from "../auth/uia.js";
-import { CrossSigning } from "./cross-signing.js";
+import { Logger } from "../util/logger.js";
 import { KeyBackup } from "./backup.js";
+import { CrossSigning } from "./cross-signing.js";
 import { SecretStorage } from "./secret-storage.js";
 export declare const SECRET_NAMES: {
   readonly master: "m.cross_signing.master";
@@ -52,7 +52,7 @@ export declare class Recovery {
     recoveryKey: string;
   }>;
   /** The secret storage key from what the user typed: a recovery key, or else a passphrase. */
-  keyFrom(input: string): Promise<Uint8Array>;
+  keyFrom(input: string): Promise<Uint8Array<ArrayBufferLike>>;
   /**
    * Recover on this device: verify it with the stored cross-signing keys, use the key backup,
    * and download every backed-up room key. Resolves with how many room keys were imported.

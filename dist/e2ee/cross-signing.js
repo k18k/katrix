@@ -1,9 +1,9 @@
 import { withUserInteractiveAuth } from "../auth/uia.js";
 import { decodeBase64, encodeBase64 } from "../shared/base64.js";
-import { signingJson } from "../shared/canonical-json.js";
 import { encodeUtf8 } from "../shared/utf8.js";
-import { verifyObject } from "./keys.js";
+import { signingJson } from "../shared/canonical-json.js";
 import { publicKeyOf } from "./devices.js";
+import { verifyObject } from "./keys.js";
 // src/e2ee/cross-signing.ts
 const STORE_KEY = "cross_signing";
 /**

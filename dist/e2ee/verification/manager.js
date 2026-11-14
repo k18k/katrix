@@ -1,6 +1,6 @@
+import { TypedEmitter } from "../../util/emitter.js";
 import { describeError } from "../../util/logger.js";
 import { isObject } from "../../shared/json.js";
-import { TypedEmitter } from "../../util/emitter.js";
 import { ALL_METHODS, VerificationRequest } from "./request.js";
 // src/e2ee/verification/manager.ts
 /** Requests older than this are not shown (spec: 10 minutes after their timestamp). */

@@ -1,5 +1,5 @@
-import { HierarchyResponse, HierarchyRoom } from "../shared/api/rooms.js";
 import { MatrixClient } from "../client.js";
+import { HierarchyResponse, HierarchyRoom } from "../shared/api/rooms.js";
 export interface SpaceChild {
   roomId: string;
   via: string[];
@@ -45,13 +45,18 @@ export declare class SpacesApi {
    * The children of a synced space, in the spec's order: by `order` (rooms without one last),
    * then by when they were added, then by room ID. Children without `via` were removed.
    */
-  children(spaceId: string): SpaceChild[];
+  children(spaceId: string): {
+    roomId: string;
+    via: string[];
+    order: string | undefined;
+    suggested: boolean;
+  }[];
   /** The spaces a synced room says it is in (m.space.parent with `via`), canonical first. */
-  parents(roomId: string): Array<{
+  parents(roomId: string): {
     spaceId: string;
     via: string[];
     canonical: boolean;
-  }>;
+  }[];
   /** One page of a space's hierarchy from the server, depth first, including rooms not joined. */
   hierarchy(spaceId: string, opts?: {
     suggestedOnly?: boolean;

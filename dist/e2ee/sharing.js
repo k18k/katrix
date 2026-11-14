@@ -1,5 +1,5 @@
-import { sleep } from "../platform.js";
 import { describeError } from "../util/logger.js";
+import { sleep } from "../platform.js";
 import { inboundKey } from "./crypto-store.js";
 import { MEGOLM_ALGORITHM } from "./keys.js";
 // src/e2ee/sharing.ts

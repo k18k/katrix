@@ -1,5 +1,5 @@
-import { RelatesTo } from "../shared/events.js";
 import { MatrixEvent } from "./event.js";
+import { RelatesTo } from "../shared/events.js";
 /** One reaction key on an event, with who reacted. */
 export interface ReactionGroup {
   key: string;
@@ -42,13 +42,13 @@ export declare class Relations {
    * once decrypted, since their type and `m.new_content` are inside. A server-bundled
    * replacement (unsigned m.relations) is used when no edit arrived here.
    */
-  replacementFor(original: MatrixEvent, bundled?: MatrixEvent): MatrixEvent | undefined;
+  replacementFor(original: MatrixEvent, bundled?: MatrixEvent): MatrixEvent<string> | undefined;
   /** Reactions on an event, grouped by key, most used first. */
   reactions(eventId: string): ReactionGroup[];
   /** The thread replies that arrived here, oldest first. */
-  threadReplies(rootId: string): MatrixEvent[];
+  threadReplies(rootId: string): MatrixEvent<string>[];
   /** Events that reference this one (m.reference: key verification in rooms, poll responses). */
-  references(eventId: string): MatrixEvent[];
+  references(eventId: string): MatrixEvent<string>[];
   /** IDs of the thread roots seen in this room. */
   threadRoots(): string[];
 }

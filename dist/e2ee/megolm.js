@@ -1,10 +1,10 @@
-import { describeError } from "../util/logger.js";
 import { decodeUtf8, encodeUtf8 } from "../shared/utf8.js";
 import { isObject } from "../shared/json.js";
+import { ProtocolError } from "../protocol/protocol.js";
+import { describeError } from "../util/logger.js";
 import { KeyedMutex } from "../util/mutex.js";
 import { inboundKey } from "./crypto-store.js";
 import { MEGOLM_ALGORITHM } from "./keys.js";
-import { ProtocolError } from "../protocol/protocol.js";
 // src/e2ee/megolm.ts
 /**
 * Defaults of m.room.encryption (https://spec.matrix.org/v1.16/client-server-api/#mroomencryption):

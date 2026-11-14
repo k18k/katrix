@@ -1,17 +1,13 @@
-import { ConnectionError, MatrixError } from "./http/errors.js";
 import { AccountApi } from "./account/account.js";
 import { AdminApi } from "./account/admin.js";
 import { DevicesApi } from "./account/devices.js";
 import { PresenceApi, ProfileApi } from "./account/profile.js";
-import { isAbortError, newAbortController, setTimer, sleep } from "./platform.js";
-import { describeError, noopLogger } from "./util/logger.js";
-import { encodeBase64 } from "./shared/base64.js";
-import { MatrixHttpApi } from "./http/api.js";
 import { CredentialsTokenProvider } from "./auth/login.js";
 import { nobleCryptoPrimitives } from "./crypto/noble.js";
-import { TypedEmitter } from "./util/emitter.js";
 import { E2EEEngine } from "./e2ee/engine.js";
 import { fetchHttpAdapter } from "./http/adapter.js";
+import { MatrixHttpApi } from "./http/api.js";
+import { ConnectionError, MatrixError } from "./http/errors.js";
 import { DirectoryApi } from "./directory/directory.js";
 import { MediaApi } from "./media/media.js";
 import { PushApi } from "./push/push.js";
@@ -20,11 +16,15 @@ import { CallsApi } from "./voip/calls.js";
 import { MatrixEvent } from "./models/event.js";
 import { relationOf } from "./models/relations.js";
 import { Room } from "./models/room.js";
+import { encodeBase64 } from "./shared/base64.js";
+import { isAbortError, newAbortController, setTimer, sleep } from "./platform.js";
 import { nativeE2EEProtocol } from "./protocol/native.js";
 import { STORES } from "./storage/adapter.js";
 import { MemoryStorage } from "./storage/memory.js";
 import { Store } from "./storage/store.js";
 import { SyncV3Transport } from "./sync/v3.js";
+import { TypedEmitter } from "./util/emitter.js";
+import { describeError, noopLogger } from "./util/logger.js";
 // src/client.ts
 const MAX_BACKOFF_MS = 3e4;
 function isVerificationEvent(event) {

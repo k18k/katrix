@@ -1,13 +1,13 @@
-import { Logger } from "../util/logger.js";
-import { BackupVersionResponse, EncryptedSessionData } from "../shared/api/keys.js";
-import { MatrixHttpApi } from "../http/api.js";
 import { CryptoPrimitives } from "../crypto/primitives.js";
+import { MatrixHttpApi } from "../http/api.js";
 import { E2EEProtocol } from "../protocol/protocol.js";
 import { Store } from "../storage/store.js";
+import { Logger } from "../util/logger.js";
+import { BackupVersionResponse, EncryptedSessionData } from "../shared/api/keys.js";
 import { Pickler } from "./crypto-store.js";
+import { CrossSigning } from "./cross-signing.js";
 import { DeviceTracker } from "./devices.js";
 import { SecretBox } from "./secret-box.js";
-import { CrossSigning } from "./cross-signing.js";
 /** The plaintext of a backed-up session (BackedUpSessionData). */
 export interface BackedUpSession {
   algorithm: string;
@@ -25,7 +25,11 @@ export interface BackedUpSession {
  * The MAC is of the empty string, not the ciphertext: a bug in libolm every implementation now
  * shares (the spec's warning, MSC4048), so it only shows that the keys were derived right.
  */
-export declare function encryptBackupSession(primitives: CryptoPrimitives, backupPublicKey: Uint8Array, session: BackedUpSession): EncryptedSessionData;
+export declare function encryptBackupSession(primitives: CryptoPrimitives, backupPublicKey: Uint8Array, session: BackedUpSession): {
+  ephemeral: string;
+  ciphertext: string;
+  mac: string;
+};
 export declare function decryptBackupSession(primitives: CryptoPrimitives, backupPrivateKey: Uint8Array, data: EncryptedSessionData): BackedUpSession;
 /**
  * Server-side key backup (https://spec.matrix.org/v1.19/client-server-api/#server-side-key-backups):
@@ -70,7 +74,7 @@ export declare class KeyBackup {
     hasPrivateKey: boolean;
   } | undefined>;
   /** The backup's private key, if this device has it (to put it in secret storage). */
-  privateKey(): Promise<Uint8Array | undefined>;
+  privateKey(): Promise<Uint8Array<ArrayBufferLike> | undefined>;
   /**
    * Create a new backup (the server's current one is replaced as the place keys go) and start
    * uploading every room key to it. Its auth_data is signed by this device, and by the master
@@ -81,7 +85,7 @@ export declare class KeyBackup {
     masterKey?: Uint8Array;
   }): Promise<{
     version: string;
-    privateKey: Uint8Array;
+    privateKey: Uint8Array<ArrayBufferLike>;
   }>;
   /**
    * Use the server's current backup with its private key (from secret storage, secret sharing,
@@ -130,9 +134,9 @@ export declare class KeyBackup {
     privateKey?: Uint8Array;
     roomId?: string;
     sessionId?: string;
-  }): Promise<Array<{
+  }): Promise<{
     roomId: string;
     sessionId: string;
-  }>>;
+  }[]>;
 }
 //# sourceMappingURL=backup.d.ts.map

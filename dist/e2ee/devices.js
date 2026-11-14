@@ -1,5 +1,5 @@
-import { isObject } from "../shared/json.js";
 import { Mutex } from "../util/mutex.js";
+import { isObject } from "../shared/json.js";
 import { deviceKey } from "./crypto-store.js";
 import { verifyObject } from "./keys.js";
 // src/e2ee/devices.ts

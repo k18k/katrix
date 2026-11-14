@@ -2,8 +2,8 @@ import { decodeBase64 } from "../shared/base64.js";
 import { encodeUtf8 } from "../shared/utf8.js";
 import { NativeInboundGroupSession } from "./megolm/inbound.js";
 import { NativeOutboundGroupSession } from "./megolm/outbound.js";
-import { NativeOlmSession } from "./olm/session.js";
 import { NativeOlmAccount } from "./olm/account.js";
+import { NativeOlmSession } from "./olm/session.js";
 // src/protocol/native.ts
 /** The built-in Olm and Megolm, written on CryptoPrimitives only. */
 function nativeE2EEProtocol(primitives) {

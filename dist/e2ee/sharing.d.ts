@@ -1,10 +1,10 @@
-import { Logger } from "../util/logger.js";
-import { ToDeviceEvent } from "../shared/events.js";
 import { E2EEProtocol } from "../protocol/protocol.js";
 import { Store } from "../storage/store.js";
+import { Logger } from "../util/logger.js";
+import { ToDeviceEvent } from "../shared/events.js";
 import { Pickler } from "./crypto-store.js";
-import { DeviceTracker } from "./devices.js";
 import { CrossSigning } from "./cross-signing.js";
+import { DeviceTracker } from "./devices.js";
 import { DecryptedToDevice, OlmService } from "./olm.js";
 /** A secret this device can give to the user's other verified devices, by name. */
 export type SecretProvider = (name: string) => Promise<string | undefined>;

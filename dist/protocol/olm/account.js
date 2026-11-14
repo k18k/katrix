@@ -1,8 +1,8 @@
-import { encodeBase64 } from "../../shared/base64.js";
 import { bytesEqual, concatBytes, writeUint32BE } from "../../shared/bytes.js";
+import { encodeBase64 } from "../../shared/base64.js";
 import { encodeUtf8 } from "../../shared/utf8.js";
-import { ProtocolError } from "../protocol.js";
 import { b64, decodeKey, field, readPickle, writePickle } from "../pickle.js";
+import { ProtocolError } from "../protocol.js";
 import { decodeNormal, decodePreKey } from "./message.js";
 import { ecdh, initialiseAsAlice, initialiseAsBob } from "./ratchet.js";
 import { NativeOlmSession, decodeBody } from "./session.js";

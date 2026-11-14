@@ -1,11 +1,11 @@
 import { MatrixError } from "../http/errors.js";
 import { describeError } from "../util/logger.js";
-import { decodeBase64, encodeBase64 } from "../shared/base64.js";
+import { Mutex } from "../util/mutex.js";
 import { constantTimeEqual } from "../shared/bytes.js";
-import { signingJson } from "../shared/canonical-json.js";
+import { decodeBase64, encodeBase64 } from "../shared/base64.js";
 import { decodeUtf8, encodeUtf8 } from "../shared/utf8.js";
 import { isObject, isStringRecord } from "../shared/json.js";
-import { Mutex } from "../util/mutex.js";
+import { signingJson } from "../shared/canonical-json.js";
 import { inboundKey } from "./crypto-store.js";
 import { MEGOLM_ALGORITHM, verifyObject } from "./keys.js";
 // src/e2ee/backup.ts

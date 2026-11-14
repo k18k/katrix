@@ -1,5 +1,5 @@
-import { Logger } from "../util/logger.js";
 import { TypedEmitter } from "../util/emitter.js";
+import { Logger } from "../util/logger.js";
 export interface SessionDescriptionLike {
   type: "offer" | "answer" | "pranswer" | "rollback";
   sdp?: string;

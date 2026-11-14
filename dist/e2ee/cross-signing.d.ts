@@ -1,10 +1,10 @@
-import { Logger } from "../util/logger.js";
-import { DeviceKeys } from "../shared/api/keys.js";
-import { MatrixHttpApi } from "../http/api.js";
-import { UiaCallback } from "../auth/uia.js";
 import { CryptoPrimitives } from "../crypto/primitives.js";
+import { MatrixHttpApi } from "../http/api.js";
 import { E2EEProtocol } from "../protocol/protocol.js";
 import { Store } from "../storage/store.js";
+import { Logger } from "../util/logger.js";
+import { UiaCallback } from "../auth/uia.js";
+import { DeviceKeys } from "../shared/api/keys.js";
 import { DeviceTracker } from "./devices.js";
 import { SecretBox } from "./secret-box.js";
 /** The private halves of the cross-signing keys: 32-byte Ed25519 seeds. */
@@ -73,10 +73,17 @@ export declare class CrossSigning {
    * any keys the user had: other users see a changed identity, and devices must be verified
    * again. Resolves with the private keys, for the app to put in secret storage.
    */
-  bootstrap(auth: UiaCallback | undefined): Promise<Required<CrossSigningPrivateKeys>>;
+  bootstrap(auth: UiaCallback | undefined): Promise<{
+    master: Uint8Array<ArrayBufferLike>;
+    selfSigning: Uint8Array<ArrayBufferLike>;
+    userSigning: Uint8Array<ArrayBufferLike>;
+  }>;
   private uploadSignatures;
   /** The self-signing and user-signing private keys this device holds. */
-  privateKeys(): Promise<CrossSigningPrivateKeys>;
+  privateKeys(): Promise<{
+    selfSigning: Uint8Array<ArrayBufferLike> | undefined;
+    userSigning: Uint8Array<ArrayBufferLike> | undefined;
+  }>;
   private ownRecord;
   /**
    * Take private keys from secret storage or another device (secret sharing). Each must match
@@ -93,9 +100,17 @@ export declare class CrossSigning {
     selfSigning: boolean;
     userSigning: boolean;
   }>;
-  userTrust(userId: string): Promise<UserTrust>;
+  userTrust(userId: string): Promise<{
+    masterKey: string | undefined;
+    verified: boolean;
+    identityChanged: boolean;
+  }>;
   private ownIdentityTrusted;
-  deviceTrust(userId: string, deviceId: string): Promise<DeviceTrust>;
+  deviceTrust(userId: string, deviceId: string): Promise<{
+    locallyVerified: boolean;
+    crossSigned: boolean;
+    verified: boolean;
+  }>;
   /** Accept a user's new identity (master key) after showing the change: it becomes the pinned one. */
   acceptIdentityChange(userId: string): Promise<void>;
   /** Mark a device verified on this device (after SAS or QR). */

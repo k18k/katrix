@@ -1,8 +1,8 @@
-import { Logger } from "../util/logger.js";
 import { MatrixHttpApi } from "../http/api.js";
 import { MatrixEvent } from "../models/event.js";
-import { TypedEmitter } from "../util/emitter.js";
 import { Room } from "../models/room.js";
+import { TypedEmitter } from "../util/emitter.js";
+import { Logger } from "../util/logger.js";
 import { IceServer, MatrixCall, PeerConnectionFactory, PeerConnectionLike, StreamMetadata } from "./call.js";
 export interface CallsEvents {
   /**

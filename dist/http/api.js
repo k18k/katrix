@@ -1,7 +1,7 @@
-import { ConnectionError, MatrixError } from "./errors.js";
-import { abortError, clearTimer, isAbortError, newAbortController, setTimer, sleep } from "../platform.js";
 import { describeError, noopLogger } from "../util/logger.js";
 import { encodeQuery } from "../util/query.js";
+import { abortError, clearTimer, isAbortError, newAbortController, setTimer, sleep } from "../platform.js";
+import { ConnectionError, MatrixError } from "./errors.js";
 import { endpointPath, endpointUrlPath } from "../shared/api/endpoints.js";
 // src/http/api.ts
 /** The endpoints of the map whose response is a file (MediaBody), not JSON. */

@@ -1,5 +1,5 @@
-import { encodeBase64 } from "../../shared/base64.js";
 import { concatBytes } from "../../shared/bytes.js";
+import { encodeBase64 } from "../../shared/base64.js";
 import { b64, field, readPickle, writePickle } from "../pickle.js";
 import { encodeBody } from "./message.js";
 import { advance, messageKeys, ratchetBytes, ratchetFromBytes } from "./ratchet.js";

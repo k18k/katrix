@@ -1,7 +1,7 @@
-import { EncryptedFile } from "../shared/events.js";
+import { CryptoPrimitives } from "../crypto/primitives.js";
 import { MediaBody, UrlPreviewResponse } from "../shared/api/media.js";
 import { MatrixHttpApi } from "../http/api.js";
-import { CryptoPrimitives } from "../crypto/primitives.js";
+import { EncryptedFile } from "../shared/events.js";
 /** The server name and media ID of an mxc:// URI (https://spec.matrix.org/v1.19/client-server-api/#matrix-content-mxc-uris). */
 export declare function parseMxc(uri: string): {
   serverName: string;
@@ -27,7 +27,7 @@ export declare class MediaApi {
    */
   create(): Promise<{
     contentUri: string;
-    unusedExpiresAt?: number;
+    unusedExpiresAt: number | undefined;
   }>;
   uploadTo(mxcUri: string, data: Uint8Array, opts?: {
     contentType?: string;
@@ -62,10 +62,24 @@ export declare class MediaApi {
    * event's `file` (instead of `url`); the server only ever sees ciphertext, uploaded as
    * application/octet-stream.
    */
-  uploadEncrypted(data: Uint8Array): Promise<EncryptedFile>;
+  uploadEncrypted(data: Uint8Array): Promise<{
+    key: {
+      kty: "oct";
+      key_ops: string[];
+      alg: "A256CTR";
+      k: string;
+      ext: true;
+    };
+    iv: string;
+    hashes: {
+      sha256: string;
+    };
+    v: "v2";
+    url: string;
+  }>;
   /** Download and decrypt an encrypted attachment; throws an AttachmentError if it was tampered with. */
   downloadEncrypted(file: EncryptedFile, opts?: {
     timeoutMs?: number;
-  }): Promise<Uint8Array>;
+  }): Promise<Uint8Array<ArrayBufferLike>>;
 }
 //# sourceMappingURL=media.d.ts.map

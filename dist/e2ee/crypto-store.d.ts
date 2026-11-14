@@ -1,5 +1,5 @@
-import { CrossSigningKey, DeviceKeys } from "../shared/api/keys.js";
 import { E2EEProtocol, InboundGroupSession, OlmAccount, OlmSession, OutboundGroupSession, PickleKey } from "../protocol/protocol.js";
+import { CrossSigningKey, DeviceKeys } from "../shared/api/keys.js";
 /** Records of the crypto stores. Pickles are opaque strings of the E2EEProtocol named in `protocol`. */
 export interface AccountRecord {
   protocol: string;

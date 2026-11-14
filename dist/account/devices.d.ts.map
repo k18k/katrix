@@ -1,1 +1,1 @@
-{"version":3,"file":"devices.d.ts","names":[],"sources":["../../src/account/devices.ts"],"mappings":";;;;qBAKa;mBACM;EAEjB,YAAY,KAAK;EAIX,QAAQ,QAAQ;EAItB,IAAI,mBAAmB,QAAQ;;EAKzB,OAAO,kBAAkB,sBAAsB;;EAK/C,OAAO,qBAAqB,MAAM,cAAc"}
+{"version":3,"file":"devices.d.ts","names":["_$_katrix_shared0.Device"],"sources":["../../src/account/devices.ts"],"mappings":";;;;qBAIa;mBACM;EAEjB,YAAY,KAAK;EAIX,QAAI,QAJOA;EAQjB,IAAI,mBAAgB,QAJVA;;EASJ,OAAO,kBAAkB,sBAAmB;;EAK5C,OAAO,qBAAqB,MAAM,cAAW"}

@@ -1,9 +1,9 @@
-import { describeError } from "../util/logger.js";
 import { decodeUtf8, encodeUtf8 } from "../shared/utf8.js";
 import { isObject } from "../shared/json.js";
+import { ProtocolError } from "../protocol/protocol.js";
+import { describeError } from "../util/logger.js";
 import { loadAccount, olmSessionKey, saveAccount } from "./crypto-store.js";
 import { OLM_ALGORITHM, verifyObject } from "./keys.js";
-import { ProtocolError } from "../protocol/protocol.js";
 // src/e2ee/olm.ts
 var OlmDecryptionError = class extends Error {
 	code;

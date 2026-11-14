@@ -1,7 +1,7 @@
-import { decodeBase64, encodeBase64 } from "../../shared/base64.js";
 import { bytesEqual, concatBytes } from "../../shared/bytes.js";
-import { ProtocolError } from "../protocol.js";
+import { decodeBase64, encodeBase64 } from "../../shared/base64.js";
 import { b64, field, readPickle, writePickle } from "../pickle.js";
+import { ProtocolError } from "../protocol.js";
 import { decodePreKey, encodePreKey } from "./message.js";
 import { ratchetDecrypt, ratchetEncrypt, ratchetFromJson, ratchetToJson } from "./ratchet.js";
 // src/protocol/olm/session.ts
