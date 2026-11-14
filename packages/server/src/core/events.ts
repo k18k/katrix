@@ -1,6 +1,9 @@
 import { canonicalJson, isObject, M } from "@katrix/shared";
 import { randomString, sha256, signJson, unpaddedBase64, urlSafeBase64, type SigningKey } from "#core/crypto.ts";
 
+/** A reference to an event: its ID, or in room versions 1 and 2 the pair of ID and hashes. */
+export type EventRef = string | readonly [string, unknown];
+
 export interface PDU {
   event_id?: string;
   room_id: string;
@@ -12,12 +15,12 @@ export interface PDU {
   content: Record<string, unknown>;
   origin_server_ts: number;
   depth: number;
-  prev_events: any[];
-  auth_events: any[];
+  prev_events: EventRef[];
+  auth_events: EventRef[];
   redacts?: string;
   hashes?: { sha256: string };
   signatures?: Record<string, Record<string, string>>;
-  unsigned?: Record<string, any>;
+  unsigned?: Record<string, unknown>;
   origin?: string;
 }
 
@@ -27,9 +30,9 @@ export interface ClientEvent {
   sender: string;
   type: string;
   state_key?: string;
-  content: Record<string, any>;
+  content: Record<string, unknown>;
   origin_server_ts: number;
-  unsigned?: Record<string, any>;
+  unsigned?: Record<string, unknown>;
   redacts?: string;
 }
 
@@ -90,20 +93,21 @@ const KEEP_TOP_LEVEL = [
 const KEEP_TOP_LEVEL_LEGACY = ["prev_state", "origin", "membership"];
 
 /** Apply the redaction algorithm for the given room version. */
-export function redact<T extends Record<string, any>>(event: T, roomVersion: string): T {
+export function redact(event: object, roomVersion: string) {
   const n = versionNum(roomVersion);
   const keep = n >= 11 ? KEEP_TOP_LEVEL : [...KEEP_TOP_LEVEL, ...KEEP_TOP_LEVEL_LEGACY];
-  const out: Record<string, any> = {};
-  for (const k of keep) if (k in event) out[k] = event[k];
-  const keepRelation =
-    roomVersion.startsWith("org.matrix.msc3389.") && isObject(event.content?.[M.RELATES_TO]) ? event.content[M.RELATES_TO] : undefined;
-  const content = isObject(event.content) ? event.content : {};
+  const fields: Record<string, unknown> = { ...event };
+  const out: Record<string, unknown> = {};
+  for (const k of keep) if (k in fields) out[k] = fields[k];
+  const content = isObject(fields.content) ? fields.content : {};
+  const relation = content[M.RELATES_TO];
+  const keepRelation = roomVersion.startsWith("org.matrix.msc3389.") && isObject(relation) ? relation : undefined;
   const pick = (...keys: string[]) => {
-    const c: Record<string, any> = {};
+    const c: Record<string, unknown> = {};
     for (const k of keys) if (k in content) c[k] = content[k];
     return c;
   };
-  switch (event.type) {
+  switch (fields.type) {
     case M.ROOM.MEMBER: {
       const c = pick("membership", ...(n >= 9 ? ["join_authorised_via_users_server"] : []));
       if (n >= 11 && isObject(content.third_party_invite) && "signed" in content.third_party_invite) {
@@ -148,19 +152,25 @@ export function redact<T extends Record<string, any>>(event: T, roomVersion: str
     const rel: Record<string, unknown> = {};
     if ("rel_type" in keepRelation) rel.rel_type = keepRelation.rel_type;
     if ("event_id" in keepRelation) rel.event_id = keepRelation.event_id;
-    out.content = { ...out.content, [M.RELATES_TO]: rel };
+    out.content = { ...(isObject(out.content) ? out.content : {}), [M.RELATES_TO]: rel };
   }
-  return out as T;
+  return out;
 }
 
-export function computeContentHash(pdu: Record<string, any>): string {
-  const { unsigned, signatures, hashes, ...rest } = pdu;
+/** A PDU after redaction, which keeps every field a PDU needs. */
+export function redactPdu(pdu: PDU, roomVersion: string) {
+  const redacted = redact(pdu, roomVersion);
+  if (!isPdu(redacted)) throw new Error("Redaction dropped a field every event has");
+  return redacted;
+}
+
+export function computeContentHash(pdu: object): string {
+  const { unsigned, signatures, hashes, ...rest }: Record<string, unknown> = { ...pdu };
   return unpaddedBase64(sha256(canonicalJson(rest)));
 }
 
-export function computeReferenceHash(pdu: Record<string, any>, roomVersion: string): Buffer {
-  const redacted = redact(pdu, roomVersion);
-  const { signatures, unsigned, event_id, ...rest } = redacted as Record<string, any>;
+export function computeReferenceHash(pdu: object, roomVersion: string): Buffer {
+  const { signatures, unsigned, event_id, ...rest } = redact(pdu, roomVersion);
   return sha256(canonicalJson(rest));
 }
 
@@ -184,17 +194,15 @@ export function finalisePdu(pdu: PDU, roomVersion: string, serverName: string, k
     pdu.origin = serverName;
   }
   pdu.hashes = { sha256: computeContentHash(pdu) };
-  const redacted = redact(pdu as Record<string, any>, roomVersion);
-  signJson(redacted, serverName, key);
-  pdu.signatures = redacted.signatures;
+  pdu.signatures = signJson(redact(pdu, roomVersion), serverName, key).signatures;
   if (!features.legacyEventIds) {
-    const hash = computeReferenceHash(pdu as Record<string, any>, roomVersion);
+    const hash = computeReferenceHash(pdu, roomVersion);
     pdu.event_id = `$${features.urlSafeEventIds ? urlSafeBase64(hash) : unpaddedBase64(hash)}`;
   }
   return pdu;
 }
 
-export function eventIdOf(ref: any): string {
+export function eventIdOf(ref: EventRef) {
   return Array.isArray(ref) ? ref[0] : ref;
 }
 
@@ -213,6 +221,25 @@ export function toClientEvent(pdu: PDU, opts: { includeRoomId?: boolean } = {}):
   else if (pdu.type === M.ROOM.REDACTION && typeof pdu.content?.redacts === "string") ev.redacts = pdu.content.redacts;
   ev.unsigned = { ...pdu.unsigned, age: Math.max(0, Date.now() - pdu.origin_server_ts) };
   return ev;
+}
+
+/** The membership before this membership event, from its `unsigned.prev_content`. */
+export function previousMembership(pdu: PDU) {
+  const prev = pdu.unsigned?.prev_content;
+  return isObject(prev) ? prev.membership : undefined;
+}
+
+// https://github.com/k18k/katrix/issues/128: the stripped state of an invite or knock comes from the inviting or knocked server
+// and was read as any; entries that are not stripped state events are left out now.
+/** The stripped state an invite or knock carries in `unsigned` (from the event, or a stored event's JSON). */
+export function strippedState(event: unknown, key: "invite_room_state" | "knock_room_state") {
+  const unsigned = isObject(event) && isObject(event.unsigned) ? event.unsigned[key] : undefined;
+  const entries: unknown[] = Array.isArray(unsigned) ? unsigned : [];
+  return entries.flatMap((e) =>
+    isObject(e) && typeof e.type === "string" && typeof e.state_key === "string" && typeof e.sender === "string" && isObject(e.content)
+      ? [{ type: e.type, state_key: e.state_key, sender: e.sender, content: e.content }]
+      : [],
+  );
 }
 
 export function stripState(pdu: PDU) {

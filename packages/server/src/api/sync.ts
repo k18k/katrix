@@ -1,7 +1,7 @@
 import { M, UNSTABLE, type InvitedRoom, type JoinedRoom, type KnockedRoom, type LeftRoom, type SyncResponse } from "@katrix/shared";
 import { errors } from "#core/errors.ts";
 import { getState } from "#core/authrules.ts";
-import { eventIdOf, splitStateKey, stateKey, toClientEvent, type PDU } from "#core/events.ts";
+import { eventIdOf, previousMembership, splitStateKey, stateKey, strippedState, toClientEvent, type PDU } from "#core/events.ts";
 import type { StoredEvent } from "#core/rooms.ts";
 import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
@@ -509,7 +509,7 @@ async function buildSync(hs: Homeserver, p: SyncParams) {
       if (!pdu || p.ignored.has(pdu.sender)) continue;
       if ((await inviteDecision(hs, userId, pdu.sender)) !== "allow") continue;
       // Clients get stripped state events only (type, state_key, sender, content).
-      const stripped = [...(pdu.unsigned?.invite_room_state ?? []), pdu].map(toStripped);
+      const stripped = [...strippedState(pdu, "invite_room_state"), toStripped(pdu)];
       invite[roomId] = { invite_state: { events: stripped } };
       empty = false;
     } else if (m.membership === "knock") {
@@ -517,7 +517,7 @@ async function buildSync(hs: Homeserver, p: SyncParams) {
       const knockPdu = await hs.rooms.getPdu(m.event_id);
       const ev = knockPdu ? { pdu: knockPdu } : null;
       if (!ev) continue;
-      knock[roomId] = { knock_state: { events: [...(ev.pdu.unsigned?.knock_room_state ?? []), ev.pdu].map(toStripped) } };
+      knock[roomId] = { knock_state: { events: [...strippedState(ev.pdu, "knock_room_state"), toStripped(ev.pdu)] } };
       empty = false;
     } else {
       // leave or ban
@@ -846,7 +846,7 @@ async function profileUpdatesFor(hs: Homeserver, p: SyncParams, memberships: Row
       if (c.membership === "join" && myRooms.has(c.room_id)) {
         // Profile changes re-send the join; only an actual new join counts as newly shared.
         const ev = await hs.rooms.getEvent(c.event_id);
-        if (ev?.pdu.unsigned?.prev_content?.membership !== "join") full.add(c.user_id);
+        if (!ev || previousMembership(ev.pdu) !== "join") full.add(c.user_id);
       } else if (!sharing.has(c.user_id) && (myRooms.has(c.room_id) || memberships.some((m) => m.room_id === c.room_id)))
         out[c.user_id] = { profile_updates: null };
     }

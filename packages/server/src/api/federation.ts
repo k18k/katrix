@@ -4,7 +4,17 @@ import { MatrixError, errors } from "#core/errors.ts";
 import { fullProfile } from "#core/profile.ts";
 import { relationshipsForServer } from "#api/relationships.ts";
 import { authEventKeys, checkAuth, getState, membershipOf, powerLevels, userLevel, type StateMap } from "#core/authrules.ts";
-import { SUPPORTED_ROOM_VERSIONS, eventIdOf, isPdu, redact, roomVersionFeatures, splitStateKey, stateKey, type PDU } from "#core/events.ts";
+import {
+  SUPPORTED_ROOM_VERSIONS,
+  eventIdOf,
+  isPdu,
+  redact,
+  redactPdu,
+  roomVersionFeatures,
+  splitStateKey,
+  stateKey,
+  type PDU,
+} from "#core/events.ts";
 import { inviteDecision } from "#core/invitefilter.ts";
 import { randomToken, signJson, verifyJsonSignature } from "#core/crypto.ts";
 import type { StoredEvent } from "#core/rooms.ts";
@@ -149,7 +159,7 @@ async function makeMembership(
   const authIds = authEventKeys(draft, version)
     .map((k) => state.get(k)?.event_id)
     .filter((x): x is string => !!x);
-  const ref = (id: string, pdu?: PDU) => (f.legacyEventIds ? [id, pdu?.hashes ?? {}] : id);
+  const ref = (id: string, pdu?: PDU) => (f.legacyEventIds ? ([id, pdu?.hashes ?? {}] as const) : id);
   const authPdus = await hs.rooms.getPdus(authIds);
   const event: PDU = {
     type: M.ROOM.MEMBER,
@@ -566,7 +576,7 @@ export function registerFederationRoutes(r: Router): void {
           const ev = await hs.rooms.getEvent(id);
           if (!ev || ev.pdu.room_id !== roomId) continue;
           // Events the server may not see are returned redacted (so the DAG stays complete).
-          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : redact(ev.pdu, version));
+          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : redactPdu(ev.pdu, version));
           next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
         }
         frontier = next;
@@ -604,7 +614,7 @@ export function registerFederationRoutes(r: Router): void {
           seen.add(id);
           const ev = await eventInRoom(hs, roomId, id);
           if (!ev || ev.pdu.depth < minDepth) continue;
-          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : redact(ev.pdu, version));
+          out.push((await serverCanSee(hs, origin, ev)) ? ev.pdu : redactPdu(ev.pdu, version));
           next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
         }
         frontier = next;

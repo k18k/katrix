@@ -2,7 +2,7 @@ import { M, stringOrUndefined, UNSTABLE } from "@katrix/shared";
 import { MatrixError } from "#core/errors.ts";
 import { longPoll } from "#api/longpoll.ts";
 import { getState } from "#core/authrules.ts";
-import { splitStateKey, toClientEvent, type ClientEvent, type PDU } from "#core/events.ts";
+import { splitStateKey, strippedState, toClientEvent, type ClientEvent, type PDU } from "#core/events.ts";
 import type { Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { Router } from "#http/router.ts";
@@ -306,7 +306,7 @@ async function buildRoom(
     const ev = own?.event_id ? await hs.rooms.getEvent(own.event_id) : null;
     if (ev) {
       const key = info.membership === "invite" ? "invite_room_state" : "knock_room_state";
-      room[info.membership === "invite" ? "invite_state" : "knock_state"] = [...(ev.pdu.unsigned?.[key] ?? []), ev.pdu].map(toStripped);
+      room[info.membership === "invite" ? "invite_state" : "knock_state"] = [...strippedState(ev.pdu, key), toStripped(ev.pdu)];
     }
     return room;
   }

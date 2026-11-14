@@ -215,10 +215,11 @@ async function threads(ctx: RequestContext) {
         const ev = hs.rooms.formatEvent(r.ev, viewer);
         const info = latest.get(r.ev.pdu.event_id!)!;
         const latestEv = await hs.rooms.getEvent(info.latestId);
+        const relations = ev.unsigned?.[M.RELATIONS];
         ev.unsigned = {
           ...ev.unsigned,
           [M.RELATIONS]: {
-            ...ev.unsigned?.[M.RELATIONS],
+            ...(isObject(relations) ? relations : {}),
             [M.THREAD]: {
               latest_event: latestEv ? hs.rooms.formatEvent(latestEv, viewer) : undefined,
               count: info.count,

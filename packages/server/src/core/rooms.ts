@@ -6,7 +6,7 @@ import {
   SUPPORTED_ROOM_VERSIONS,
   eventIdOf,
   finalisePdu,
-  redact,
+  redactPdu,
   roomVersionFeatures,
   splitStateKey,
   stateKey,
@@ -477,8 +477,8 @@ export class RoomService {
       else pdu.redacts = draft.redacts;
     }
     if (features.legacyEventIds) {
-      pdu.prev_events = pdu.prev_events.map((id) => [id, {}]);
-      pdu.auth_events = pdu.auth_events.map((id) => [id, {}]);
+      pdu.prev_events = pdu.prev_events.map((id) => [eventIdOf(id), {}] as const);
+      pdu.auth_events = pdu.auth_events.map((id) => [eventIdOf(id), {}] as const);
     }
     if (!skipAuth) {
       if (features.v12) before.set(stateKey(M.ROOM.CREATE, ""), (await this.createEventOf(roomId))!);
@@ -1168,7 +1168,7 @@ export class RoomService {
     const pl = powerLevels(state, version);
     // Senders may always redact their own events; otherwise the redact level is needed.
     if (target.pdu.sender !== redaction.sender && userLevel(pl, redaction.sender) < pl.redact) return null;
-    const redacted = redact(target.pdu as Record<string, any>, version) as PDU;
+    const redacted = redactPdu(target.pdu, version);
     redacted.unsigned = { redacted_because: toClientEvent(redaction) };
     if (target.pdu.unsigned?.prev_content) redacted.unsigned.prev_content = target.pdu.unsigned.prev_content;
     return { targetId, target, redacted };

@@ -2,7 +2,7 @@ import { isValidAlias, isValidRoomId, isValidUserId, M, UNSTABLE } from "@katrix
 import { MatrixError, errors } from "#core/errors.ts";
 import { getState, ownerOfStateKey, powerLevels, roomCreators, userLevel, type StateMap } from "#core/authrules.ts";
 import { validatePowerLevelContent } from "#core/rooms.ts";
-import { SUPPORTED_ROOM_VERSIONS, roomVersionFeatures, splitStateKey, toClientEvent } from "#core/events.ts";
+import { SUPPORTED_ROOM_VERSIONS, previousMembership, roomVersionFeatures, splitStateKey, toClientEvent } from "#core/events.ts";
 import { assertNotSuspended, type Session } from "#core/auth.ts";
 import type { Homeserver } from "#homeserver.ts";
 import type { RequestContext, Router } from "#http/router.ts";
@@ -43,7 +43,7 @@ export async function visibleState(hs: Homeserver, roomId: string, userId: strin
   if (membership === "leave" || membership === "ban") {
     const ev = await hs.rooms.membershipEvent(roomId, userId);
     if (ev && ev.pdu.sender !== undefined) {
-      const previouslyJoined = ev.pdu.unsigned?.prev_content?.membership === "join" || membership === "ban";
+      const previouslyJoined = previousMembership(ev.pdu) === "join" || membership === "ban";
       if (previouslyJoined) return hs.rooms.stateAtSnapshot(ev.snapshot);
     }
   }

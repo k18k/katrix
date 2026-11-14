@@ -1,7 +1,7 @@
 import { M } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { redact } from "#core/events.ts";
+import { redact, redactPdu, strippedState } from "#core/events.ts";
 
 const base = {
   room_id: "!r:x",
@@ -67,4 +67,28 @@ test("join rules keep allow from v8; aliases keep content only up to v5", () => 
   const aliases = { ...base, type: M.ROOM.ALIASES, state_key: "x", content: { aliases: ["#a:x"] } };
   assert.deepEqual(redact(aliases, "5").content, { aliases: ["#a:x"] });
   assert.deepEqual(redact(aliases, "6").content, {});
+});
+
+// https://github.com/k18k/katrix/issues/128
+test("stripped state is read from unsigned, without the entries that are not stripped events", () => {
+  const create = { type: M.ROOM.CREATE, state_key: "", sender: "@bob:remote.example", content: { room_version: "10" } };
+  const event = { unsigned: { invite_room_state: [create, { type: M.ROOM.NAME }, "junk", { ...create, content: "x" }] } };
+  assert.deepEqual(strippedState(event, "invite_room_state"), [create]);
+  assert.deepEqual(strippedState(event, "knock_room_state"), []);
+  for (const value of [null, {}, { unsigned: "x" }, { unsigned: { invite_room_state: { create } } }])
+    assert.deepEqual(strippedState(value, "invite_room_state"), [], JSON.stringify(value));
+});
+
+test("a redacted PDU keeps the fields of a PDU and drops the rest", () => {
+  const kept = {
+    event_id: "$e",
+    room_id: "!room:localhost",
+    sender: "@alice:localhost",
+    type: M.ROOM.MESSAGE,
+    origin_server_ts: 1,
+    depth: 3,
+    prev_events: ["$prev"],
+    auth_events: ["$auth"],
+  };
+  assert.deepEqual(redactPdu({ ...kept, content: { body: "secret" }, unsigned: { age: 5 } }, "10"), { ...kept, content: {} });
 });

@@ -10,10 +10,12 @@ import {
   finalisePdu,
   isPdu,
   redact,
+  redactPdu,
   roomVersionFeatures,
   splitStateKey,
   stateKey,
   stripState,
+  strippedState,
   type PDU,
 } from "#core/events.ts";
 import { unpaddedBase64, urlSafeBase64 } from "#core/crypto.ts";
@@ -150,7 +152,7 @@ export class FederationService {
     }
     let pdu: PDU = { ...raw, event_id: eventId };
     if (raw.hashes?.sha256 !== computeContentHash(raw)) {
-      pdu = { ...redact(raw, version), event_id: eventId };
+      pdu = { ...redactPdu(raw, version), event_id: eventId };
     }
     if (f.v12 && pdu.type === M.ROOM.CREATE) pdu.room_id = roomId;
     return { pdu, joinAuthorisedSignatureValid };
@@ -378,8 +380,10 @@ export class FederationService {
     ]);
     if (!row) throw errors.notFound("Unknown room");
     const previous = await this.hs.rooms.getPdu(row.event_id);
-    const strippedCreate = (p: PDU | null | undefined) =>
-      (p?.unsigned?.invite_room_state ?? p?.unsigned?.knock_room_state ?? []).find((e: unknown) => isObject(e) && e.type === M.ROOM.CREATE);
+    const strippedCreate = (p: unknown) => {
+      const invite = strippedState(p, "invite_room_state");
+      return (invite.length ? invite : strippedState(p, "knock_room_state")).find((e) => e.type === M.ROOM.CREATE);
+    };
     let create = strippedCreate(previous);
     // https://github.com/k18k/katrix/issues/84: after a rejected knock or rescinded invite the latest
     // event is a leave without stripped state, the version fell back to 1, and the next event (from a newer room
