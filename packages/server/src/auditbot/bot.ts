@@ -2,7 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getFetchHandler } from "#http/adapters.ts";
 import type { Homeserver } from "#homeserver.ts";
+import { isObject, type ClientEvent, type SyncResponse } from "@katrix/shared";
 import { CryptoClient } from "#auditbot/client.ts";
+import type { ClientEvent as ServerClientEvent } from "#core/events.ts";
 import type { AuditRecord, AuditSink } from "#auditbot/sinks.ts";
 
 // The audit bot: an account of the server that is a member of every room and writes every event
@@ -40,9 +42,18 @@ export interface AuditBotOptions {
   keyWaitMs?: number;
 }
 
+/** A room event as the bot receives it, with the fields every record has. */
+type RoomEvent = ClientEvent & { event_id: string; sender: string; origin_server_ts: number };
+
+// https://github.com/k18k/katrix/issues/128: events and sync responses were Record<string, any>. They have the shared
+// types now; an event without an ID, sender or timestamp cannot be recorded and is skipped.
+function isRoomEvent(ev: ClientEvent): ev is RoomEvent {
+  return typeof ev.event_id === "string" && typeof ev.sender === "string" && typeof ev.origin_server_ts === "number";
+}
+
 interface PendingEvent {
   roomId: string;
-  event: Record<string, any>;
+  event: RoomEvent;
   since: number;
 }
 
@@ -136,24 +147,25 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
       }, options.joinDelayMs ?? 500),
     );
   };
-  const onEvent = (ev: Record<string, any>) => {
-    if (stopped || ev.type !== "m.room.member" || ev.state_key === userId) return;
-    if (ev.content?.membership === "join") joinWhenQuiet(ev.room_id);
+  const onEvent = (ev: ServerClientEvent) => {
+    if (stopped || ev.type !== "m.room.member" || ev.state_key === userId || !ev.room_id) return;
+    const roomId = ev.room_id;
+    if (ev.content?.membership === "join") joinWhenQuiet(roomId);
     // A room that turns out to be a DM after the bot joined it.
     if (options.rooms === "groups" && ev.content?.is_direct === true)
       void (async () => {
-        if (!(await hs.rooms.joinedMembers(ev.room_id)).includes(userId)) return;
+        if (!(await hs.rooms.joinedMembers(roomId)).includes(userId)) return;
         // https://github.com/k18k/katrix/issues/125: background failures here were discarded with .catch(() => {}), so a lost publish or
         // federation update left no trace; they are logged now, and deliberate ones carry a ts-pro-exception.
         await client
-          .request("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(ev.room_id)}/leave`, {})
+          .request("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/leave`, {})
           .catch((err) => hs.logger.warn("Audit bot failed to leave a direct message room", err));
-        hs.logger.info("Audit bot left a direct message room", ev.room_id);
+        hs.logger.info("Audit bot left a direct message room", roomId);
       })();
   };
   hs.on("event", onEvent);
 
-  const toRecord = (roomId: string, ev: Record<string, any>, extra: Partial<AuditRecord> = {}): AuditRecord => ({
+  const toRecord = (roomId: string, ev: RoomEvent, extra: Partial<AuditRecord> = {}): AuditRecord => ({
     recorded_at: Date.now(),
     room_id: roomId,
     event_id: ev.event_id,
@@ -168,11 +180,12 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
   });
 
   /** A record for an event, decrypting it when it is encrypted; null when its key is not here yet. */
-  const process = async (roomId: string, ev: Record<string, any>): Promise<AuditRecord | null> => {
+  const process = async (roomId: string, ev: RoomEvent): Promise<AuditRecord | null> => {
     if (ev.type !== "m.room.encrypted") return toRecord(roomId, ev);
     try {
       const decrypted = await client.decrypt(ev, roomId);
-      const clear = JSON.parse(decrypted.event) as Record<string, any>; // ts-pro-exception: matrix-sdk-crypto checked the decrypted event
+      const clear: unknown = JSON.parse(decrypted.event);
+      if (!isObject(clear) || typeof clear.type !== "string" || !isObject(clear.content)) return null;
       return toRecord(
         roomId,
         { ...ev, type: clear.type, content: clear.content },
@@ -205,12 +218,12 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
     await write(out.reverse());
   };
 
-  const handleSync = async (sync: Record<string, any>) => {
+  const handleSync = async (sync: SyncResponse) => {
     await client.receiveSync(sync);
     const out: AuditRecord[] = [];
-    for (const [roomId, room] of Object.entries<Record<string, any>>(sync.rooms?.join ?? {})) {
-      const timeline: Record<string, any>[] = room.timeline?.events ?? [];
-      const stateEvents: Record<string, any>[] = room.state?.events ?? [];
+    for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
+      const timeline = (room.timeline?.events ?? []).filter(isRoomEvent);
+      const stateEvents = (room.state?.events ?? []).filter(isRoomEvent);
       for (const ev of [...stateEvents, ...timeline]) {
         if (ev.type === "m.room.encryption") encryptedRooms.add(roomId);
       }
@@ -235,7 +248,7 @@ export async function startAuditBot(hs: Homeserver, options: AuditBotOptions): P
       try {
         const params = new URLSearchParams({ timeout: "30000", filter: JSON.stringify({ room: { timeline: { limit: 200 } } }) });
         if (state.since) params.set("since", state.since);
-        const sync = await client.request("GET", `/_matrix/client/v3/sync?${params}`, undefined, abort.signal);
+        const sync = await client.request<SyncResponse>("GET", `/_matrix/client/v3/sync?${params}`, undefined, abort.signal);
         await handleSync(sync);
         state.since = sync.next_batch;
         await save();

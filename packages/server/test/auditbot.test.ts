@@ -1,3 +1,4 @@
+import type { CreateRoomResponse, JoinedMembersResponse } from "@katrix/shared";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -54,11 +55,17 @@ test("the bot joins a new private room on its own and records its messages", asy
   const t = await setup();
   try {
     const alice = await t.user("alice");
-    const { room_id } = await alice.request("POST", "/_matrix/client/v3/createRoom", { preset: "private_chat", name: "Team" });
+    const { room_id } = await alice.request<CreateRoomResponse>("POST", "/_matrix/client/v3/createRoom", {
+      preset: "private_chat",
+      name: "Team",
+    });
     await until("the bot to join", async () => (await t.hs.rooms.joinedMembers(room_id)).includes(t.bot.userId));
     // Everyone sees that the room is recorded: the bot is a member, with a name that says so.
-    const members = await alice.request("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/joined_members`);
-    assert.equal(members.joined[t.bot.userId].display_name, "Audit log (this room is recorded)");
+    const members = await alice.request<JoinedMembersResponse>(
+      "GET",
+      `/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/joined_members`,
+    );
+    assert.equal(members.joined?.[t.bot.userId]?.display_name, "Audit log (this room is recorded)");
     await alice.request("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/t1`, {
       msgtype: "m.text",
       body: "plain hello",
@@ -80,7 +87,7 @@ test("e2e: the bot decrypts an end-to-end encrypted message sent by a real E2EE 
     const alice = await t.user("alice");
     await alice.open();
     await alice.flush(); // device keys and one-time keys
-    const { room_id } = await alice.request("POST", "/_matrix/client/v3/createRoom", {
+    const { room_id } = await alice.request<CreateRoomResponse>("POST", "/_matrix/client/v3/createRoom", {
       preset: "private_chat",
       initial_state: [{ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } }],
     });
@@ -107,12 +114,15 @@ test("rooms: groups leaves direct messages alone; the file sink writes one file 
   try {
     const alice = await t.user("alice");
     await t.user("bob");
-    const dm = await alice.request("POST", "/_matrix/client/v3/createRoom", {
+    const dm = await alice.request<CreateRoomResponse>("POST", "/_matrix/client/v3/createRoom", {
       preset: "trusted_private_chat",
       is_direct: true,
       invite: ["@bob:localhost"],
     });
-    const group = await alice.request("POST", "/_matrix/client/v3/createRoom", { preset: "private_chat", name: "Group" });
+    const group = await alice.request<CreateRoomResponse>("POST", "/_matrix/client/v3/createRoom", {
+      preset: "private_chat",
+      name: "Group",
+    });
     await until("the bot to join the group", async () => (await t.hs.rooms.joinedMembers(group.room_id)).includes(t.bot.userId));
     await t.bot.sweep();
     assert.equal((await t.hs.rooms.joinedMembers(dm.room_id)).includes(t.bot.userId), false);
@@ -154,7 +164,7 @@ test("after a restart the bot keeps its device and room keys, and goes on record
     const alice = new CryptoClient({ fetch, userId, deviceId: s.device_id, accessToken: s.access_token });
     await alice.open();
     await alice.flush();
-    const { room_id } = await alice.request("POST", "/_matrix/client/v3/createRoom", {
+    const { room_id } = await alice.request<CreateRoomResponse>("POST", "/_matrix/client/v3/createRoom", {
       preset: "private_chat",
       initial_state: [{ type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } }],
     });

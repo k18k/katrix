@@ -1,3 +1,4 @@
+import { isObject, stringOrUndefined, type SyncResponse } from "@katrix/shared";
 import {
   DeviceId,
   DeviceLists,
@@ -31,10 +32,10 @@ function signatureUploadBody(body: string): string {
 
 export class MatrixError extends Error {
   readonly status: number;
-  readonly body: Record<string, any>;
+  readonly body: Record<string, unknown>;
 
-  constructor(status: number, body: Record<string, any>) {
-    super(`${status} ${body.errcode ?? ""} ${body.error ?? ""}`.trim());
+  constructor(status: number, body: Record<string, unknown>) {
+    super(`${status} ${stringOrUndefined(body.errcode) ?? ""} ${stringOrUndefined(body.error) ?? ""}`.trim());
     this.status = status;
     this.body = body;
   }
@@ -72,7 +73,9 @@ export class CryptoClient {
     );
   }
 
-  async request<T = any>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  // https://github.com/k18k/katrix/issues/128: responses defaulted to any; callers name the response type they expect
+  // (the shared endpoint types), and errors carry an object of unknown fields.
+  async request<T = unknown>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const res = await this.fetch(
       new Request(`${this.baseUrl}${path}`, {
         method,
@@ -82,15 +85,15 @@ export class CryptoClient {
       }),
     );
     const text = await res.text();
-    const json = text ? JSON.parse(text) : {};
-    if (!res.ok) throw new MatrixError(res.status, json);
+    const json: unknown = text ? JSON.parse(text) : {};
+    if (!res.ok) throw new MatrixError(res.status, isObject(json) ? json : {});
     return json as T; // ts-pro-exception: the bot talks only to its own homeserver, in-process
   }
 
   /** Feed a /sync response to the crypto machine, then send what it needs sent. */
-  async receiveSync(sync: Record<string, any>): Promise<void> {
-    const changed = (sync.device_lists?.changed ?? []).map((u: string) => new UserId(u));
-    const left = (sync.device_lists?.left ?? []).map((u: string) => new UserId(u));
+  async receiveSync(sync: SyncResponse): Promise<void> {
+    const changed = (sync.device_lists?.changed ?? []).map((u) => new UserId(u));
+    const left = (sync.device_lists?.left ?? []).map((u) => new UserId(u));
     await this.machine.receiveSyncChanges(
       JSON.stringify(sync.to_device?.events ?? []),
       new DeviceLists(changed, left),
@@ -154,7 +157,7 @@ export class CryptoClient {
     await this.flush();
   }
 
-  decrypt(event: Record<string, any>, roomId: string): Promise<DecryptedRoomEvent> {
+  decrypt(event: object, roomId: string): Promise<DecryptedRoomEvent> {
     return this.machine.decryptRoomEvent(JSON.stringify(event), new RoomId(roomId));
   }
 
