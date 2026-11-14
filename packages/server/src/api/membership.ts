@@ -14,12 +14,10 @@ import { requireRoom } from "#api/rooms.ts";
  * Invite by email address or phone number (spec "Third-party invites"): invite the Matrix user the
  * identity server knows for it, or store the invite there and emit an m.room.third_party_invite.
  */
-async function inviteByThreepid(ctx: RequestContext, s: Session, body: Record<string, any>): Promise<Record<string, never>> {
+async function inviteByThreepid(ctx: RequestContext, s: Session, raw: Record<string, unknown>): Promise<Record<string, never>> {
   const hs = ctx.hs;
   const roomId = ctx.params.roomId;
-  for (const k of ["id_server", "id_access_token", "medium", "address"]) {
-    if (typeof body[k] !== "string") throw errors.missingParam(`Missing ${k}`);
-  }
+  const body = threepidInvite(raw);
   await requireRoom(hs, roomId);
   await hs.rooms.requireJoined(roomId, s.userId);
   const mxid = await hs.identityServers.lookup(body.id_server, body.id_access_token, body.medium, body.address);
@@ -44,8 +42,8 @@ async function inviteByThreepid(ctx: RequestContext, s: Session, body: Record<st
     sender_display_name: profile.displayname,
     sender_avatar_url: profile.avatar_url,
   };
-  for (const k of Object.keys(invite)) if (invite[k] === undefined || invite[k] === null) delete invite[k];
-  const stored = await hs.identityServers.storeInvite(body.id_server, body.id_access_token, invite);
+  const present = Object.fromEntries(Object.entries(invite).filter(([, value]) => value !== undefined && value !== null));
+  const stored = await hs.identityServers.storeInvite(body.id_server, body.id_access_token, present);
   const [first] = stored.public_keys;
   await hs.rooms.sendEvent(roomId, s.userId, {
     type: M.ROOM.THIRD_PARTY_INVITE,
@@ -58,6 +56,17 @@ async function inviteByThreepid(ctx: RequestContext, s: Session, body: Record<st
     },
   });
   return {};
+}
+
+// https://github.com/k18k/katrix/issues/128: the fields were checked in a loop over names, which left them typed any.
+/** The fields of an invite by third-party ID; throws M_MISSING_PARAM for one that is not a string. */
+function threepidInvite(body: Record<string, unknown>) {
+  const { id_server, id_access_token, medium, address } = body;
+  if (typeof id_server !== "string") throw errors.missingParam("Missing id_server");
+  if (typeof id_access_token !== "string") throw errors.missingParam("Missing id_access_token");
+  if (typeof medium !== "string") throw errors.missingParam("Missing medium");
+  if (typeof address !== "string") throw errors.missingParam("Missing address");
+  return { id_server, id_access_token, medium, address };
 }
 
 export const membershipBody = body({ user_id: lenient(v.string()), reason: lenient(v.string()) });
@@ -124,11 +133,11 @@ export function registerMembershipRoutes(r: Router): void {
     const servers = [...ctx.query.getAll("via"), ...ctx.query.getAll("server_name"), ...resolvedServers];
     // Joining with an identity server's proof first turns the pending third-party invite into an invite.
     if (isObject(third_party_signed)) {
-      const signed = third_party_signed as Record<string, any>;
+      const signed = third_party_signed;
       if (typeof signed.sender !== "string" || signed.mxid !== s.userId || typeof signed.token !== "string")
         throw errors.badJson("Invalid third_party_signed");
       // The identity server's signature covers the whole object (sender included): pass it on unchanged.
-      const sender: string = signed.sender;
+      const sender = signed.sender;
       const proof = signed;
       if ((await ctx.hs.rooms.membership(roomId, s.userId)) !== "invite") {
         const event = {

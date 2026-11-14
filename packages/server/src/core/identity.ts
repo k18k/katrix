@@ -1,3 +1,4 @@
+import { isObject, isStrings } from "@katrix/shared";
 import { createHash } from "node:crypto";
 import { MatrixError } from "#core/errors.ts";
 import type { Homeserver } from "#homeserver.ts";
@@ -25,12 +26,7 @@ export class IdentityServers {
     return `${this.hs.config.threepid.identityServerProtocol}://${idServer}`;
   }
 
-  private async call(
-    idServer: string,
-    method: string,
-    path: string,
-    opts: { token?: string; body?: unknown; signed?: boolean } = {},
-  ): Promise<any> {
+  private async call(idServer: string, method: string, path: string, opts: { token?: string; body?: unknown; signed?: boolean } = {}) {
     const headers: Record<string, string> = { accept: "application/json" };
     if (opts.body !== undefined) headers["content-type"] = "application/json";
     if (opts.token) headers.authorization = `Bearer ${opts.token}`;
@@ -49,7 +45,10 @@ export class IdentityServers {
     } catch (err) {
       throw new MatrixError(502, "M_UNKNOWN", `Identity server ${idServer} unreachable: ${(err as Error).message}`);
     }
-    const json: any = await res.json().catch(() => ({}));
+    // https://github.com/k18k/katrix/issues/128: the identity server's answer was any; it is an object of unknown fields now
+    // (an empty one for anything else), and each method checks what it reads.
+    const parsed: unknown = await res.json().catch(() => ({}));
+    const json = isObject(parsed) ? parsed : {};
     if (!res.ok) {
       throw new MatrixError(
         res.status >= 500 ? 502 : res.status,
@@ -63,7 +62,7 @@ export class IdentityServers {
   /** The Matrix user ID bound to a 3PID, if any. */
   async lookup(idServer: string, token: string, medium: string, address: string): Promise<string | null> {
     const details = await this.call(idServer, "GET", "/_matrix/identity/v2/hash_details", { token });
-    const algorithms: string[] = Array.isArray(details.algorithms) ? details.algorithms : [];
+    const algorithms = isStrings(details.algorithms) ? details.algorithms : [];
     let query: string, algorithm: string;
     if (algorithms.includes("sha256") && typeof details.lookup_pepper === "string") {
       algorithm = "sha256";
@@ -78,19 +77,25 @@ export class IdentityServers {
       token,
       body: { addresses: [query], algorithm, pepper: details.lookup_pepper ?? "" },
     });
-    const mxid = res.mappings?.[query];
+    const mxid = isObject(res.mappings) ? res.mappings[query] : undefined;
     return typeof mxid === "string" ? mxid : null;
   }
 
   async storeInvite(idServer: string, token: string, invite: Record<string, unknown>): Promise<StoredInvite> {
     const res = await this.call(idServer, "POST", "/_matrix/identity/v2/store-invite", { token, body: invite });
-    if (typeof res.token !== "string" || !Array.isArray(res.public_keys))
+    const keys: unknown[] = Array.isArray(res.public_keys) ? res.public_keys : [];
+    const publicKeys = keys.flatMap((k) =>
+      isObject(k) && typeof k.public_key === "string" && typeof k.key_validity_url === "string"
+        ? [{ public_key: k.public_key, key_validity_url: k.key_validity_url }]
+        : [],
+    );
+    if (typeof res.token !== "string" || typeof res.display_name !== "string" || publicKeys.length === 0)
       throw new MatrixError(502, "M_UNKNOWN", "Invalid store-invite response");
-    return res;
+    return { token: res.token, public_keys: publicKeys, display_name: res.display_name } satisfies StoredInvite;
   }
 
   /** Returns the identity server's record of the binding (medium, address, mxid...). */
-  async bind(idServer: string, token: string, sid: string, clientSecret: string, mxid: string): Promise<Record<string, any>> {
+  async bind(idServer: string, token: string, sid: string, clientSecret: string, mxid: string) {
     return this.call(idServer, "POST", "/_matrix/identity/v2/3pid/bind", { token, body: { sid, client_secret: clientSecret, mxid } });
   }
 
