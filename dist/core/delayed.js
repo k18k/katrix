@@ -1,6 +1,6 @@
-import { UNSTABLE } from "../shared/m.js";
-import { randomString } from "./crypto.js";
+import { UNSTABLE } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "./errors.js";
+import { randomString } from "./crypto.js";
 // src/core/delayed.ts
 /** When a delayed event whose send failed is tried again. */
 const RETRY_MS = 1e4;

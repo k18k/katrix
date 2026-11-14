@@ -1,5 +1,5 @@
-import { randomString } from "./crypto.js";
 import { MatrixError, errors } from "./errors.js";
+import { randomString } from "./crypto.js";
 import { toMsisdn } from "./phone.js";
 import { escapeHtml } from "./html.js";
 import { randomInt } from "node:crypto";
@@ -146,7 +146,8 @@ var ThreepidService = class {
 		if (!this.enabled) throw errors.threepidDenied();
 		if (!this.canValidate(medium)) throw new MatrixError(400, "M_THREEPID_MEDIUM_NOT_SUPPORTED", `This server cannot validate ${medium === "email" ? "email addresses" : "phone numbers"}`);
 		if (typeof body.client_secret !== "string" || !CLIENT_SECRET_RE.test(body.client_secret)) throw errors.invalidParam("Invalid client_secret");
-		if (!Number.isInteger(body.send_attempt)) throw errors.invalidParam("send_attempt must be an integer");
+		const sendAttempt = body.send_attempt;
+		if (typeof sendAttempt !== "number" || !Number.isInteger(sendAttempt)) throw errors.invalidParam("send_attempt must be an integer");
 		let address;
 		if (medium === "email") {
 			if (typeof body.email !== "string") throw errors.missingParam("Missing email");
@@ -167,12 +168,12 @@ var ThreepidService = class {
 			value: body.client_secret
 		}] })).find((s) => s.medium === medium && s.address === address && !this.expired(s));
 		let session = existing;
-		if (existing && body.send_attempt <= existing.send_attempt) return this.tokenResponse(existing);
+		if (existing && sendAttempt <= existing.send_attempt) return this.tokenResponse(existing);
 		if (existing) await this.hs.db.update("threepid_sessions", [{
 			field: "sid",
 			value: existing.sid
 		}], {
-			send_attempt: body.send_attempt,
+			send_attempt: sendAttempt,
 			next_link: nextLink
 		});
 		else {
@@ -181,7 +182,7 @@ var ThreepidService = class {
 				client_secret: body.client_secret,
 				medium,
 				address,
-				send_attempt: body.send_attempt,
+				send_attempt: sendAttempt,
 				next_link: nextLink,
 				token: medium === "email" ? randomString(32) : String(randomInt(0, 1e6)).padStart(6, "0"),
 				created_ts: Date.now(),

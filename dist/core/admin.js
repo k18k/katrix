@@ -1,9 +1,9 @@
-import { LOCALPART_RE, isValidUserId } from "../shared/ids.js";
-import { M } from "../shared/m.js";
-import { randomString } from "./crypto.js";
+import { LOCALPART_RE, isValidUserId } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
 import { errors } from "./errors.js";
-import { getState, membershipOf, powerLevels, userLevel } from "./authrules.js";
+import { randomString } from "./crypto.js";
 import { createUser } from "../api/account.js";
+import { getState, membershipOf, powerLevels, userLevel } from "./authrules.js";
 // src/core/admin.ts
 /** Programmatic administration, for embedding applications and the admin HTTP API. */
 var AdminService = class {
@@ -98,7 +98,7 @@ var AdminService = class {
 			"invite",
 			"knock"
 		]) for (const roomId of await this.hs.rooms.roomsForUser(userId, membership)) try {
-			await this.hs.rooms.setMembership(roomId, userId, userId, "leave");
+			await this.hs.membership.setMembership(roomId, userId, userId, "leave");
 		} catch {}
 		await this.hs.auth.deleteAllDevices(userId);
 		await this.hs.threepids.removeAll(userId);
@@ -153,7 +153,7 @@ var AdminService = class {
 	*/
 	async joinUser(userId, roomIdOrAlias) {
 		if (!this.hs.isLocalUser(userId) || !await this.getUser(userId)) throw errors.notFound("Unknown user");
-		const roomId = await this.hs.rooms.resolveRoomIdOrAlias(roomIdOrAlias);
+		const roomId = await this.hs.membership.resolveRoomIdOrAlias(roomIdOrAlias);
 		const version = await this.hs.rooms.roomVersion(roomId);
 		if (!version) throw errors.notFound("Unknown room");
 		const state = await this.hs.rooms.currentState(roomId);
@@ -165,9 +165,9 @@ var AdminService = class {
 			const pl = powerLevels(state, version);
 			const inviter = (await this.hs.rooms.joinedMembers(roomId)).find((m) => this.hs.isLocalUser(m) && userLevel(pl, m) >= pl.invite);
 			if (!inviter) throw errors.forbidden("No local member of the room may invite");
-			await this.hs.rooms.invite(roomId, inviter, userId);
+			await this.hs.membership.invite(roomId, inviter, userId);
 		}
-		await this.hs.rooms.join(userId, roomId);
+		await this.hs.membership.join(userId, roomId);
 		return roomId;
 	}
 	async listRooms(opts = {}) {
@@ -178,10 +178,12 @@ var AdminService = class {
 		const from = opts.from ?? 0;
 		const page = rows.slice(from, from + (opts.limit ?? 100));
 		return {
-			rooms: await Promise.all(page.map(async (r) => ({
-				...r,
-				joined_members: (await this.hs.rooms.joinedMembers(r.room_id)).length
-			}))),
+			rooms: await Promise.all(page.map(async (r) => {
+				return {
+					...r,
+					joined_members: (await this.hs.rooms.joinedMembers(r.room_id)).length
+				};
+			})),
 			total: rows.length
 		};
 	}
@@ -202,7 +204,7 @@ var AdminService = class {
 		}] })) {
 			if (!this.hs.isLocalUser(row.user_id)) continue;
 			try {
-				await this.hs.rooms.setMembership(roomId, row.user_id, row.user_id, "leave", opts.reason);
+				await this.hs.membership.setMembership(roomId, row.user_id, row.user_id, "leave", opts.reason);
 				kicked.push(row.user_id);
 			} catch (err) {
 				this.hs.logger.warn("Could not remove", row.user_id, "from", roomId, err);
@@ -283,7 +285,7 @@ var AdminService = class {
 		}])) await createUser(this.hs, noticeUser.slice(1).split(":")[0], { displayname: this.hs.config.serverNotices.displayName });
 		const roomId = await this.noticeRoomFor(userId);
 		const membership = await this.hs.rooms.membership(roomId, userId);
-		if (membership !== "join" && membership !== "invite") await this.hs.rooms.invite(roomId, noticeUser, userId);
+		if (membership !== "join" && membership !== "invite") await this.hs.membership.invite(roomId, noticeUser, userId);
 		const eventId = await this.hs.rooms.sendEvent(roomId, noticeUser, {
 			type: opts.type ?? M.ROOM.MESSAGE,
 			content

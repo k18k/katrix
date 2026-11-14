@@ -1,13 +1,13 @@
-import { isValidUserId } from "../shared/ids.js";
-import { isObject, stringOrUndefined } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { MatrixError, errors } from "../core/errors.js";
-import { getState } from "../core/authrules.js";
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
+import { isValidUserId } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
 import { assertNotSuspended } from "../core/auth.js";
+import { getState } from "../core/authrules.js";
+import { MatrixError, errors } from "../core/errors.js";
+import { BUILTIN_FIELDS, fullProfile, profileSize, setProfileField } from "../core/profile.js";
+import { procedure } from "../http/procedure.js";
 import { v } from "../core/vpm.js";
 import { body, fail, lenient } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
-import { BUILTIN_FIELDS, fullProfile, profileSize, setProfileField } from "../core/profile.js";
 // src/api/profile.ts
 async function remoteProfile(ctx, field) {
 	if (!isValidUserId(ctx.params.userId)) throw errors.invalidParam("Invalid user ID");

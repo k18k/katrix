@@ -41,7 +41,8 @@ async function drain(req, chunks, budget, timeoutMs) {
 /** How long a response waits, after it was sent, for the rest of a body nobody read (#103). */
 const DRAIN_MS = 5e3;
 async function toWebRequest(req) {
-	const proto = req.socket?.encrypted ? "https" : "http";
+	const socket = req.socket;
+	const proto = socket && "encrypted" in socket && socket.encrypted ? "https" : "http";
 	const host = req.headers.host ?? "localhost";
 	const url = new URL(req.originalUrl ?? req.url ?? "/", `${proto}://${host}`);
 	const headers = new Headers();
@@ -56,7 +57,8 @@ async function toWebRequest(req) {
 	if (method !== "GET" && method !== "HEAD") {
 		const pre = req.body;
 		if (pre !== void 0 && pre !== null && req.readableEnded !== false) {
-			if (pre instanceof Uint8Array || typeof pre === "string") body = pre;
+			if (typeof pre === "string") body = pre;
+			else if (pre instanceof Uint8Array) body = pre;
 			else if (typeof pre === "object" && Object.keys(pre).length === 0 && headers.get("content-length") === null) body = void 0;
 			else body = JSON.stringify(pre);
 			headers.delete("content-length");

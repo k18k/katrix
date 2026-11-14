@@ -1,6 +1,6 @@
-import { isObject } from "../shared/json.js";
-import { M, UNSTABLE } from "../shared/m.js";
-import { globMatch } from "../shared/glob.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
+import { globMatch } from "../packages/shared/src/glob.js";
 // src/core/invitefilter.ts
 const INVITE_CONFIG_TYPE = UNSTABLE.ORG.MATRIX.MSC4155.INVITE_PERMISSION_CONFIG;
 /**

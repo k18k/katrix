@@ -1,6 +1,6 @@
+import { globMatch, globSearchWords } from "./glob.js";
 import { isObject } from "./json.js";
 import { M, UNSTABLE } from "./m.js";
-import { globMatch, globSearchWords } from "./glob.js";
 // ../shared/src/push.ts
 /**
 * The kinds of push rules, in the order they are evaluated. `postcontent` is MSC4306's (thread

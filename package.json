@@ -1,6 +1,6 @@
 {
   "name": "@katrix/server",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Katrix: a framework- and database-agnostic Matrix homeserver library for Node.js",
   "keywords": [
     "chat",

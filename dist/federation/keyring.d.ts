@@ -15,11 +15,18 @@ export declare class KeyRing {
   private remember;
   private fetchKeys;
   private doFetch;
-  /** Validate and store a `/_matrix/key/v2/server` response. */
-  ingestServerKeys(serverName: string, body: Record<string, any>): Promise<void>;
+  /** Validate and store a `/_matrix/key/v2/server` response; resolves whether it was accepted. */
+  ingestServerKeys(serverName: string, body: Record<string, unknown>): Promise<boolean>;
   /** Verify that `obj` carries a valid signature from `serverName`. */
-  verifySignedBy(obj: Record<string, any>, serverName: string, minValidUntil?: number): Promise<boolean>;
+  verifySignedBy(obj: object, serverName: string, minValidUntil?: number): Promise<boolean>;
   /** Cached keys in `/_matrix/key/v2/query` format (we act as a basic notary for keys we know). */
-  knownKeys(serverName: string): Promise<Record<string, any>[]>;
+  knownKeys(serverName: string): Promise<{
+    server_name: string;
+    valid_until_ts: number;
+    verify_keys: Record<string, {
+      key: string;
+    }>;
+    old_verify_keys: {};
+  }[]>;
 }
 //# sourceMappingURL=keyring.d.ts.map

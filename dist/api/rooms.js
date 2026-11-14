@@ -1,14 +1,15 @@
-import { isValidAlias, isValidRoomId, isValidUserId } from "../shared/ids.js";
-import { M, UNSTABLE } from "../shared/m.js";
-import { SUPPORTED_ROOM_VERSIONS, roomVersionFeatures, splitStateKey, toClientEvent } from "../core/events.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { isValidAlias, isValidRoomId, isValidUserId } from "../packages/shared/src/ids.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { getState, ownerOfStateKey, powerLevels, roomCreators, userLevel } from "../core/authrules.js";
-import { inviteDecision } from "../core/invitefilter.js";
 import { validatePowerLevelContent } from "../core/rooms.js";
+import { SUPPORTED_ROOM_VERSIONS, previousMembership, roomVersionFeatures, splitStateKey, toClientEvent } from "../core/events.js";
 import { assertNotSuspended } from "../core/auth.js";
+import { procedure } from "../http/procedure.js";
+import { inviteDecision } from "../core/invitefilter.js";
 import { v } from "../core/vpm.js";
 import { body, fail } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
 // src/api/rooms.ts
 const parseToken = (token) => {
 	if (token === null || token === "") return null;
@@ -44,7 +45,7 @@ async function visibleState(hs, roomId, userId) {
 	if (membership === "leave" || membership === "ban") {
 		const ev = await hs.rooms.membershipEvent(roomId, userId);
 		if (ev && ev.pdu.sender !== void 0) {
-			if (ev.pdu.unsigned?.prev_content?.membership === "join" || membership === "ban") return hs.rooms.stateAtSnapshot(ev.snapshot);
+			if (previousMembership(ev.pdu) === "join" || membership === "ban") return hs.rooms.stateAtSnapshot(ev.snapshot);
 		}
 	}
 	throw errors.forbidden("You are not a member of this room");
@@ -60,7 +61,8 @@ async function validateStateEvent(hs, roomId, type, content, stateKeyValue = "")
 		validatePowerLevelContent(content, roomCreators(await hs.rooms.currentState(roomId), version));
 	}
 	if (type === M.ROOM.CANONICAL_ALIAS) {
-		const aliases = [content.alias, ...Array.isArray(content.alt_aliases) ? content.alt_aliases : []].filter((a) => a !== void 0 && a !== null);
+		const alt = Array.isArray(content.alt_aliases) ? content.alt_aliases : [];
+		const aliases = [content.alias, ...alt].filter((a) => a !== void 0 && a !== null);
 		if (content.alt_aliases !== void 0 && !Array.isArray(content.alt_aliases)) throw new MatrixError(400, "M_INVALID_PARAM", "alt_aliases must be a list");
 		for (const alias of aliases) {
 			if (!isValidAlias(alias)) throw new MatrixError(400, "M_INVALID_PARAM", "Invalid alias");
@@ -100,7 +102,7 @@ async function upgradeRoom(hs, s, roomId, newVersion, additionalCreators) {
 			limit: 1
 		}))[0].event_id
 	};
-	const copyTypes = [
+	const initialState = [
 		M.ROOM.SERVER_ACL,
 		M.ROOM.ENCRYPTION,
 		M.ROOM.NAME,
@@ -110,41 +112,34 @@ async function upgradeRoom(hs, s, roomId, newVersion, additionalCreators) {
 		M.ROOM.HISTORY_VISIBILITY,
 		M.ROOM.JOIN_RULES,
 		M.ROOM.POWER_LEVELS
-	];
-	const initialState = [];
-	for (const t of copyTypes) {
+	].flatMap((t) => {
 		const ev = getState(state, t);
-		if (ev && t !== M.ROOM.POWER_LEVELS) initialState.push({
+		return ev && t !== M.ROOM.POWER_LEVELS ? [{
 			type: t,
 			state_key: "",
 			content: ev.content
-		});
-	}
-	let oldPl = structuredClone(getState(state, M.ROOM.POWER_LEVELS)?.content ?? {});
+		}] : [];
+	});
+	const plContent = structuredClone(getState(state, M.ROOM.POWER_LEVELS)?.content ?? {});
+	const oldUsers = isObject(plContent.users) ? plContent.users : {};
 	const isPublic = (await hs.db.findOne("rooms", [{
 		field: "room_id",
 		value: roomId
 	}]))?.is_public;
-	let override;
-	if (toV12) {
-		const creators = /* @__PURE__ */ new Set([s.userId, ...Array.isArray(additionalCreators) ? additionalCreators : []]);
-		const users = { ...oldPl.users };
-		for (const u of creators) delete users[u];
-		oldPl = {
-			...oldPl,
-			users
-		};
-		override = oldPl;
-	} else {
-		const level = userLevel(pl, s.userId);
-		override = {
-			...oldPl,
-			users: {
-				...oldPl.users,
-				[s.userId]: Number.isFinite(level) ? Math.max(level, 100) : 100
-			}
-		};
-	}
+	const extra = Array.isArray(additionalCreators) ? additionalCreators : [];
+	const creators = /* @__PURE__ */ new Set([s.userId, ...extra]);
+	const oldPl = toV12 ? {
+		...plContent,
+		users: Object.fromEntries(Object.entries(oldUsers).filter(([u]) => !creators.has(u)))
+	} : plContent;
+	const level = userLevel(pl, s.userId);
+	const override = toV12 ? oldPl : {
+		...oldPl,
+		users: {
+			...oldUsers,
+			[s.userId]: Number.isFinite(level) ? Math.max(level, 100) : 100
+		}
+	};
 	const { room_id: newRoomId } = await hs.rooms.createRoom(s.userId, {
 		room_version: newVersion,
 		creation_content: creationContent,
@@ -195,8 +190,8 @@ async function upgradeRoom(hs, s, roomId, newVersion, additionalCreators) {
 	});
 	const restricted = {
 		...oldPl,
-		events_default: Math.max(50, oldPl.events_default ?? 0),
-		invite: Math.max(50, oldPl.invite ?? 0)
+		events_default: Math.max(50, pl.events_default),
+		invite: Math.max(50, pl.invite)
 	};
 	await hs.rooms.sendEvent(roomId, s.userId, {
 		type: M.ROOM.POWER_LEVELS,
@@ -404,8 +399,7 @@ function registerRoomRoutes(r) {
 			await requireRoom(ctx.hs, roomId);
 			if (!await ownEvent(ctx.hs, s.userId, ctx.params.eventId)) await assertNotSuspended(ctx.hs, s, roomId);
 			await ctx.hs.rooms.checkRedactionAllowed(roomId, s.userId, ctx.params.eventId);
-			const content = {};
-			if (typeof body.reason === "string") content.reason = body.reason;
+			const content = typeof body.reason === "string" ? { reason: body.reason } : {};
 			return { event_id: await ctx.hs.rooms.sendEvent(roomId, s.userId, {
 				type: M.ROOM.REDACTION,
 				content,

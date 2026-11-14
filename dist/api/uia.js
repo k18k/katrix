@@ -1,7 +1,7 @@
-import { isObject } from "../shared/json.js";
-import { M, UNSTABLE } from "../shared/m.js";
-import { randomString } from "../core/crypto.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
+import { randomString } from "../core/crypto.js";
 import { crossSigningResetAllowed } from "../core/oauthserver.js";
 // src/api/uia.ts
 const UIA_TTL_MS = 6e5;

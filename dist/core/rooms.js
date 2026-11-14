@@ -1,21 +1,17 @@
-import { isValidUserId, parseId } from "../shared/ids.js";
-import { isObject, stringOrUndefined } from "../shared/json.js";
-import { M } from "../shared/m.js";
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
+import { isValidUserId } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
 import { CLUSTER_RESYNC } from "./cluster.js";
-import { SUPPORTED_ROOM_VERSIONS, eventIdOf, finalisePdu, redact, roomVersionFeatures, splitStateKey, stateKey, toClientEvent } from "./events.js";
 import { MatrixError, errors } from "./errors.js";
+import { eventIdOf, finalisePdu, redactPdu, roomVersionFeatures, splitStateKey, stateKey, toClientEvent } from "./events.js";
 import { authEventKeys, authStateFromAuthEvents, checkAuth, getState, membershipOf, powerLevels, userLevel } from "./authrules.js";
 import { resolveState } from "./stateres.js";
 import { generateRoomId } from "./ids.js";
 import { copyRoomPushRules } from "./pushrules.js";
-import { inviteDecision } from "./invitefilter.js";
+import { initialPowerLevels, parseCreateRoom } from "./createroom.js";
 // src/core/rooms.ts
 const PARTIAL_REJECTION = "Partial state: ";
 /** Thrown when the state before an event cannot be computed because predecessors are unknown. */
-/** The room ID of the room a create event's content says this room replaces. */
-function predecessorOf(content) {
-	return isObject(content?.predecessor) ? stringOrUndefined(content.predecessor.room_id) : void 0;
-}
 var MissingStateError = class extends Error {
 	eventIds;
 	constructor(eventIds) {
@@ -399,8 +395,8 @@ var RoomService = class {
 			else pdu.redacts = draft.redacts;
 		}
 		if (features.legacyEventIds) {
-			pdu.prev_events = pdu.prev_events.map((id) => [id, {}]);
-			pdu.auth_events = pdu.auth_events.map((id) => [id, {}]);
+			pdu.prev_events = pdu.prev_events.map((id) => [eventIdOf(id), {}]);
+			pdu.auth_events = pdu.auth_events.map((id) => [eventIdOf(id), {}]);
 		}
 		if (!skipAuth) {
 			if (features.v12) before.set(stateKey(M.ROOM.CREATE, ""), await this.createEventOf(roomId));
@@ -991,7 +987,7 @@ var RoomService = class {
 			});
 			const memberChanges = stateChanges.filter((c) => c.key.startsWith("m.room.member\0"));
 			if (memberChanges.length) {
-				this.sharingCache.clear();
+				this.forgetSharing(newState, memberChanges.map((c) => splitStateKey(c.key)[1]));
 				for (const c of memberChanges) {
 					const userId = splitStateKey(c.key)[1];
 					if (this.hs.isLocalUser(userId) || c.eventId === eventId) await this.hs.keys.markDeviceListChanged(userId, false);
@@ -1018,7 +1014,7 @@ var RoomService = class {
 				if (opts.local && !opts.noFederate) this.hs.federation.onLocalEvent(view, newState);
 				if (this.hs.appservices.registrations.length) await this.hs.appservices.onEvent(view, newState).catch((err) => this.hs.logger.warn("Appservice push failed", err));
 				if (isState) await this.hs.delayedEvents.onStateEvent(roomId, pdu.type, pdu.state_key, sender).catch((err) => this.hs.logger.warn("Delayed events state update failed", err));
-				if (key === stateKey(M.ROOM.GUEST_ACCESS, "") && pdu.content?.guest_access !== "can_join") this.removeGuests(roomId).catch((err) => this.hs.logger.warn("Could not remove guests from", roomId, err));
+				if (key === stateKey(M.ROOM.GUEST_ACCESS, "") && pdu.content?.guest_access !== "can_join") this.hs.membership.removeGuests(roomId).catch((err) => this.hs.logger.warn("Could not remove guests from", roomId, err));
 				wake = async () => {
 					this.hs.notifier.notify(await this.interestedUsers(roomId), backfill ? void 0 : stream);
 					this.hs.emit("event", toClientEvent(view));
@@ -1103,6 +1099,18 @@ var RoomService = class {
 			value: since
 		}] });
 	}
+	/**
+	* Drop the cached sets of users sharing a room that a membership change in a room can change: those of the users whose
+	* membership changed and of the room's joined members. Every join cleared them all, so each sync it woke (every member
+	* of the room) computed its own again.
+	*/
+	forgetSharing(state, changedUsers) {
+		for (const u of changedUsers) this.sharingCache.delete(u);
+		for (const [key, ev] of state) {
+			const [type, member] = splitStateKey(key);
+			if (type === M.ROOM.MEMBER && ev.content?.membership === "join") this.sharingCache.delete(member);
+		}
+	}
 	/** All users sharing at least one joined room with `userId` (including themselves). */
 	async usersSharingRooms(userId) {
 		const cached = this.sharingCache.get(userId);
@@ -1119,7 +1127,7 @@ var RoomService = class {
 		const state = await this.currentState(redaction.room_id);
 		const pl = powerLevels(state, version);
 		if (target.pdu.sender !== redaction.sender && userLevel(pl, redaction.sender) < pl.redact) return null;
-		const redacted = redact(target.pdu, version);
+		const redacted = redactPdu(target.pdu, version);
 		redacted.unsigned = { redacted_because: toClientEvent(redaction) };
 		if (target.pdu.unsigned?.prev_content) redacted.unsigned.prev_content = target.pdu.unsigned.prev_content;
 		return {
@@ -1140,7 +1148,7 @@ var RoomService = class {
 		if (r.target.pdu.state_key !== void 0) {
 			const key = stateKey(r.target.pdu.type, r.target.pdu.state_key);
 			const cur = this.stateCache.get(roomId);
-			if (cur?.get(key)?.event_id === r.targetId) cur.set(key, view);
+			if (cur?.get(key)?.event_id === r.targetId) this.stateCache.set(roomId, new Map(cur).set(key, view));
 		}
 	}
 	/** Check whether a redaction would be permitted, before sending it. */
@@ -1272,50 +1280,30 @@ var RoomService = class {
 		return [...state.values()];
 	}
 	async createRoom(sender, body) {
-		if (body.room_version !== void 0 && typeof body.room_version !== "string") throw errors.badJson("room_version must be a string");
-		const version = body.room_version ?? this.hs.config.defaultRoomVersion;
-		if (!SUPPORTED_ROOM_VERSIONS.includes(version)) throw errors.unsupportedRoomVersion();
+		const req = parseCreateRoom(body, this.hs.config.defaultRoomVersion);
+		const { version, visibility, preset } = req;
 		const features = roomVersionFeatures(version);
-		const visibility = body.visibility === "public" ? "public" : "private";
-		const preset = body.preset ?? (visibility === "public" ? "public_chat" : "private_chat");
-		if (![
-			"public_chat",
-			"private_chat",
-			"trusted_private_chat"
-		].includes(preset)) throw errors.invalidParam("Unknown preset");
-		if (body.creation_content !== void 0 && !isObject(body.creation_content)) throw errors.badJson("creation_content must be an object");
-		if (body.initial_state !== void 0 && !Array.isArray(body.initial_state)) throw errors.badJson("initial_state must be an array");
-		if (body.invite !== void 0 && (!Array.isArray(body.invite) || !body.invite.every(isValidUserId))) throw errors.invalidParam("invite must be a list of user IDs");
-		if (body.name !== void 0 && typeof body.name !== "string") throw errors.badJson("name must be a string");
-		if (body.topic !== void 0 && typeof body.topic !== "string") throw errors.badJson("topic must be a string");
-		if (Array.isArray(body.invite_3pid) && body.invite_3pid.length > 0) throw errors.threepidDenied();
-		let alias;
-		if (body.room_alias_name !== void 0) {
-			if (typeof body.room_alias_name !== "string" || /[:\s#]/.test(body.room_alias_name) || body.room_alias_name.length === 0) throw errors.invalidParam("Invalid room_alias_name");
-			alias = `#${body.room_alias_name}:${this.hs.serverName}`;
-			if (await this.hs.db.findOne("room_aliases", [{
-				field: "alias",
-				value: alias
-			}])) throw errors.roomInUse();
-		}
+		const alias = req.aliasName === void 0 ? void 0 : `#${req.aliasName}:${this.hs.serverName}`;
+		if (alias && await this.hs.db.findOne("room_aliases", [{
+			field: "alias",
+			value: alias
+		}])) throw errors.roomInUse();
+		const { creator: _creator, additional_creators: extra, ...requested } = req.creationContent;
 		const createContent = {
-			...body.creation_content,
-			room_version: version
+			...requested,
+			room_version: version,
+			...features.v11 ? {} : { creator: sender }
 		};
-		if (!features.v11) createContent.creator = sender;
-		else delete createContent.creator;
 		const creators = /* @__PURE__ */ new Set();
 		if (features.v12) {
-			const extra = createContent.additional_creators;
 			if (extra !== void 0 && (!Array.isArray(extra) || !extra.every(isValidUserId))) throw errors.badJson("additional_creators must be a list of user IDs");
 			const additional = new Set(extra ?? []);
-			if (preset === "trusted_private_chat") for (const u of body.invite ?? []) additional.add(u);
+			if (preset === "trusted_private_chat") for (const u of req.invite) additional.add(u);
 			additional.delete(sender);
 			if (additional.size) createContent.additional_creators = [...additional];
-			else delete createContent.additional_creators;
 			creators.add(sender);
 			for (const u of additional) creators.add(u);
-		} else delete createContent.additional_creators;
+		}
 		let roomId;
 		let prebuiltCreate;
 		if (features.v12) {
@@ -1358,8 +1346,10 @@ var RoomService = class {
 				...profile
 			}
 		});
+		const users = features.v12 ? {} : { [sender]: 100 };
+		if (preset === "trusted_private_chat" && !features.v12) for (const u of req.invite) users[u] = 100;
 		const pl = {
-			users: features.v12 ? {} : { [sender]: 100 },
+			users,
 			users_default: 0,
 			events: {
 				[M.ROOM.NAME]: 50,
@@ -1379,16 +1369,13 @@ var RoomService = class {
 			invite: preset === "public_chat" ? 50 : 0,
 			notifications: { room: 50 }
 		};
-		if (preset === "trusted_private_chat" && !features.v12) for (const u of body.invite ?? []) pl.users[u] = 100;
-		const override = body.power_level_content_override;
-		if (override !== void 0 && !isObject(override)) throw errors.badJson("power_level_content_override must be an object");
-		const initialState = body.initial_state ?? [];
-		const initialPl = initialState.find((e) => e?.type === M.ROOM.POWER_LEVELS && (e.state_key ?? "") === "");
-		const predecessor = createContent.predecessor?.room_id;
+		const initialState = req.initialState;
+		const initialPl = initialPowerLevels(initialState);
+		const predecessor = isObject(createContent.predecessor) ? createContent.predecessor.room_id : void 0;
 		if (typeof predecessor === "string") await copyRoomPushRules(this.hs, sender, predecessor, roomId);
 		const plContent = {
 			...pl,
-			...override,
+			...req.override,
 			...initialPl?.content
 		};
 		validatePowerLevelContent(plContent, creators);
@@ -1411,81 +1398,40 @@ var RoomService = class {
 		}
 		const presetState = [[M.ROOM.JOIN_RULES, { join_rule: preset === "public_chat" ? "public" : "invite" }], [M.ROOM.HISTORY_VISIBILITY, { history_visibility: "shared" }]];
 		if (preset !== "public_chat") presetState.push([M.ROOM.GUEST_ACCESS, { guest_access: "can_join" }]);
-		const initialKeys = new Set(initialState.map((e) => stateKey(e?.type, e?.state_key ?? "")));
+		const initialKeys = new Set(initialState.map((e) => stateKey(e.type, e.state_key)));
 		for (const [type, content] of presetState) if (!initialKeys.has(stateKey(type, ""))) await send({
 			type,
 			state_key: "",
 			content
 		});
 		for (const ev of initialState) {
-			if (!isObject(ev) || typeof ev.type !== "string" || !isObject(ev.content) || ev.state_key !== void 0 && typeof ev.state_key !== "string") throw errors.badJson("Invalid initial_state event");
 			if (ev.type === M.ROOM.POWER_LEVELS || ev.type === M.ROOM.CREATE || ev.type === M.ROOM.MEMBER) continue;
-			await send({
-				type: ev.type,
-				state_key: ev.state_key ?? "",
-				content: ev.content
-			});
+			await send(ev);
 		}
-		if (body.name !== void 0) await send({
+		const { name, topic } = req;
+		if (name !== void 0) await send({
 			type: M.ROOM.NAME,
 			state_key: "",
-			content: { name: body.name }
+			content: { name }
 		});
-		if (body.topic !== void 0) await send({
+		if (topic !== void 0) await send({
 			type: M.ROOM.TOPIC,
 			state_key: "",
 			content: {
-				topic: body.topic,
+				topic,
 				[M.TOPIC]: { [M.TEXT]: [{
 					mimetype: "text/plain",
-					body: body.topic
+					body: topic
 				}] }
 			}
 		});
-		for (const invitee of body.invite ?? []) await this.invite(roomId, sender, invitee, { isDirect: !!body.is_direct }).catch((err) => {
+		for (const invitee of req.invite) await this.hs.membership.invite(roomId, sender, invitee, { isDirect: req.isDirect }).catch((err) => {
 			if (!(err instanceof MatrixError && err.errcode === "M_INVITE_BLOCKED")) throw err;
 		});
 		return alias ? {
 			room_id: roomId,
 			room_alias: alias
 		} : { room_id: roomId };
-	}
-	async resolveRoomIdOrAlias(idOrAlias) {
-		return (await this.resolveRoom(idOrAlias)).roomId;
-	}
-	/** Resolve a room ID or alias, including remote aliases; returns candidate servers for joining. */
-	async resolveRoom(idOrAlias) {
-		if (idOrAlias.startsWith("!")) return {
-			roomId: idOrAlias,
-			servers: []
-		};
-		if (idOrAlias.startsWith("#")) {
-			const row = await this.hs.db.findOne("room_aliases", [{
-				field: "alias",
-				value: idOrAlias
-			}]);
-			if (row) return {
-				roomId: row.room_id,
-				servers: [this.hs.serverName]
-			};
-			const fromAppservice = this.hs.isLocalUser(idOrAlias) ? await this.hs.appservices.queryAlias(idOrAlias) : null;
-			if (fromAppservice) return {
-				roomId: fromAppservice,
-				servers: [this.hs.serverName]
-			};
-			const server = parseId(idOrAlias, "#")?.server;
-			if (server && server !== this.hs.serverName && this.hs.federation.enabled) try {
-				const res = await this.hs.federation.queryAlias(idOrAlias);
-				return {
-					roomId: res.room_id,
-					servers: Array.isArray(res.servers) ? res.servers : [server]
-				};
-			} catch {
-				throw errors.notFound("Room alias not found");
-			}
-			throw errors.notFound("Room alias not found");
-		}
-		throw errors.invalidParam("Invalid room ID or alias");
 	}
 	/** Whether the room was created on this server and we still have its state. */
 	async isLocallyHosted(roomId) {
@@ -1501,25 +1447,6 @@ var RoomService = class {
 			if (type === M.ROOM.MEMBER && ev.content?.membership === "join" && this.hs.isLocalUser(userId)) return true;
 		}
 		return false;
-	}
-	/** Servers that might help with a remote membership change for `userId` in `roomId`. */
-	async remoteServersFor(roomId, userId, extra = []) {
-		const servers = [...extra];
-		const row = await this.hs.db.findOne("memberships", [{
-			field: "room_id",
-			value: roomId
-		}, {
-			field: "user_id",
-			value: userId
-		}]);
-		const ev = row ? await this.getPdu(row.event_id) : null;
-		if (ev && !this.hs.isLocalUser(ev.sender)) servers.push(ev.sender.slice(ev.sender.indexOf(":") + 1));
-		if (!extra.length) {
-			const roomServer = parseId(roomId, "!")?.server;
-			if (roomServer) servers.push(roomServer);
-			if (await this.exists(roomId)) for (const s of this.hs.federation.serversInRoom(await this.currentState(roomId))) servers.push(s);
-		}
-		return [...new Set(servers)].filter((s) => s !== this.hs.serverName);
 	}
 	/**
 	* Record a membership event for a room this server may not participate in (remote
@@ -1549,243 +1476,6 @@ var RoomService = class {
 			sharing: true
 		});
 		this.hs.notifier.notify([pdu.state_key]);
-	}
-	async join(userId, roomId, extra = {}) {
-		const version = await this.roomVersion(roomId);
-		if ((await this.hs.db.findOne("users", [{
-			field: "user_id",
-			value: userId
-		}]))?.is_guest) {
-			if ((version ? getState(await this.currentState(roomId), M.ROOM.GUEST_ACCESS)?.content?.guest_access : void 0) !== "can_join") throw errors.forbidden("Guest access is not allowed in this room");
-		}
-		if (version && !await this.serverIsJoined(roomId) && extra.servers?.includes(this.hs.serverName) && await this.isLocallyHosted(roomId)) return this.joinLocal(userId, roomId, version, extra);
-		if (!version || !await this.serverIsJoined(roomId)) {
-			if (version && await this.membership(roomId, userId) === "ban") throw errors.forbidden("You are banned from this room");
-			const servers = await this.remoteServersFor(roomId, userId, extra.servers);
-			if (!servers.length || !this.hs.federation.enabled) {
-				if (version) return this.joinLocal(userId, roomId, version, extra);
-				throw errors.notFound("Room not found");
-			}
-			const content = {
-				...extra.content,
-				membership: "join",
-				...await this.hs.profile(userId)
-			};
-			if (extra.reason) content.reason = extra.reason;
-			this.hs.logger.debug("Remote join", userId, roomId, "via", servers);
-			await this.hs.federation.joinRemoteRoom(userId, roomId, servers, content);
-			const predecessor = predecessorOf((await this.createEventOf(roomId))?.content);
-			if (typeof predecessor === "string") await copyRoomPushRules(this.hs, userId, predecessor, roomId);
-			return roomId;
-		}
-		return this.joinLocal(userId, roomId, version, extra);
-	}
-	async joinLocal(userId, roomId, version, extra) {
-		this.hs.logger.debug("Local join", userId, roomId);
-		const state = await this.currentState(roomId);
-		const content = {
-			...extra.content,
-			membership: "join",
-			...await this.hs.profile(userId)
-		};
-		if (extra.reason) content.reason = extra.reason;
-		const existing = getState(state, M.ROOM.MEMBER, userId);
-		if (existing?.content?.membership === "join" && JSON.stringify(existing.content) === JSON.stringify(content)) return roomId;
-		const joinRule = getState(state, M.ROOM.JOIN_RULES)?.content?.join_rule;
-		const current = membershipOf(state, userId);
-		if ((joinRule === "restricted" || joinRule === "knock_restricted") && current !== "join" && current !== "invite") {
-			const via = await this.findRestrictedAuthoriser(userId, state, version);
-			if (via) content.join_authorised_via_users_server = via;
-			else if (this.hs.federation.enabled && await this.mayQualifyRemotely(userId, state)) {
-				const pl = powerLevels(state, version);
-				const servers = /* @__PURE__ */ new Set();
-				for (const [k, ev] of state) {
-					const [type, member] = splitStateKey(k);
-					if (type === M.ROOM.MEMBER && ev.content?.membership === "join" && !this.hs.isLocalUser(member) && userLevel(pl, member) >= pl.invite) servers.add(member.slice(member.indexOf(":") + 1));
-				}
-				if (servers.size) {
-					await this.hs.federation.joinRemoteRoom(userId, roomId, [...servers], content);
-					return roomId;
-				}
-			}
-		}
-		await this.sendEvent(roomId, userId, {
-			type: M.ROOM.MEMBER,
-			state_key: userId,
-			content
-		});
-		const predecessor = predecessorOf(getState(state, M.ROOM.CREATE)?.content);
-		if (typeof predecessor === "string") await copyRoomPushRules(this.hs, userId, predecessor, roomId);
-		return roomId;
-	}
-	/** Whether an allowed room exists that we can't check (or the user is joined to), so another server might authorise. */
-	async mayQualifyRemotely(userId, state) {
-		const allow = getState(state, M.ROOM.JOIN_RULES)?.content?.allow;
-		if (!Array.isArray(allow)) return false;
-		for (const rule of allow) {
-			if (rule?.type !== M.ROOM_MEMBERSHIP || typeof rule.room_id !== "string") continue;
-			if (!await this.serverIsJoined(rule.room_id)) return true;
-			if (await this.membership(rule.room_id, userId) === "join") return true;
-		}
-		return false;
-	}
-	async findRestrictedAuthoriser(userId, state, version) {
-		const allow = getState(state, M.ROOM.JOIN_RULES)?.content?.allow;
-		if (!Array.isArray(allow)) return null;
-		let permitted = false;
-		for (const rule of allow) if (rule?.type === M.ROOM_MEMBERSHIP && typeof rule.room_id === "string" && await this.exists(rule.room_id)) {
-			if (await this.membership(rule.room_id, userId) === "join") {
-				permitted = true;
-				break;
-			}
-		}
-		if (!permitted) return null;
-		const pl = powerLevels(state, version);
-		for (const [k, ev] of state) {
-			const [type, key] = splitStateKey(k);
-			if (type === M.ROOM.MEMBER && ev.content?.membership === "join" && this.hs.isLocalUser(key) && userLevel(pl, key) >= pl.invite) return key;
-		}
-		return null;
-	}
-	async invite(roomId, sender, target, opts = {}) {
-		if (!isValidUserId(target)) throw errors.invalidParam("Invalid user ID");
-		const local = this.hs.isLocalUser(target);
-		if (local && !await this.hs.db.findOne("users", [{
-			field: "user_id",
-			value: target
-		}]) && !await this.hs.appservices.queryUser(target)) throw errors.notFound("Unknown user");
-		if (local && await inviteDecision(this.hs, target, sender) === "block") throw errors.inviteBlocked();
-		await this.requireJoined(roomId, sender);
-		const state = await this.currentState(roomId);
-		if (membershipOf(state, target) === "invite") return;
-		const content = { membership: "invite" };
-		if (local) Object.assign(content, await this.hs.profile(target));
-		if (opts.reason) content.reason = opts.reason;
-		if (opts.isDirect) content.is_direct = true;
-		if (opts.thirdPartyInvite) content.third_party_invite = opts.thirdPartyInvite;
-		if (local) {
-			await this.sendEvent(roomId, sender, {
-				type: M.ROOM.MEMBER,
-				state_key: target,
-				content
-			});
-			return;
-		}
-		if (!this.hs.federation.enabled) throw errors.forbidden("Federation is disabled");
-		await this.withLock(roomId, async () => {
-			const version = await this.roomVersion(roomId);
-			const pdu = await this.buildLocalEvent(roomId, version, sender, {
-				type: M.ROOM.MEMBER,
-				state_key: target,
-				content
-			});
-			const inviteState = [...this.strippedState(await this.currentState(roomId))];
-			const senderMember = getState(await this.currentState(roomId), M.ROOM.MEMBER, sender);
-			if (senderMember) {
-				const { unsigned, ...full } = senderMember;
-				inviteState.push(this.hs.federation.toFederationPdu(full, version));
-			}
-			const signed = await this.hs.federation.sendInvite(pdu, version, inviteState);
-			await this.persistEvent(roomId, version, signed, { local: true });
-		});
-	}
-	/** Make this server's guests leave a room that no longer allows guests (spec, guest access module; #87). */
-	async removeGuests(roomId) {
-		for (const [k, ev] of await this.currentState(roomId)) {
-			const [type, userId] = splitStateKey(k);
-			if (type !== M.ROOM.MEMBER || ev.content?.membership !== "join" || !this.hs.isLocalUser(userId)) continue;
-			if ((await this.hs.db.findOne("users", [{
-				field: "user_id",
-				value: userId
-			}]))?.is_guest) await this.setMembership(roomId, userId, userId, "leave");
-		}
-	}
-	async setMembership(roomId, sender, target, membership, reason, via = []) {
-		const remote = !await this.serverIsJoined(roomId) && (membership === "knock" || !await this.isLocallyHosted(roomId));
-		if (sender === target && (membership === "leave" || membership === "knock") && remote) {
-			await this.remoteMembership(roomId, target, membership, reason, via);
-			return;
-		}
-		if (!await this.exists(roomId)) throw errors.notFound("Room not found");
-		const content = { membership };
-		if (reason) content.reason = reason;
-		if (membership === "ban" || membership === "leave" && sender !== target) {
-			const prev = getState(await this.currentState(roomId), M.ROOM.MEMBER, target);
-			if (prev?.content?.displayname) content.displayname = prev.content.displayname;
-		}
-		await this.sendEvent(roomId, sender, {
-			type: M.ROOM.MEMBER,
-			state_key: target,
-			content
-		});
-	}
-	async remoteMembership(roomId, userId, membership, reason, via = []) {
-		const row = await this.hs.db.findOne("memberships", [{
-			field: "room_id",
-			value: roomId
-		}, {
-			field: "user_id",
-			value: userId
-		}]);
-		if (membership === "leave" && (!row || row.membership === "leave" || row.membership === "ban")) {
-			if (!await this.exists(roomId)) throw errors.notFound("Room not found");
-			if (row?.membership === "ban") throw errors.forbidden("You are banned from this room");
-			return;
-		}
-		const servers = await this.remoteServersFor(roomId, userId, via);
-		if (membership === "knock") {
-			if (!servers.length || !this.hs.federation.enabled) throw errors.notFound("Room not found");
-			const { pdu, knockState } = await this.hs.federation.knockRemoteRoom(userId, roomId, servers, reason);
-			await this.recordRemoteMembership({
-				...pdu,
-				unsigned: { knock_room_state: knockState }
-			}, "");
-			return;
-		}
-		let leave;
-		try {
-			if (!servers.length || !this.hs.federation.enabled) throw new Error("No servers to contact");
-			leave = await this.hs.federation.leaveRemoteRoom(userId, roomId, servers, reason);
-		} catch (err) {
-			this.hs.logger.debug("Remote leave failed, rejecting locally", err);
-			const content = { membership: "leave" };
-			if (reason) content.reason = reason;
-			leave = finalisePdu({
-				room_id: roomId,
-				sender: userId,
-				type: M.ROOM.MEMBER,
-				state_key: userId,
-				content,
-				origin_server_ts: Date.now(),
-				depth: 1,
-				prev_events: row ? [row.event_id] : [],
-				auth_events: []
-			}, "10", this.hs.serverName, this.hs.signingKey);
-		}
-		await this.recordRemoteMembership(leave, "");
-	}
-	/** Update the member event in every joined room after a profile change. */
-	async propagateProfile(userId) {
-		const profile = await this.hs.profile(userId);
-		for (const roomId of await this.roomsForUser(userId)) {
-			const prev = getState(await this.currentState(roomId), M.ROOM.MEMBER, userId);
-			if (!prev) continue;
-			const { displayname: _d, avatar_url: _a, ...rest } = prev.content;
-			const content = {
-				...rest,
-				membership: "join",
-				...profile
-			};
-			try {
-				await this.sendEvent(roomId, userId, {
-					type: M.ROOM.MEMBER,
-					state_key: userId,
-					content
-				});
-			} catch (err) {
-				this.hs.logger.warn("Failed to propagate profile to", roomId, err);
-			}
-		}
 	}
 };
 export { MissingStateError, RoomService, txnTokenOf, validatePowerLevelContent };

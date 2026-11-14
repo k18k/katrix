@@ -1,8 +1,8 @@
-import { isObject, stringOrUndefined } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { evaluatePushRules, pushTweaks } from "../shared/push.js";
-import { splitStateKey, toClientEvent } from "./events.js";
+import { evaluatePushRules, pushTweaks } from "../packages/shared/src/push.js";
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { getState, powerLevels, userLevel } from "./authrules.js";
+import { splitStateKey, toClientEvent } from "./events.js";
 import { readOnlyRules } from "./pushrules.js";
 import { isSubscribed } from "../api/threadsubs.js";
 import { upsertMany } from "../storage/batch.js";

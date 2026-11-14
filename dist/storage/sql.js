@@ -69,6 +69,7 @@ function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", transac
 		params.push(n);
 		return ` LIMIT ${placeholder(params.length)}`;
 	};
+	const matchesNothing = (where = []) => where.some((w) => w.operator === "in" && Array.isArray(w.value) && w.value.length === 0);
 	const buildWhere = (model, where = [], params) => {
 		if (where.length === 0) return "";
 		return ` WHERE ${where.map((w) => {
@@ -162,6 +163,7 @@ function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", transac
 				return rows[0] ? fromDb(model, rows[0]) : null;
 			},
 			async findMany(model, opts = {}) {
+				if (matchesNothing(opts.where)) return [];
 				const params = [];
 				let sql = `SELECT ${opts.fields?.length ? opts.fields.map(q).join(", ") : "*"} FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
 				if (opts.sortBy) sql += ` ORDER BY ${q(opts.sortBy.field)} ${opts.sortBy.direction === "asc" ? "ASC" : "DESC"}`;
@@ -169,9 +171,14 @@ function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", transac
 				return (await executor.query(sql, params)).map((r) => fromDb(model, r));
 			},
 			...dialect === "postgres" ? { async findManyBatch(queries, options) {
-				if (queries.length === 0) return [];
+				const out = queries.map(() => []);
+				const asked = queries.flatMap((query, i) => matchesNothing(query.opts?.where) ? [] : [{
+					query,
+					i
+				}]);
+				if (asked.length === 0) return out;
 				const params = [];
-				const parts = queries.map(({ model, opts = {} }, i) => {
+				const parts = asked.map(({ query: { model, opts = {} }, i }) => {
 					const fields = opts.fields?.length && opts.sortBy && !opts.fields.includes(opts.sortBy.field) ? [...opts.fields, opts.sortBy.field] : opts.fields;
 					let inner = `SELECT ${fields?.length ? fields.map(q).join(", ") : "*"} FROM ${t(model)}${buildWhere(model, opts.where, params)}`;
 					const direction = opts.sortBy?.direction === "asc" ? "ASC" : "DESC";
@@ -180,7 +187,6 @@ function sqlAdapter({ dialect, executor: rootExecutor, tablePrefix = "", transac
 					return `SELECT ${i} AS i, (SELECT json_agg(b${opts.sortBy ? ` ORDER BY b.${q(opts.sortBy.field)} ${direction}` : ""}) FROM (${inner}) b) AS r`;
 				});
 				const rows = await executor.query(parts.join(" UNION ALL "), params, options);
-				const out = queries.map(() => []);
 				for (const row of rows) {
 					const list = typeof row.r === "string" ? JSON.parse(row.r) : row.r;
 					const model = queries[Number(row.i)].model;

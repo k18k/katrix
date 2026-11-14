@@ -1,10 +1,10 @@
-import { M, UNSTABLE } from "../shared/m.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
+import { errors } from "../core/errors.js";
 import { signJson } from "../core/crypto.js";
 import { SUPPORTED_ROOM_VERSIONS } from "../core/events.js";
-import { errors } from "../core/errors.js";
 import { procedure } from "../http/procedure.js";
-import { wellKnown } from "./account.js";
 import { canonicalJsonResponse } from "../http/handler.js";
+import { wellKnown } from "./account.js";
 import { readFileSync } from "node:fs";
 // src/api/misc.ts
 const PACKAGE = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));

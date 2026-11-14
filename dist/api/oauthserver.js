@@ -1,12 +1,12 @@
-import { LOCALPART_RE } from "../shared/ids.js";
-import { M } from "../shared/m.js";
-import { randomToken } from "../core/crypto.js";
+import { LOCALPART_RE } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
+import { randomToken } from "../core/crypto.js";
 import { escapeHtml } from "../core/html.js";
-import { procedure } from "../http/procedure.js";
-import { OAUTH_PREFIX, OAuthError, allowCrossSigningReset } from "../core/oauthserver.js";
-import { legacyClientRedirect } from "../core/sso.js";
 import { setProfileField } from "../core/profile.js";
+import { legacyClientRedirect } from "../core/sso.js";
+import { OAUTH_PREFIX, OAuthError, allowCrossSigningReset } from "../core/oauthserver.js";
+import { procedure } from "../http/procedure.js";
 import { checkPasswordLogin, createUser, redeemRegistrationToken, registrationFlows, ssoConfirmPage, validateNewUsername } from "./account.js";
 import { timingSafeEqual } from "node:crypto";
 // src/api/oauthserver.ts

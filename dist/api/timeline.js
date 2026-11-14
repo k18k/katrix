@@ -1,8 +1,8 @@
-import { isObject } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { toClientEvent } from "../core/events.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { errors } from "../core/errors.js";
 import { getState } from "../core/authrules.js";
+import { toClientEvent } from "../core/events.js";
 import { procedure } from "../http/procedure.js";
 import { matchesFilter, parseRoomEventFilter } from "./filters.js";
 import { parseToken, requireRoom, viewerOf, visibleState } from "./rooms.js";
@@ -260,10 +260,11 @@ async function threads(ctx) {
 		const ev = hs.rooms.formatEvent(r.ev, viewer);
 		const info = latest.get(r.ev.pdu.event_id);
 		const latestEv = await hs.rooms.getEvent(info.latestId);
+		const relations = ev.unsigned?.[M.RELATIONS];
 		ev.unsigned = {
 			...ev.unsigned,
 			[M.RELATIONS]: {
-				...ev.unsigned?.[M.RELATIONS],
+				...isObject(relations) ? relations : {},
 				[M.THREAD]: {
 					latest_event: latestEv ? hs.rooms.formatEvent(latestEv, viewer) : void 0,
 					count: info.count,

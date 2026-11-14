@@ -1,4 +1,4 @@
-import { UNSTABLE } from "../shared/m.js";
+import { UNSTABLE } from "../packages/shared/src/m.js";
 import { PDU } from "./events.js";
 import { StateMap } from "./authrules.js";
 import { Homeserver } from "../homeserver.js";
@@ -29,7 +29,7 @@ export interface AppServiceRegistration {
  * Parse an application service registration file. Accepts JSON or the YAML subset
  * used by registration files (nested mappings and lists of mappings, scalars).
  */
-export declare function parseAppServiceRegistration(text: string): AppServiceRegistration;
+export declare function parseAppServiceRegistration(text: string): any;
 /** Load every *.yaml / *.yml / *.json registration in a directory. */
 export declare function loadAppServiceRegistrations(directory: string): Promise<AppServiceRegistration[]>;
 /** Application Service API: authentication, namespaces, event push and queries. */
@@ -54,7 +54,7 @@ export declare class AppServiceService {
   /** Queue an event for every interested application service. */
   onEvent(pdu: PDU, state: StateMap): Promise<void>;
   /** Queue an ephemeral event (typing/receipt/presence) for interested services that asked for them. */
-  onEphemeral(roomId: string | null, event: Record<string, any>, users: string[]): Promise<void>;
+  onEphemeral(roomId: string | null, event: object, users: string[]): Promise<void>;
   private enqueue;
   private schedule;
   private retries;
@@ -65,7 +65,7 @@ export declare class AppServiceService {
   /** Ask the owning AS whether a user exists (it may create it). */
   queryUser(userId: string): Promise<boolean>;
   /** Ask the owning AS about an alias; returns the room ID if it now exists. */
-  queryAlias(alias: string): Promise<string | null>;
+  queryAlias(alias: string): Promise<any>;
   ping(reg: AppServiceRegistration, transactionId?: string): Promise<number>;
   thirdParty(path: string, query: URLSearchParams): Promise<unknown[]>;
   protocols(): Promise<Record<string, unknown>>;

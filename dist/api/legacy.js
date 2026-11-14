@@ -1,6 +1,6 @@
-import { isValidRoomId } from "../shared/ids.js";
-import { toClientEvent } from "../core/events.js";
+import { isValidRoomId } from "../packages/shared/src/ids.js";
 import { errors } from "../core/errors.js";
+import { toClientEvent } from "../core/events.js";
 import { procedure } from "../http/procedure.js";
 import { visibleState } from "./rooms.js";
 import { paginate } from "./timeline.js";

@@ -1,6 +1,6 @@
-import { canonicalJson } from "../shared/canonical-json.js";
-import { isObject } from "../shared/json.js";
-import { UNSTABLE } from "../shared/m.js";
+import { canonicalJson } from "../packages/shared/src/canonical-json.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { UNSTABLE } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 // src/http/handler.ts
 const CORS_HEADERS = {

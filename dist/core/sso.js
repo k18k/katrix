@@ -1,6 +1,7 @@
-import { LOCALPART_RE } from "../shared/ids.js";
-import { randomToken, urlSafeBase64 } from "./crypto.js";
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
+import { LOCALPART_RE } from "../packages/shared/src/ids.js";
 import { errors } from "./errors.js";
+import { randomToken, urlSafeBase64 } from "./crypto.js";
 import { createHash, randomBytes } from "node:crypto";
 // src/core/sso.ts
 const UNSAFE_SCHEMES = /* @__PURE__ */ new Set([
@@ -30,14 +31,25 @@ function clientMatches(raw, entry) {
 		return false;
 	}
 }
-const sameIssuer = (a, b) => typeof a === "string" && a.replace(/\/$/, "") === b.replace(/\/$/, "");
+const sameIssuer = (a, b) => b !== void 0 && typeof a === "string" && a.replace(/\/$/, "") === b.replace(/\/$/, "");
+async function jsonObject(res) {
+	const value = await res.json().catch(() => void 0);
+	return isObject(value) ? value : void 0;
+}
 function sanitizeLocalpart(raw) {
 	return raw.toLowerCase().replace(/[^a-z0-9._=\-/+]/g, "_").slice(0, 200);
 }
 function decodeJwtPayload(jwt) {
 	const part = jwt.split(".")[1];
-	if (!part) throw new Error("Malformed ID token");
-	return JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+	if (!part) throw errors.forbidden("Malformed ID token");
+	let claims;
+	try {
+		claims = JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+	} catch {
+		throw errors.forbidden("Malformed ID token");
+	}
+	if (!isObject(claims)) throw errors.forbidden("Malformed ID token");
+	return claims;
 }
 /**
 * GitHub as an identity provider (an OAuth app or GitHub app; its callback URL is
@@ -61,7 +73,7 @@ function githubProvider(opts) {
 		subjectClaim: "id",
 		mapUser: opts.mapUser ?? ((c) => ({
 			localpart: sanitizeLocalpart(String(c.login ?? c.id)),
-			displayname: c.name ?? c.login
+			displayname: stringOrUndefined(c.name) ?? stringOrUndefined(c.login)
 		})),
 		...opts.allowRegistration !== void 0 ? { allowRegistration: opts.allowRegistration } : {}
 	};
@@ -98,8 +110,15 @@ var SsoService = class {
 		if (!provider.issuer) throw new Error(`Identity provider ${provider.id} needs an issuer or endpoints`);
 		const res = await this.hs.fetch(`${provider.issuer.replace(/\/$/, "")}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(1e4) });
 		if (!res.ok) throw new Error(`OIDC discovery for ${provider.id} failed with ${res.status}`);
-		const meta = await res.json();
-		if (!sameIssuer(meta.issuer, provider.issuer)) throw new Error(`OIDC discovery for ${provider.id} returned another issuer`);
+		const doc = await jsonObject(res);
+		if (!sameIssuer(doc?.issuer, provider.issuer)) throw new Error(`OIDC discovery for ${provider.id} returned another issuer`);
+		if (typeof doc?.authorization_endpoint !== "string" || typeof doc.token_endpoint !== "string") throw new Error(`OIDC discovery for ${provider.id} returned no authorization or token endpoint`);
+		const meta = {
+			issuer: stringOrUndefined(doc?.issuer),
+			authorization_endpoint: doc.authorization_endpoint,
+			token_endpoint: doc.token_endpoint,
+			userinfo_endpoint: stringOrUndefined(doc.userinfo_endpoint)
+		};
 		this.discovery.set(provider.id, meta);
 		return meta;
 	}
@@ -168,8 +187,8 @@ var SsoService = class {
 			signal: AbortSignal.timeout(1e4)
 		});
 		if (!res.ok) throw errors.forbidden("Code exchange failed");
-		const tokens = await res.json();
-		if (typeof tokens.error === "string") throw errors.forbidden("Code exchange failed");
+		const tokens = await jsonObject(res);
+		if (!tokens || typeof tokens.error === "string") throw errors.forbidden("Code exchange failed");
 		let claims = {};
 		if (this.scopes(provider).includes("openid") && typeof tokens.id_token !== "string") throw errors.forbidden("The provider returned no ID token");
 		if (typeof tokens.id_token === "string") {
@@ -189,7 +208,8 @@ var SsoService = class {
 				signal: AbortSignal.timeout(1e4)
 			});
 			if (info.ok) {
-				const userinfo = await info.json();
+				const userinfo = await jsonObject(info);
+				if (!userinfo) throw errors.forbidden("The provider returned no user info");
 				if (claims.sub && userinfo.sub !== claims.sub) throw errors.forbidden("Userinfo subject mismatch");
 				claims = {
 					...userinfo,
@@ -225,8 +245,8 @@ var SsoService = class {
 		if (link) return link.user_id;
 		if (provider.allowRegistration === false) throw errors.forbidden("No account is linked to this identity");
 		const mapped = provider.mapUser ? await provider.mapUser(claims) : {
-			localpart: sanitizeLocalpart(claims.preferred_username ?? subject),
-			displayname: claims.name
+			localpart: sanitizeLocalpart(stringOrUndefined(claims.preferred_username) ?? subject),
+			displayname: stringOrUndefined(claims.name)
 		};
 		if (!mapped || !LOCALPART_RE.test(mapped.localpart)) throw errors.forbidden("Could not map identity to a Matrix user");
 		let localpart = mapped.localpart;

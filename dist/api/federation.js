@@ -1,21 +1,21 @@
-import { isValidUserId } from "../shared/ids.js";
-import { isObject, stringOrUndefined } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { randomToken, signJson, verifyJsonSignature } from "../core/crypto.js";
-import { SUPPORTED_ROOM_VERSIONS, eventIdOf, isPdu, redact, roomVersionFeatures, splitStateKey, stateKey } from "../core/events.js";
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
+import { isValidUserId } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
+import { eventsByTimestamp } from "./timeline.js";
 import { MatrixError, errors } from "../core/errors.js";
+import { fullProfile } from "../core/profile.js";
+import { relationshipsForServer } from "./relationships.js";
 import { authEventKeys, checkAuth, getState, membershipOf, powerLevels, userLevel } from "../core/authrules.js";
+import { SUPPORTED_ROOM_VERSIONS, eventIdOf, isPdu, redact, redactPdu, roomVersionFeatures, splitStateKey, stateKey } from "../core/events.js";
 import { inviteDecision } from "../core/invitefilter.js";
-import { parseXMatrix } from "../federation/client.js";
+import { randomToken, signJson, verifyJsonSignature } from "../core/crypto.js";
 import { domainOf, serverAllowedByAcl } from "../federation/index.js";
+import { parseXMatrix } from "../federation/client.js";
+import { procedure } from "../http/procedure.js";
 import { v } from "../core/vpm.js";
 import { body, lenient } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
-import { fullProfile } from "../core/profile.js";
-import { eventsByTimestamp } from "./timeline.js";
-import { roomDetails } from "./spaces.js";
-import { relationshipsForServer } from "./relationships.js";
 import { canonicalJsonResponse } from "../http/handler.js";
+import { allowedRoomIds, roomDetails } from "./spaces.js";
 // src/api/federation.ts
 const objectMap = lenient(v.record(v.string(), v.unknown()));
 const keyQueryBody = body({ server_keys: objectMap });
@@ -198,7 +198,7 @@ async function exchangeThirdPartyInvite(hs, roomId, sender, invitee, signed) {
 	const pending = getState(await hs.rooms.currentState(roomId), M.ROOM.THIRD_PARTY_INVITE, token);
 	if (!pending) throw errors.forbidden("No such third-party invite");
 	if (pending.sender !== sender) throw errors.forbidden("The third-party invite was sent by someone else");
-	await hs.rooms.invite(roomId, sender, invitee, { thirdPartyInvite: {
+	await hs.membership.invite(roomId, sender, invitee, { thirdPartyInvite: {
 		display_name: stringOrUndefined(pending.content?.display_name) ?? "",
 		signed
 	} });
@@ -268,8 +268,7 @@ function registerFederationRoutes(r) {
 					signed: false,
 					timeoutMs: 1e4
 				});
-				await ctx.hs.federation.keyring.ingestServerKeys(server, fresh);
-				if (fresh.server_name === server) out.push(signJson(fresh, ctx.hs.serverName, ctx.hs.signingKey));
+				if (await ctx.hs.federation.keyring.ingestServerKeys(server, fresh)) out.push(signJson(fresh, ctx.hs.serverName, ctx.hs.signingKey));
 			} catch {}
 		}
 		return { server_keys: out };
@@ -488,7 +487,7 @@ function registerFederationRoutes(r) {
 				seen.add(id);
 				const ev = await hs.rooms.getEvent(id);
 				if (!ev || ev.pdu.room_id !== roomId) continue;
-				out.push(await serverCanSee(hs, origin, ev) ? ev.pdu : redact(ev.pdu, version));
+				out.push(await serverCanSee(hs, origin, ev) ? ev.pdu : redactPdu(ev.pdu, version));
 				next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
 			}
 			frontier = next;
@@ -525,7 +524,7 @@ function registerFederationRoutes(r) {
 					seen.add(id);
 					const ev = await eventInRoom(hs, roomId, id);
 					if (!ev || ev.pdu.depth < minDepth) continue;
-					out.push(await serverCanSee(hs, origin, ev) ? ev.pdu : redact(ev.pdu, version));
+					out.push(await serverCanSee(hs, origin, ev) ? ev.pdu : redactPdu(ev.pdu, version));
 					next.push(...(ev.pdu.prev_events ?? []).map(eventIdOf));
 				}
 				frontier = next;
@@ -663,10 +662,11 @@ function registerFederationRoutes(r) {
 		const state = await checkAcl(hs, roomId, origin);
 		const suggestedOnly = ctx.query.get("suggested_only") === "true";
 		const summary = async (id, s) => {
-			const details = await roomDetails(hs, id);
-			const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
-			if (jr?.join_rule === "restricted" || jr?.join_rule === "knock_restricted") details.allowed_room_ids = (Array.isArray(jr?.allow) ? jr.allow : []).flatMap((a) => isObject(a) && a.type === M.ROOM_MEMBERSHIP && typeof a.room_id === "string" ? [a.room_id] : []);
-			return details;
+			const allowed = allowedRoomIds(getState(s, M.ROOM.JOIN_RULES)?.content);
+			return {
+				...await roomDetails(hs, id),
+				...allowed ? { allowed_room_ids: allowed } : {}
+			};
 		};
 		const accessible = async (s) => {
 			const jr = getState(s, M.ROOM.JOIN_RULES)?.content;
@@ -705,14 +705,16 @@ function registerFederationRoutes(r) {
 				inaccessible.push(childId);
 				continue;
 			}
-			const childSummary = await summary(childId, childState);
-			childSummary.children_state = [];
-			children.push(childSummary);
+			children.push({
+				...await summary(childId, childState),
+				children_state: []
+			});
 		}
-		const room = await summary(roomId, state);
-		room.children_state = childrenState;
 		return {
-			room,
+			room: {
+				...await summary(roomId, state),
+				children_state: childrenState
+			},
 			children,
 			inaccessible_children: inaccessible
 		};

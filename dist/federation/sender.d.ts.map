@@ -1,1 +1,1 @@
-{"version":3,"file":"sender.d.ts","names":[],"sources":["../../src/federation/sender.ts"],"mappings":";;;;;;;qBAkBa;UACH;UACA;UACA;EAER,YAAY,IAAI;;EAKhB;UAYc;EAKR,QAAQ,cAAc,kBAAkB,KAAK,sBAAsB;EAInE,QAAQ,cAAc,kBAAkB,iBAAiB,SAAS,qBAAqB,oBAAiB;UAIhG;UASN;UAaM;;EAgDR,KAAK,sBAAsB;EAOjC"}
+{"version":3,"file":"sender.d.ts","names":[],"sources":["../../src/federation/sender.ts"],"mappings":";;;;;;;qBAkBa;UACH;UACA;UACA;EAER,YAAY,IAAI;;EAKhB;UAYc;EAKR,QAAQ,cAAc,kBAAkB,KAAK,0BAAuB;EAIpE,QAAQ,cAAc,kBAAkB,iBAAiB,SAAS,yBAAyB,oBAAc;UAIjG;UASN;UAaM;;EAgDR,KAAK,sBAAmB;EAO9B"}

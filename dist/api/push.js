@@ -1,9 +1,9 @@
-import { M } from "../shared/m.js";
+import { M } from "../packages/shared/src/m.js";
 import { errors } from "../core/errors.js";
 import { KINDS, loadRules, saveRules, withRulesLock } from "../core/pushrules.js";
+import { procedure } from "../http/procedure.js";
 import { v } from "../core/vpm.js";
 import { body, fail, lenient } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
 // src/api/push.ts
 const pusherKey = v.string(fail("M_MISSING_PARAM", "Missing app_id or pushkey"));
 const pusherBody = body({

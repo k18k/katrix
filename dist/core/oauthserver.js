@@ -1,4 +1,4 @@
-import { canonicalJson } from "../shared/canonical-json.js";
+import { canonicalJson } from "../packages/shared/src/canonical-json.js";
 import { randomToken, urlSafeBase64 } from "./crypto.js";
 import { createHash, randomInt, sign, timingSafeEqual } from "node:crypto";
 // src/core/oauthserver.ts

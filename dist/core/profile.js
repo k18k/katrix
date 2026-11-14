@@ -1,4 +1,4 @@
-import { canonicalJson } from "../shared/canonical-json.js";
+import { canonicalJson } from "../packages/shared/src/canonical-json.js";
 // src/core/profile.ts
 const BUILTIN_FIELDS = /* @__PURE__ */ new Set(["displayname", "avatar_url"]);
 const MAX_PROFILE_BYTES = 65536;
@@ -32,7 +32,7 @@ async function setProfileField(hs, userId, field, value) {
 		value: value ?? null,
 		stream
 	}));
-	if (BUILTIN_FIELDS.has(field)) await hs.rooms.propagateProfile(userId);
+	if (BUILTIN_FIELDS.has(field)) await hs.membership.propagateProfile(userId);
 	hs.notifier.notify([...await hs.rooms.usersSharingRooms(userId)]);
 }
 export { BUILTIN_FIELDS, MAX_PROFILE_BYTES, fullProfile, profileSize, setProfileField };

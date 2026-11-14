@@ -77,6 +77,10 @@ var ChangeLog = class {
 		return pos < this.floor || (this.latest.get(key) ?? Number.NEGATIVE_INFINITY) > pos;
 	}
 	/** The keys among `keys` that may have changed after `pos`. */
+	/** Whether the log knows every change after `pos`, so that a key it names did change. */
+	knowsAfter(pos) {
+		return pos >= this.floor;
+	}
 	filterChanged(keys, pos) {
 		const out = [];
 		for (const k of keys) if (this.changedAfter(k, pos)) out.push(k);
@@ -151,13 +155,20 @@ const RULES = {
 		stream: "toDevice",
 		key: (f) => join(f.user_id, f.device_id)
 	}],
-	presence: [{
-		stream: "presence",
-		key: GLOBAL
-	}, {
-		value: "presenceRow",
-		key: (f) => join(f.user_id)
-	}],
+	presence: [
+		{
+			stream: "presence",
+			key: GLOBAL
+		},
+		{
+			stream: "presence",
+			key: (f) => join(f.user_id)
+		},
+		{
+			value: "presenceRow",
+			key: (f) => join(f.user_id)
+		}
+	],
 	device_list_changes: [{
 		stream: "deviceLists",
 		key: GLOBAL

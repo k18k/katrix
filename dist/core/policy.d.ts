@@ -1,15 +1,14 @@
 import { PDU } from "./events.js";
 import { Homeserver } from "../homeserver.js";
 import { KeyObject } from "node:crypto";
-interface RoomPolicy {
-  via: string;
-  key: KeyObject;
-}
 export declare class PolicyServers {
   private readonly hs;
   constructor(hs: Homeserver);
   /** The room's policy server, if the room uses one (valid `m.room.policy` and a joined user on `via`). */
-  policyOf(roomId: string): Promise<RoomPolicy | null>;
+  policyOf(roomId: string): Promise<{
+    via: string;
+    key: KeyObject;
+  } | null>;
   /** The policy state event itself is never sent to the policy server. */
   private exempt;
   private validSignature;
@@ -24,5 +23,4 @@ export declare class PolicyServers {
   /** Whether a remote event is recommended for inclusion (otherwise it is soft-failed). */
   recommended(roomId: string, version: string, pdu: PDU): Promise<boolean>;
 }
-export {};
 //# sourceMappingURL=policy.d.ts.map

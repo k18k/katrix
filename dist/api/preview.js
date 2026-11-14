@@ -1,7 +1,7 @@
-import { randomString } from "../core/crypto.js";
 import { MatrixError, errors } from "../core/errors.js";
-import { publicGet } from "../core/outbound.js";
+import { randomString } from "../core/crypto.js";
 import { procedure } from "../http/procedure.js";
+import { publicGet } from "../core/outbound.js";
 // src/api/preview.ts
 const MAX_BYTES = 1048576;
 function decodeEntities(s) {
@@ -62,8 +62,9 @@ async function preview(hs, rawUrl) {
 	}
 	if (!type.includes("html")) return {};
 	const og = parseOpenGraph(res.body.subarray(0, MAX_BYTES).toString("utf8"));
-	if (og["og:image"]) try {
-		const img = await publicGet(get, new URL(og["og:image"], res.url), {
+	const image = og["og:image"];
+	if (typeof image === "string" && image) try {
+		const img = await publicGet(get, new URL(image, res.url), {
 			maxBytes: MAX_BYTES * 10,
 			timeoutMs: 1e4,
 			headers

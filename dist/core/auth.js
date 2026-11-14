@@ -1,6 +1,6 @@
-import { randomToken } from "./crypto.js";
 import { CLUSTER_RESYNC } from "./cluster.js";
 import { errors } from "./errors.js";
+import { randomToken } from "./crypto.js";
 import { generateDeviceId } from "./ids.js";
 // src/core/auth.ts
 var AuthService = class {

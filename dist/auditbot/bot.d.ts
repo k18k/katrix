@@ -32,5 +32,10 @@ export interface AuditBot {
   sweep(): Promise<void>;
   stop(): Promise<void>;
 }
-export declare function startAuditBot(hs: Homeserver, options: AuditBotOptions): Promise<AuditBot>;
+export declare function startAuditBot(hs: Homeserver, options: AuditBotOptions): Promise<{
+  userId: string;
+  sweep: () => Promise<void>;
+  synced(): Promise<void>;
+  stop(): Promise<void>;
+}>;
 //# sourceMappingURL=bot.d.ts.map

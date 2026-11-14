@@ -1,3 +1,4 @@
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
 import { DeviceId, DeviceLists, OlmMachine, RoomId, RoomMessageRequest, ToDeviceRequest, UserId } from "@matrix-org/matrix-sdk-crypto-nodejs";
 // src/auditbot/client.ts
 /** The request types of matrix-sdk-crypto (a const enum in its typings). */
@@ -22,7 +23,7 @@ var MatrixError = class extends Error {
 	status;
 	body;
 	constructor(status, body) {
-		super(`${status} ${body.errcode ?? ""} ${body.error ?? ""}`.trim());
+		super(`${status} ${stringOrUndefined(body.errcode) ?? ""} ${stringOrUndefined(body.error) ?? ""}`.trim());
 		this.status = status;
 		this.body = body;
 	}
@@ -61,7 +62,7 @@ var CryptoClient = class {
 		}));
 		const text = await res.text();
 		const json = text ? JSON.parse(text) : {};
-		if (!res.ok) throw new MatrixError(res.status, json);
+		if (!res.ok) throw new MatrixError(res.status, isObject(json) ? json : {});
 		return json;
 	}
 	/** Feed a /sync response to the crypto machine, then send what it needs sent. */

@@ -1,10 +1,10 @@
-import { isObject } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { toClientEvent } from "../core/events.js";
-import { errors } from "../core/errors.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { getState } from "../core/authrules.js";
-import { body } from "../http/input.js";
+import { errors } from "../core/errors.js";
+import { toClientEvent } from "../core/events.js";
 import { procedure } from "../http/procedure.js";
+import { body } from "../http/input.js";
 import { createHash } from "node:crypto";
 // src/api/relationships.ts
 function parseRequest(body) {
@@ -253,11 +253,14 @@ async function relationshipsForServer(hs, origin, body, authChainOf) {
 	const events = [];
 	for (const pdu of result.events) {
 		const wire = hs.federation.toFederationPdu(pdu, version);
-		wire.unsigned = {
-			...wire.unsigned,
-			...await childrenSummary(hs, pdu.event_id)
-		};
-		events.push(wire);
+		const unsigned = isObject(wire.unsigned) ? wire.unsigned : {};
+		events.push({
+			...wire,
+			unsigned: {
+				...unsigned,
+				...await childrenSummary(hs, pdu.event_id)
+			}
+		});
 	}
 	const chain = await authChainOf(result.events.map((p) => p.event_id));
 	return {

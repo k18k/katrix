@@ -1,18 +1,18 @@
-import { M, UNSTABLE } from "../shared/m.js";
-import { eventIdOf, splitStateKey, stateKey, toClientEvent } from "../core/events.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
 import { errors } from "../core/errors.js";
 import { getState } from "../core/authrules.js";
-import { readOnlyRules } from "../core/pushrules.js";
-import { inviteDecision } from "../core/invitefilter.js";
-import { deviceListChangesQuery } from "../core/keys.js";
-import { body } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
+import { eventIdOf, previousMembership, splitStateKey, stateKey, strippedState, toClientEvent } from "../core/events.js";
 import { readBatch } from "../storage/batch.js";
 import { trackedReads } from "../core/changes.js";
-import { fullProfile } from "../core/profile.js";
-import { matchesFilter, roomAllowed, validateSyncFilter } from "./filters.js";
-import { longPoll } from "./longpoll.js";
 import { Semaphore } from "../core/semaphore.js";
+import { longPoll } from "./longpoll.js";
+import { deviceListChangesQuery } from "../core/keys.js";
+import { procedure } from "../http/procedure.js";
+import { body } from "../http/input.js";
+import { matchesFilter, roomAllowed, validateSyncFilter } from "./filters.js";
+import { readOnlyRules } from "../core/pushrules.js";
+import { fullProfile } from "../core/profile.js";
+import { inviteDecision } from "../core/invitefilter.js";
 // src/api/sync.ts
 function parseSyncToken(raw) {
 	if (!raw) return null;
@@ -50,7 +50,7 @@ async function loadFilter(hs, userId, raw) {
 function toStripped(ev) {
 	return {
 		type: ev.type,
-		state_key: ev.state_key,
+		state_key: ev.state_key ?? "",
 		sender: ev.sender,
 		content: ev.content
 	};
@@ -232,12 +232,7 @@ async function roomTimeline(hs, p, roomId, since, upTo) {
 }
 async function roomEphemeral(hs, p, roomId, prefetched) {
 	const since = p.since?.pos ?? null;
-	const out = [];
 	const typing = hs.typing.typingSince(roomId, since);
-	if (typing !== null && (since !== null || typing.length > 0)) out.push({
-		type: M.TYPING,
-		content: { user_ids: typing }
-	});
 	const where = [{
 		field: "room_id",
 		value: roomId
@@ -248,22 +243,24 @@ async function roomEphemeral(hs, p, roomId, prefetched) {
 		value: since
 	});
 	const receipts = (prefetched ?? await hs.db.findMany("receipts", { where })).filter((r) => r.stream <= p.to);
+	/** By event, receipt type and user. */
 	const content = {};
 	for (const r of receipts) {
 		if (r.receipt_type === M.READ.PRIVATE && r.user_id !== p.session.userId) continue;
-		content[r.event_id] ??= {};
-		content[r.event_id][r.receipt_type] ??= {};
-		if (r.thread_id && content[r.event_id][r.receipt_type][r.user_id] && !content[r.event_id][r.receipt_type][r.user_id].thread_id) continue;
-		content[r.event_id][r.receipt_type][r.user_id] = {
+		const users = (content[r.event_id] ??= {})[r.receipt_type] ??= {};
+		if (r.thread_id && users[r.user_id] && !users[r.user_id].thread_id) continue;
+		users[r.user_id] = {
 			ts: r.ts,
 			...r.thread_id ? { thread_id: r.thread_id } : {}
 		};
 	}
-	if (Object.keys(content).length) out.push({
+	return [...typing !== null && (since !== null || typing.length > 0) ? [{
+		type: M.TYPING,
+		content: { user_ids: typing }
+	}] : [], ...Object.keys(content).length ? [{
 		type: M.RECEIPT,
 		content
-	});
-	return out.filter((e) => matchesFilter(p.filter.room?.ephemeral, e));
+	}] : []].filter((e) => matchesFilter(p.filter.room?.ephemeral, e));
 }
 async function accountData(hs, p, roomId, prefetched) {
 	const where = [{
@@ -285,25 +282,58 @@ async function accountData(hs, p, roomId, prefetched) {
 		content: r.content
 	})).filter((e) => matchesFilter(filter, e));
 }
-async function roomSummary(hs, roomId, userId) {
-	const state = await hs.rooms.currentState(roomId);
+/** The state events a room summary is computed from: members for the counts and heroes, the name and alias for whether heroes are needed. */
+const SUMMARY_TYPES = /* @__PURE__ */ new Set([
+	M.ROOM.MEMBER,
+	M.ROOM.NAME,
+	M.ROOM.CANONICAL_ALIAS
+]);
+/**
+* What a room's summary is made of, by state map: the room service replaces a room's map when its state changes, so a
+* map's members never change. A join wakes every member of the room, and each of their syncs needed the same lists.
+*/
+const summaryParts = /* @__PURE__ */ new WeakMap();
+function summaryPartsOf(state) {
+	const known = summaryParts.get(state);
+	if (known) return known;
 	let joined = 0;
 	let invited = 0;
-	const heroes = [];
+	/** Joined and invited members, in state order: the first of them become the heroes. */
+	const members = [];
 	for (const [key, ev] of state) {
 		const [type, sk] = splitStateKey(key);
 		if (type !== M.ROOM.MEMBER) continue;
 		const m = ev.content?.membership;
 		if (m === "join") joined++;
 		if (m === "invite") invited++;
-		if ((m === "join" || m === "invite") && sk !== userId && heroes.length < 5) heroes.push(sk);
+		if (m === "join" || m === "invite") members.push(sk);
 	}
-	const summary = {
+	const named = !!(getState(state, M.ROOM.NAME)?.content?.name || getState(state, M.ROOM.CANONICAL_ALIAS)?.content?.alias);
+	const parts = {
+		joined,
+		invited,
+		members,
+		named
+	};
+	summaryParts.set(state, parts);
+	return parts;
+}
+async function roomSummary(hs, roomId, userId) {
+	const { joined, invited, members, named } = summaryPartsOf(await hs.rooms.currentState(roomId));
+	const counts = {
 		[M.JOINED_MEMBER_COUNT]: joined,
 		[M.INVITED_MEMBER_COUNT]: invited
 	};
-	if (!getState(state, M.ROOM.NAME)?.content?.name && !getState(state, M.ROOM.CANONICAL_ALIAS)?.content?.alias) summary[M.HEROES] = heroes.sort();
-	return summary;
+	if (named) return counts;
+	const heroes = [];
+	for (const m of members) {
+		if (heroes.length === 5) break;
+		if (m !== userId) heroes.push(m);
+	}
+	return {
+		...counts,
+		[M.HEROES]: heroes.sort()
+	};
 }
 /**
 * What changed for the user since the token, for all of their rooms at once: the rooms with new
@@ -346,7 +376,9 @@ async function changesSince(hs, p, memberships, since, accountRows) {
 		kinds.push(kind);
 		queries.push(query);
 	};
-	for (const chunk of chunks(mayHaveChanged("roomEvents", joined))) add("events", {
+	const eventRooms = mayHaveChanged("roomEvents", joined);
+	const knownEventRooms = logs?.roomEvents.knowsAfter(since) ? eventRooms : [];
+	if (!knownEventRooms.length) for (const chunk of chunks(eventRooms)) add("events", {
 		model: "events",
 		opts: {
 			where: [inRooms(chunk), ...range],
@@ -377,7 +409,7 @@ async function changesSince(hs, p, memberships, since, accountRows) {
 		}] }
 	});
 	const results = queries.length ? await readBatch(hs.db, queries) : [];
-	const touched = /* @__PURE__ */ new Set();
+	const touched = new Set(knownEventRooms);
 	const receipts = /* @__PURE__ */ new Map();
 	const memberChanges = [];
 	results.forEach((rows, i) => {
@@ -569,14 +601,14 @@ async function buildSync(hs, p) {
 			const pdu = await hs.rooms.getPdu(m.event_id);
 			if (!pdu || p.ignored.has(pdu.sender)) continue;
 			if (await inviteDecision(hs, userId, pdu.sender) !== "allow") continue;
-			invite[roomId] = { invite_state: { events: [...pdu.unsigned?.invite_room_state ?? [], pdu].map(toStripped) } };
+			invite[roomId] = { invite_state: { events: [...strippedState(pdu, "invite_room_state"), toStripped(pdu)] } };
 			empty = false;
 		} else if (m.membership === "knock") {
 			if (!changed && !p.fullState) continue;
 			const knockPdu = await hs.rooms.getPdu(m.event_id);
 			const ev = knockPdu ? { pdu: knockPdu } : null;
 			if (!ev) continue;
-			knock[roomId] = { knock_state: { events: [...ev.pdu.unsigned?.knock_room_state ?? [], ev.pdu].map(toStripped) } };
+			knock[roomId] = { knock_state: { events: [...strippedState(ev.pdu, "knock_room_state"), toStripped(ev.pdu)] } };
 			empty = false;
 		} else {
 			if (m.forgotten && since === null) continue;
@@ -600,20 +632,28 @@ async function buildSync(hs, p) {
 		if (!p.filter.room?.state?.lazy_load_members && await hs.partialState.isPartial(roomId)) return null;
 		const completedAt = await hs.partialState.completedAt(roomId);
 		const initial = since === null || p.fullState || m.stream > since || completedAt !== null && completedAt > since && completedAt <= p.to;
-		const [{ timeline, state, stateAfter, timelineEvents }, ephemeral, roomAccountData, summary, counts] = await Promise.all([
+		const summaryRead = initial ? roomSummary(hs, roomId, userId) : null;
+		const [{ timeline, state, stateAfter, timelineEvents }, ephemeral, roomAccountData, counts] = await Promise.all([
 			roomTimeline(hs, p, roomId, initial ? null : since, p.to),
 			roomEphemeral(hs, p, roomId, changes ? changes.receipts.get(roomId) ?? [] : void 0),
 			accountData(hs, p, roomId, changes ? changes.accountData.get(roomId) ?? [] : void 0),
-			roomSummary(hs, roomId, userId),
 			hs.push.unreadCounts(userId, roomId)
 		]);
 		if (!initial && timelineEvents.length === 0 && state.length === 0 && stateAfter.length === 0 && ephemeral.length === 0 && roomAccountData.length === 0) return null;
+		const stateSection = p.useStateAfter ? { [p.stateAfterKey ?? "state_after"]: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } } : { state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) } };
+		const changesSummary = (e) => e.state_key !== void 0 && SUMMARY_TYPES.has(e.type);
+		const summaryChanged = [
+			...state,
+			...stateAfter,
+			...timelineEvents.map((e) => e.pdu)
+		].some(changesSummary);
+		const summary = summaryRead ? await summaryRead : summaryChanged ? await roomSummary(hs, roomId, userId) : void 0;
 		const room = {
 			timeline,
-			...p.useStateAfter ? { [p.stateAfterKey ?? "state_after"]: { events: stateAfter.map((e) => toClientEvent(e, { includeRoomId: false })) } } : { state: { events: state.map((e) => toClientEvent(e, { includeRoomId: false })) } },
+			...stateSection,
 			ephemeral: { events: ephemeral },
 			account_data: { events: roomAccountData },
-			summary
+			...summary ? { summary } : {}
 		};
 		if (p.filter.room?.timeline?.unread_thread_notifications) {
 			room.unread_notifications = counts.room;
@@ -673,21 +713,34 @@ async function buildSync(hs, p) {
 			limit: 501
 		}
 	});
-	const presenceQuery = since === null ? {
-		model: "presence",
-		opts: { where: [{
-			field: "user_id",
-			operator: "in",
-			value: wantPresence ? sharingList : []
-		}] }
-	} : wantPresence ? recent("presence") : {
+	const presenceLog = hs.changes?.logs.presence;
+	const changedUsers = since !== null && presenceLog?.knowsAfter(since) ? presenceLog.filterChanged(sharingList, since) : null;
+	const presenceQuery = !wantPresence ? {
 		model: "presence",
 		opts: { where: [{
 			field: "user_id",
 			operator: "in",
 			value: []
 		}] }
-	};
+	} : since === null ? {
+		model: "presence",
+		opts: { where: [{
+			field: "user_id",
+			operator: "in",
+			value: sharingList
+		}] }
+	} : changedUsers ? {
+		model: "presence",
+		opts: { where: [{
+			field: "user_id",
+			operator: "in",
+			value: changedUsers
+		}, {
+			field: "stream",
+			operator: "gt",
+			value: since
+		}] }
+	} : recent("presence");
 	let [presenceRows = [], newlySharedPresence = [], deviceRows] = await trackedReads(hs.db, hs.changes, [
 		since === null ? { query: presenceQuery } : {
 			query: presenceQuery,
@@ -735,10 +788,10 @@ async function buildSync(hs, p) {
 			if (row.stream > p.to) continue;
 			const content = {
 				presence: row.presence,
-				last_active_ago: Date.now() - row.last_active_ts
+				last_active_ago: Date.now() - row.last_active_ts,
+				...row.status_msg ? { status_msg: row.status_msg } : {},
+				...row.presence === "online" ? { currently_active: true } : {}
 			};
-			if (row.status_msg) content.status_msg = row.status_msg;
-			if (row.presence === "online") content.currently_active = true;
 			const ev = {
 				type: M.PRESENCE,
 				sender: row.user_id,
@@ -770,9 +823,9 @@ async function buildSync(hs, p) {
 			content: r.content
 		})) },
 		device_one_time_keys_count: countAlgorithms(oneTimeKeyRows),
-		device_unused_fallback_key_types: [...new Set(fallbackRows.map((r) => r.algorithm))]
+		device_unused_fallback_key_types: [...new Set(fallbackRows.map((r) => r.algorithm))],
+		...profileUpdates ? { [UNSTABLE.ORG.MATRIX.MSC4429.USERS]: profileUpdates } : {}
 	};
-	if (profileUpdates) body[UNSTABLE.ORG.MATRIX.MSC4429.USERS] = profileUpdates;
 	if (since !== null) {
 		const lists = await hs.keys.changesSince(userId, since, p.to, {
 			memberChanges: await memberChanges(),
@@ -855,7 +908,10 @@ async function touchPresence(hs, userId, presence) {
 	await hs.federation.onPresence(userId, state, row?.status_msg ?? null).catch((err) => hs.logger.warn("Presence update to federation failed", err));
 }
 function registerSyncRoutes(r) {
-	r.client("GET", "/sync", procedure({ handler: sync }));
+	r.client("GET", "/sync", procedure({
+		endpoint: "GET /v3/sync",
+		handler: sync
+	}));
 	r.client("POST", "/user/:userId/filter", procedure({
 		auth: "user",
 		input: body({}),
@@ -905,7 +961,8 @@ async function profileUpdatesFor(hs, p, memberships, memberChanges) {
 	const sharing = await hs.rooms.usersSharingRooms(p.session.userId);
 	const out = {};
 	const add = (userId, field, value) => {
-		(out[userId] ??= { profile_updates: {} }).profile_updates[field] = value ?? null;
+		const updates = (out[userId] ??= { profile_updates: {} }).profile_updates;
+		if (updates) updates[field] = value ?? null;
 	};
 	const full = new Set(since === null ? sharing : []);
 	if (since !== null) {
@@ -914,7 +971,8 @@ async function profileUpdatesFor(hs, p, memberships, memberChanges) {
 		for (const c of changes) {
 			if (c.stream > p.to || c.user_id === p.session.userId) continue;
 			if (c.membership === "join" && myRooms.has(c.room_id)) {
-				if ((await hs.rooms.getEvent(c.event_id))?.pdu.unsigned?.prev_content?.membership !== "join") full.add(c.user_id);
+				const ev = await hs.rooms.getEvent(c.event_id);
+				if (!ev || previousMembership(ev.pdu) !== "join") full.add(c.user_id);
 			} else if (!sharing.has(c.user_id) && (myRooms.has(c.room_id) || memberships.some((m) => m.room_id === c.room_id))) out[c.user_id] = { profile_updates: null };
 		}
 		const rows = await hs.db.findMany("profile_fields", { where: [{

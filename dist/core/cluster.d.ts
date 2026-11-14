@@ -51,6 +51,11 @@ export declare class StreamManager {
   private lastPos;
   private heartbeat;
   private positionCache;
+  /** Counts completed writes of this instance: a position read that began before the latest one may not show it. */
+  private gen;
+  /** The position read in flight, and the one queued to start after it (see `position`). */
+  private reading;
+  private queuedRead;
   private highestAllocated;
   /** Called after a write of this instance completed, when the position may have moved (#50). */
   onAdvance: () => void;
@@ -74,6 +79,8 @@ export declare class StreamManager {
    * 20 ms cache, for a caller that knows a change has completed elsewhere.
    */
   position(fresh?: boolean): Promise<number>;
+  private readPosition;
+  private readPositionNow;
   /**
    * Resolve once the position has reached `pos` (true), or false after `timeoutMs` or on abort.
    * For a request woken by a change that another write in flight still keeps out of sight

@@ -71,7 +71,7 @@ export declare class AuthService {
   /** Issue a short-lived single-use `m.login.token` for a user (SSO, or host-app sign-in). */
   createLoginToken(userId: string, ttlMs?: number): Promise<string>;
   /** Redeem a login token; returns the user ID or throws. */
-  consumeLoginToken(token: string): Promise<string>;
+  consumeLoginToken(token: string): Promise<any>;
   revokeToken(token: string): Promise<void>;
   revokeDeviceTokens(userId: string, deviceId: string): Promise<void>;
   deleteDevice(userId: string, deviceId: string): Promise<void>;

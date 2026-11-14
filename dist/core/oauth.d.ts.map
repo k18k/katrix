@@ -1,1 +1,1 @@
-{"version":3,"file":"oauth.d.ts","names":[],"sources":["../../src/core/oauth.ts"],"mappings":";;;;;;iBASiB;;EAEf;;EAEA;EACA;;EAEA;;EAEA;;EAEA,uBAAuB,QAAQ;;EAE/B;;EAEA;;qBAMW;UACH;WACC,SAAS;UACV;UACA;UACA;EAER,YAAY,IAAI,YAAY,SAAS;;EAM/B,kBAAkB,QAAQ;;EAc1B,aAAa,gBAAgB,QAAQ;EA6D3C,OAAO"}
+{"version":3,"file":"oauth.d.ts","names":[],"sources":["../../src/core/oauth.ts"],"mappings":";;;;;;iBASiB;;EAEf;;EAEA;EACA;;EAEA;;EAEA;;EAEA,uBAAuB,QAAQ;;EAE/B;;EAEA;;qBAcW;UACH;WACC,SAAS;UACV;UACA;UACA;EAER,YAAY,IAAI,YAAY,SAAS;;EAM/B,kBAAc,QAAA;;EAed,aAAa,gBAAa,QAAA;EA8DhC,OAAO"}

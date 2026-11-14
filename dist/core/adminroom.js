@@ -1,5 +1,6 @@
-import { isValidRoomId, isValidUserId } from "../shared/ids.js";
-import { M, UNSTABLE } from "../shared/m.js";
+import { isValidRoomId, isValidUserId } from "../packages/shared/src/ids.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
+import { stringOrUndefined } from "../packages/shared/src/json.js";
 import { randomString } from "./crypto.js";
 import { MatrixError } from "./errors.js";
 import { createUser } from "../api/account.js";
@@ -129,15 +130,15 @@ var AdminRoomService = class {
 		const roomId = await this.ensureRoom();
 		const membership = await this.hs.rooms.membership(roomId, userId);
 		if (membership === "join") return;
-		if (membership !== "invite") await this.hs.rooms.invite(roomId, this.botUserId, userId);
-		await this.hs.rooms.join(userId, roomId);
+		if (membership !== "invite") await this.hs.membership.invite(roomId, this.botUserId, userId);
+		await this.hs.membership.join(userId, roomId);
 	}
 	/** Remove a former admin from the admin room. */
 	async removeAdmin(userId) {
 		const roomId = await this.roomId();
 		if (!roomId || userId === this.botUserId) return;
 		const membership = await this.hs.rooms.membership(roomId, userId);
-		if (membership === "join" || membership === "invite") await this.hs.rooms.setMembership(roomId, this.botUserId, userId, "leave", "No longer a server admin");
+		if (membership === "join" || membership === "invite") await this.hs.membership.setMembership(roomId, this.botUserId, userId, "leave", "No longer a server admin");
 	}
 	/** Post a message from the admin bot. */
 	async say(text, replyTo) {
@@ -188,7 +189,7 @@ var AdminRoomService = class {
 	}
 	async resolveRoom(arg) {
 		if (!arg) throw new Error("Missing room");
-		if (arg.startsWith("#")) return this.hs.rooms.resolveRoomIdOrAlias(arg);
+		if (arg.startsWith("#")) return this.hs.membership.resolveRoomIdOrAlias(arg);
 		if (!isValidRoomId(arg)) throw new Error(`Invalid room: ${arg}`);
 		return arg;
 	}
@@ -351,7 +352,7 @@ var AdminRoomService = class {
 					case "list": {
 						const { rooms, total } = await hs.admin.listRooms({ limit: 200 });
 						return `${total} room(s):\n${(await Promise.all(rooms.map(async (r) => {
-							const name = (await hs.rooms.currentState(r.room_id)).get("m.room.name\0")?.content?.name;
+							const name = stringOrUndefined((await hs.rooms.currentState(r.room_id)).get("m.room.name\0")?.content?.name);
 							return `${r.room_id}  ${r.joined_members} member(s)${name ? `  "${name}"` : ""}${r.is_public ? " [public]" : ""}`;
 						}))).join("\n")}`;
 					}

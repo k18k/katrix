@@ -1,6 +1,6 @@
-import { isObject } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { PUSH_RULE_KINDS, defaultPushRules } from "../shared/push.js";
+import { PUSH_RULE_KINDS, defaultPushRules } from "../packages/shared/src/push.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { CLUSTER_RESYNC } from "./cluster.js";
 // src/core/pushrules.ts
 const KINDS = PUSH_RULE_KINDS;
@@ -123,10 +123,10 @@ async function copyRules(hs, userId, oldRoomId, newRoomId) {
 					...structuredClone(rule),
 					rule_id: newRoomId
 				});
-			} else if (Array.isArray(rule.conditions) && rule.conditions.some((c) => c?.key === "room_id" && c?.pattern === oldRoomId)) {
+			} else if (Array.isArray(rule.conditions) && rule.conditions.some((c) => isObject(c) && c.key === "room_id" && c.pattern === oldRoomId)) {
 				const copy = structuredClone(rule);
 				copy.rule_id = `${rule.rule_id}-${newRoomId}`;
-				copy.conditions = copy.conditions.map((c) => c?.key === "room_id" && c?.pattern === oldRoomId ? {
+				copy.conditions = rule.conditions.map((c) => isObject(c) && c.key === "room_id" && c.pattern === oldRoomId ? {
 					...c,
 					pattern: newRoomId
 				} : c);

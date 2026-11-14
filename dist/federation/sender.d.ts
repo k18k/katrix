@@ -13,8 +13,8 @@ export declare class TransactionSender {
   /** Start background sweeping for destinations with pending items (e.g. after a restart). */
   start(): void;
   private sweep;
-  sendPdu(destinations: Iterable<string>, pdu: Record<string, any>): Promise<void>;
-  sendEdu(destinations: Iterable<string>, eduType: string, content: Record<string, any>, durable?: boolean): Promise<void>;
+  sendPdu(destinations: Iterable<string>, pdu: Record<string, unknown>): Promise<void>;
+  sendEdu(destinations: Iterable<string>, eduType: string, content: Record<string, unknown>, durable?: boolean): Promise<void>;
   private enqueue;
   private schedule;
   private flush;

@@ -1,5 +1,5 @@
-import { isObject } from "../shared/json.js";
-import { M } from "../shared/m.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { procedure } from "../http/procedure.js";
 // src/api/threadsubs.ts
@@ -125,16 +125,18 @@ async function threadSubscriptionsExtension(hs, userId, ext, since, to) {
 		value: since
 	});
 	const rows = (await hs.db.findMany("thread_subscriptions", { where })).filter((r) => r.stream <= to && (since !== null || r.subscribed)).sort((a, b) => b.stream - a.stream);
-	const out = {};
-	for (const row of rows.slice(0, limit)) {
-		const section = row.subscribed ? "subscribed" : "unsubscribed";
-		((out[section] ??= {})[row.room_id] ??= {})[row.thread_id] = row.subscribed ? {
-			automatic: !!row.automatic,
-			bump_stamp: row.stream
-		} : { bump_stamp: row.stream };
-	}
-	if (rows.length > limit) out.prev_batch = String(rows[limit - 1].stream);
-	return out;
+	const subscribed = {};
+	const unsubscribed = {};
+	for (const row of rows.slice(0, limit)) if (row.subscribed) (subscribed[row.room_id] ??= {})[row.thread_id] = {
+		automatic: !!row.automatic,
+		bump_stamp: row.stream
+	};
+	else (unsubscribed[row.room_id] ??= {})[row.thread_id] = { bump_stamp: row.stream };
+	return {
+		...Object.keys(subscribed).length ? { subscribed } : {},
+		...Object.keys(unsubscribed).length ? { unsubscribed } : {},
+		...rows.length > limit ? { prev_batch: String(rows[limit - 1].stream) } : {}
+	};
 }
 export { isSubscribed, registerThreadSubscriptionRoutes, threadSubscriptionsExtension };
 

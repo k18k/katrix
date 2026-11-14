@@ -1,1 +1,1 @@
-{"version":3,"file":"handler.d.ts","names":[],"sources":["../../src/http/handler.ts"],"mappings":";iBAyEiB;EACf;;;wBAIoB,cAAc,IAAI,YAAY,SAAS,SAAS,UAAS,gBAAqB,QAAQ"}
+{"version":3,"file":"handler.d.ts","names":["_$undici_types0.Response"],"sources":["../../src/http/handler.ts"],"mappings":";;iBAyEiB;EACf;;;wBAIoB,cAAc,IAAI,YAAY,SAAS,SAAS,UAAS,gBAAkB,QAAlBA"}

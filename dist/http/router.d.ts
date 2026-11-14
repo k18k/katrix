@@ -1,6 +1,6 @@
+import { Homeserver } from "../homeserver.js";
 import { Session } from "../core/auth.js";
 import { RateLimitAction } from "../core/ratelimit.js";
-import { Homeserver } from "../homeserver.js";
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 export interface RequestContext {
   hs: Homeserver;
@@ -34,9 +34,9 @@ export declare class Router {
   delete: (path: string, h: Handler) => void;
   /** Register a client-server API route under both `r0` and `v3` (or the given versions). */
   client(method: HttpMethod, path: string, handler: Handler, versions?: string[]): void;
-  match(method: string, pathname: string): {
+  match(method: string, pathname: string): "method" | {
     handler: Handler;
     params: Record<string, string>;
-  } | "method" | null;
+  } | null;
 }
 //# sourceMappingURL=router.d.ts.map

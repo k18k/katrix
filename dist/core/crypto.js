@@ -1,4 +1,6 @@
-import { canonicalJson } from "../shared/canonical-json.js";
+import { canonicalJson } from "../packages/shared/src/canonical-json.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { isSignatures } from "../packages/shared/src/keys.js";
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, randomInt, scrypt, sign, timingSafeEqual, verify } from "node:crypto";
 import { promisify } from "node:util";
 // src/core/crypto.ts
@@ -63,9 +65,9 @@ function loadSigningKey(keyId, seed) {
 }
 /** Sign a JSON object in place according to the Matrix signing algorithm. */
 function signJson(obj, serverName, key) {
-	const { signatures, unsigned, ...rest } = obj;
+	const { signatures, unsigned, ...rest } = { ...obj };
 	const sig = unpaddedBase64(sign(null, Buffer.from(canonicalJson(rest)), key.privateKey));
-	const merged = { ...signatures };
+	const merged = isSignatures(signatures) ? { ...signatures } : {};
 	merged[serverName] = {
 		...merged[serverName],
 		[`ed25519:${key.keyId}`]: sig
@@ -86,9 +88,10 @@ function publicKeyFromBase64(key) {
 }
 /** Verify one ed25519 signature on a JSON object (signatures/unsigned excluded). */
 function verifyJsonSignature(obj, serverName, keyId, publicKey) {
-	const sig = obj.signatures?.[serverName]?.[keyId];
+	const { signatures, unsigned, ...rest } = { ...obj };
+	const byServer = isObject(signatures) ? signatures[serverName] : void 0;
+	const sig = isObject(byServer) ? byServer[keyId] : void 0;
 	if (typeof sig !== "string") return false;
-	const { signatures, unsigned, ...rest } = obj;
 	try {
 		return verify(null, Buffer.from(canonicalJson(rest)), publicKey, decodeBase64(sig));
 	} catch {

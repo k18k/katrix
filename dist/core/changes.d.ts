@@ -26,6 +26,8 @@ export declare class ChangeLog {
   /** Whether `key` may have changed after `pos`; false only when it is known not to have. */
   changedAfter(key: string, pos: number): boolean;
   /** The keys among `keys` that may have changed after `pos`. */
+  /** Whether the log knows every change after `pos`, so that a key it names did change. */
+  knowsAfter(pos: number): boolean;
   filterChanged(keys: Iterable<string>, pos: number): string[];
 }
 /**

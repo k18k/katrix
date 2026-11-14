@@ -76,10 +76,42 @@ export declare class OAuthServer {
   url(path: string): string;
   get accountManagementUri(): string;
   /** Authorization server metadata (RFC 8414), served at `/_matrix/client/v1/auth_metadata`. */
-  metadata(): Record<string, unknown>;
+  metadata(): {
+    issuer: string;
+    authorization_endpoint: string;
+    token_endpoint: string;
+    registration_endpoint: string;
+    revocation_endpoint: string;
+    device_authorization_endpoint: string;
+    userinfo_endpoint: string;
+    jwks_uri: string;
+    response_types_supported: string[];
+    response_modes_supported: string[];
+    grant_types_supported: string[];
+    code_challenge_methods_supported: string[];
+    token_endpoint_auth_methods_supported: string[];
+    revocation_endpoint_auth_methods_supported: string[];
+    scopes_supported: string[];
+    subject_types_supported: string[];
+    id_token_signing_alg_values_supported: string[];
+    claims_supported: string[];
+    prompt_values_supported: string[];
+    authorization_response_iss_parameter_supported: boolean;
+    account_management_uri: string;
+    account_management_actions_supported: readonly ["org.matrix.profile", "org.matrix.devices_list", "org.matrix.device_view", "org.matrix.device_delete", "org.matrix.account_deactivate", "org.matrix.cross_signing_reset"];
+    op_tos_uri?: string | undefined;
+    op_policy_uri?: string | undefined;
+  };
   /** The server's signing key as a JWK set (RFC 8037), for ID tokens. */
   jwks(): {
-    keys: Record<string, string>[];
+    keys: {
+      kty: string;
+      crv: string;
+      x: string;
+      kid: string;
+      alg: string;
+      use: string;
+    }[];
   };
   /**
    * Register a client. Each login registers again (the spec asks clients to), so identical

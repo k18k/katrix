@@ -1,6 +1,6 @@
-import { isObject, isStrings } from "../shared/json.js";
-import { M, UNSTABLE } from "../shared/m.js";
-import { globMatch as globMatch$1 } from "../shared/glob.js";
+import { isObject, isStrings } from "../packages/shared/src/json.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
+import { globMatch as globMatch$1 } from "../packages/shared/src/glob.js";
 import { errors } from "../core/errors.js";
 // src/api/filters.ts
 function globMatch(pattern, value) {
@@ -21,12 +21,13 @@ function matchesFilter(filter, ev) {
 	const relTypes = filter.rel_types ?? filter[UNSTABLE.ORG.MATRIX.MSC3874.REL_TYPES];
 	const notRelTypes = filter.not_rel_types ?? filter[UNSTABLE.ORG.MATRIX.MSC3874.NOT_REL_TYPES];
 	if (relTypes || notRelTypes) {
-		const relType = ev.content?.[M.RELATES_TO]?.rel_type;
-		if (relTypes && !relTypes.includes(relType)) return false;
+		const relation = isObject(ev.content) ? ev.content[M.RELATES_TO] : void 0;
+		const relType = isObject(relation) ? relation.rel_type : void 0;
+		if (relTypes && (typeof relType !== "string" || !relTypes.includes(relType))) return false;
 		if (notRelTypes && typeof relType === "string" && notRelTypes.includes(relType)) return false;
 	}
 	if (filter.contains_url !== void 0) {
-		if (typeof ev.content?.url === "string" !== filter.contains_url) return false;
+		if ((isObject(ev.content) && typeof ev.content.url === "string") !== filter.contains_url) return false;
 	}
 	return true;
 }
@@ -37,17 +38,30 @@ function roomAllowed(filter, roomId) {
 	if (r.rooms && !r.rooms.includes(roomId)) return false;
 	return true;
 }
-function validateEventFilter(f, name) {
+const LIST_FIELDS = [
+	"types",
+	"not_types",
+	"senders",
+	"not_senders",
+	"rooms",
+	"not_rooms",
+	"rel_types",
+	"not_rel_types",
+	UNSTABLE.ORG.MATRIX.MSC3874.REL_TYPES,
+	UNSTABLE.ORG.MATRIX.MSC3874.NOT_REL_TYPES
+];
+const FLAG_FIELDS = [
+	"contains_url",
+	"lazy_load_members",
+	"include_redundant_members",
+	"unread_thread_notifications"
+];
+/** Throws M_BAD_JSON unless `f` is an event filter (or absent). */
+function assertEventFilter(f, name) {
 	if (f === void 0) return;
 	if (!isObject(f)) throw errors.badJson(`${name} must be an object`);
-	for (const key of [
-		"types",
-		"not_types",
-		"senders",
-		"not_senders",
-		"rooms",
-		"not_rooms"
-	]) if (f[key] !== void 0 && !isStrings(f[key])) throw errors.badJson(`${name}.${key} must be a list of strings`);
+	for (const key of LIST_FIELDS) if (f[key] !== void 0 && !isStrings(f[key])) throw errors.badJson(`${name}.${key} must be a list of strings`);
+	for (const key of FLAG_FIELDS) if (f[key] !== void 0 && typeof f[key] !== "boolean") throw errors.badJson(`${name}.${key} must be a boolean`);
 	const allStartWith = (key, prefix) => {
 		const list = f[key];
 		return !isStrings(list) || list.every((x) => x.startsWith(prefix));
@@ -58,7 +72,7 @@ function validateEventFilter(f, name) {
 }
 function validateSyncFilter(f) {
 	if (!isObject(f)) throw errors.badJson("Filter must be an object");
-	for (const k of ["presence", "account_data"]) validateEventFilter(f[k], k);
+	for (const k of ["presence", "account_data"]) assertEventFilter(f[k], k);
 	if (f.room !== void 0) {
 		if (!isObject(f.room)) throw errors.badJson("room must be an object");
 		for (const k of [
@@ -66,8 +80,8 @@ function validateSyncFilter(f) {
 			"state",
 			"ephemeral",
 			"account_data"
-		]) validateEventFilter(f.room[k], `room.${k}`);
-		validateEventFilter({
+		]) assertEventFilter(f.room[k], `room.${k}`);
+		assertEventFilter({
 			rooms: f.room.rooms,
 			not_rooms: f.room.not_rooms
 		}, "room");
@@ -85,9 +99,9 @@ function parseRoomEventFilter(ctx) {
 	} catch {
 		throw errors.badJson("Invalid filter JSON");
 	}
-	validateEventFilter(parsed, "filter");
+	assertEventFilter(parsed, "filter");
 	return parsed;
 }
-export { matchesFilter, parseRoomEventFilter, roomAllowed, validateSyncFilter };
+export { assertEventFilter, matchesFilter, parseRoomEventFilter, roomAllowed, validateSyncFilter };
 
 //# sourceMappingURL=filters.js.map

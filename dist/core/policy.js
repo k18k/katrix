@@ -1,10 +1,10 @@
-import { isObject } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { publicKeyFromBase64, verifyJsonSignature } from "./crypto.js";
-import { redact } from "./events.js";
-import { MatrixError } from "./errors.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { getState } from "./authrules.js";
 import { domainOf } from "../federation/index.js";
+import { MatrixError } from "./errors.js";
+import { publicKeyFromBase64, verifyJsonSignature } from "./crypto.js";
+import { redact } from "./events.js";
 // src/core/policy.ts
 const KEY_ID = "ed25519:policy_server";
 var PolicyServers = class {
@@ -41,10 +41,11 @@ var PolicyServers = class {
 	}
 	/** Ask the policy server to sign `pdu`; adds the signature to it. Throws the server's error. */
 	async requestSignature(pdu, version, policy) {
-		const sig = (await this.hs.federation.client.request(policy.via, "POST", "/_matrix/policy/v1/sign", {
+		const byServer = (await this.hs.federation.client.request(policy.via, "POST", "/_matrix/policy/v1/sign", {
 			body: this.hs.federation.toFederationPdu(pdu, version),
 			timeoutMs: 1e4
-		}))?.[policy.via]?.[KEY_ID];
+		}))[policy.via];
+		const sig = isObject(byServer) ? byServer[KEY_ID] : void 0;
 		if (typeof sig !== "string") throw new MatrixError(403, "M_FORBIDDEN", "The policy server did not sign the event");
 		pdu.signatures = {
 			...pdu.signatures,

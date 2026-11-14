@@ -1,17 +1,18 @@
-import { parseId } from "../shared/ids.js";
-import { isObject, isStrings } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { globMatch } from "../shared/glob.js";
-import { unpaddedBase64, urlSafeBase64 } from "../core/crypto.js";
-import { SUPPORTED_ROOM_VERSIONS, computeContentHash, computeReferenceHash, eventIdOf, finalisePdu, isPdu, redact, roomVersionFeatures, splitStateKey, stateKey, stripState } from "../core/events.js";
+import { isObject, isStrings } from "../packages/shared/src/json.js";
+import { isOneTimeKey, isSignatures } from "../packages/shared/src/keys.js";
+import { isValidRoomId, parseId } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
+import { globMatch } from "../packages/shared/src/glob.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { authStateFromAuthEvents, checkAuth, getState, membershipOf } from "../core/authrules.js";
-import { resolveState } from "../core/stateres.js";
+import { SUPPORTED_ROOM_VERSIONS, computeContentHash, computeReferenceHash, eventIdOf, finalisePdu, isPdu, redact, redactPdu, roomVersionFeatures, splitStateKey, stateKey, stripState, strippedState } from "../core/events.js";
+import { unpaddedBase64, urlSafeBase64 } from "../core/crypto.js";
 import { MissingStateError } from "../core/rooms.js";
-import { publicGet } from "../core/outbound.js";
+import { resolveState } from "../core/stateres.js";
 import { FederationClient } from "./client.js";
 import { KeyRing } from "./keyring.js";
 import { TransactionSender } from "./sender.js";
+import { publicGet } from "../core/outbound.js";
 // src/federation/index.ts
 const domainOf = (id) => id.slice(id.indexOf(":") + 1);
 /** Server ACL check (m.room.server_acl). */
@@ -95,7 +96,7 @@ var FederationService = class {
 			event_id: eventId
 		};
 		if (raw.hashes?.sha256 !== computeContentHash(raw)) pdu = {
-			...redact(raw, version),
+			...redactPdu(raw, version),
 			event_id: eventId
 		};
 		if (f.v12 && pdu.type === M.ROOM.CREATE) pdu.room_id = roomId;
@@ -316,7 +317,10 @@ var FederationService = class {
 		}]);
 		if (!row) throw errors.notFound("Unknown room");
 		const previous = await this.hs.rooms.getPdu(row.event_id);
-		const strippedCreate = (p) => (p?.unsigned?.invite_room_state ?? p?.unsigned?.knock_room_state ?? []).find((e) => isObject(e) && e.type === M.ROOM.CREATE);
+		const strippedCreate = (p) => {
+			const invite = strippedState(p, "invite_room_state");
+			return (invite.length ? invite : strippedState(p, "knock_room_state")).find((e) => e.type === M.ROOM.CREATE);
+		};
 		let create = strippedCreate(previous);
 		if (!create) {
 			for (const o of await this.hs.db.findMany("outliers", { where: [{
@@ -732,16 +736,17 @@ var FederationService = class {
 			const tmpl = await this.client.request(server, "GET", `/_matrix/federation/v1/make_join/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`, { query: { ver: SUPPORTED_ROOM_VERSIONS } });
 			const version = typeof tmpl.room_version === "string" ? tmpl.room_version : "1";
 			if (!SUPPORTED_ROOM_VERSIONS.includes(version)) throw errors.unsupportedRoomVersion();
-			if (!isObject(tmpl.event) || tmpl.event.content?.membership !== "join" || tmpl.event.state_key !== userId || tmpl.event.sender !== userId) throw errors.badJson("Invalid make_join template");
+			if (!isObject(tmpl.event) || !isObject(tmpl.event.content) || tmpl.event.content.membership !== "join" || tmpl.event.state_key !== userId || tmpl.event.sender !== userId) throw errors.badJson("Invalid make_join template");
 			const joinPdu = this.finaliseTemplate(tmpl.event, version, content);
 			const res = await this.client.request(server, "PUT", `/_matrix/federation/v2/send_join/${encodeURIComponent(roomId)}/${encodeURIComponent(joinPdu.event_id)}`, {
 				body: this.toFederationPdu(joinPdu, version),
 				query: this.fasterJoins ? { omit_members: "true" } : void 0,
 				timeoutMs: 12e4
 			});
-			if (isObject(res.event?.signatures)) joinPdu.signatures = {
+			const authorised = isObject(res.event) ? res.event.signatures : void 0;
+			if (isSignatures(authorised)) joinPdu.signatures = {
 				...joinPdu.signatures,
-				...res.event.signatures
+				...authorised
 			};
 			await this.completeJoin(roomId, version, joinPdu, res, server);
 			return roomId;
@@ -801,6 +806,7 @@ var FederationService = class {
 		for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName)) try {
 			const tmpl = await this.client.request(server, "GET", `/_matrix/federation/v1/make_leave/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`);
 			const version = typeof tmpl.room_version === "string" ? tmpl.room_version : "1";
+			if (!isObject(tmpl.event)) throw errors.unknown("Invalid make_leave response");
 			const pdu = this.finaliseTemplate(tmpl.event, version, reason ? { reason } : {});
 			await this.client.request(server, "PUT", `/_matrix/federation/v2/send_leave/${encodeURIComponent(roomId)}/${encodeURIComponent(pdu.event_id)}`, { body: this.toFederationPdu(pdu, version) });
 			return pdu;
@@ -815,6 +821,7 @@ var FederationService = class {
 		for (const server of [...new Set(servers)].filter((s) => s !== this.hs.serverName)) try {
 			const tmpl = await this.client.request(server, "GET", `/_matrix/federation/v1/make_knock/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`, { query: { ver: SUPPORTED_ROOM_VERSIONS } });
 			const version = typeof tmpl.room_version === "string" ? tmpl.room_version : "1";
+			if (!isObject(tmpl.event)) throw errors.unknown("Invalid make_knock response");
 			const pdu = this.finaliseTemplate(tmpl.event, version, reason ? { reason } : {});
 			const res = await this.client.request(server, "PUT", `/_matrix/federation/v1/send_knock/${encodeURIComponent(roomId)}/${encodeURIComponent(pdu.event_id)}`, { body: this.toFederationPdu(pdu, version) });
 			return {
@@ -836,7 +843,7 @@ var FederationService = class {
 			event: this.toFederationPdu(pdu, version),
 			invite_room_state: inviteRoomState
 		} });
-		if (!isObject(res.event)) throw errors.unknown("Invalid invite response");
+		if (!isObject(res.event) || !isSignatures(res.event.signatures)) throw errors.unknown("Invalid invite response");
 		const signed = {
 			...pdu,
 			signatures: {
@@ -856,7 +863,12 @@ var FederationService = class {
 	}
 	async queryAlias(alias) {
 		this.requireEnabled();
-		return this.client.request(domainOf(alias), "GET", "/_matrix/federation/v1/query/directory", { query: { room_alias: alias } });
+		const res = await this.client.request(domainOf(alias), "GET", "/_matrix/federation/v1/query/directory", { query: { room_alias: alias } });
+		if (!isValidRoomId(res.room_id)) throw errors.unknown("Invalid directory response");
+		return {
+			room_id: res.room_id,
+			servers: isStrings(res.servers) ? res.servers : [domainOf(alias)]
+		};
 	}
 	async queryKeys(deviceKeys, timeoutMs = 1e4) {
 		const byServer = /* @__PURE__ */ new Map();
@@ -902,7 +914,7 @@ var FederationService = class {
 					body: { one_time_keys: query },
 					timeoutMs
 				});
-				Object.assign(results, res.one_time_keys ?? {});
+				Object.assign(results, claimedKeys(query, res.one_time_keys));
 			} catch (err) {
 				failures[server] = {
 					status: 503,
@@ -1026,6 +1038,20 @@ var FederationService = class {
 		return new MatrixError(status, errcode, message);
 	}
 };
+/** The one-time keys a server returned for what it was asked: user → device → key ID → key. */
+function claimedKeys(asked, answer) {
+	const out = {};
+	for (const [userId, devices] of Object.entries(isObject(answer) ? answer : {})) {
+		if (!asked[userId] || !isObject(devices)) continue;
+		for (const [deviceId, keys] of Object.entries(devices)) {
+			if (asked[userId][deviceId] === void 0 || !isObject(keys)) continue;
+			const valid = {};
+			for (const [keyId, key] of Object.entries(keys)) if (isOneTimeKey(key)) valid[keyId] = key;
+			if (Object.keys(valid).length) (out[userId] ??= {})[deviceId] = valid;
+		}
+	}
+	return out;
+}
 function filenameFromDisposition(header) {
 	if (!header) return null;
 	const star = /filename\*=utf-8''([^;]+)/i.exec(header);

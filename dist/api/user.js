@@ -1,12 +1,12 @@
-import { canonicalJson } from "../shared/canonical-json.js";
-import { isObject } from "../shared/json.js";
-import { M } from "../shared/m.js";
+import { canonicalJson } from "../packages/shared/src/canonical-json.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { errors } from "../core/errors.js";
+import { procedure } from "../http/procedure.js";
+import { jsonResponse } from "../http/handler.js";
+import { requireUia } from "./uia.js";
 import { v } from "../core/vpm.js";
 import { body, fail } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
-import { requireUia } from "./uia.js";
-import { jsonResponse } from "../http/handler.js";
 // src/api/user.ts
 const deleteDevicesBody = body({ devices: v.array(v.unknown(), fail("M_BAD_JSON", "devices must be a list")) });
 const keysQueryBody = body({

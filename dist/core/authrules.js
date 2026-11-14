@@ -1,9 +1,9 @@
-import { isValidUserId } from "../shared/ids.js";
-import { isObject, stringOrUndefined } from "../shared/json.js";
-import { M } from "../shared/m.js";
-import { publicKeyFromBase64, verifyJsonSignature } from "./crypto.js";
-import { roomVersionFeatures, stateKey, versionNum } from "./events.js";
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
+import { isValidUserId } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
 import { errors } from "./errors.js";
+import { eventIdOf, roomVersionFeatures, stateKey, versionNum } from "./events.js";
+import { publicKeyFromBase64, verifyJsonSignature } from "./crypto.js";
 // src/core/authrules.ts
 /** MSC3757: the user owning a state key of the form "@user:server" or "@user:server_suffix". */
 function ownerOfStateKey(stateKeyValue) {
@@ -97,12 +97,9 @@ function authEventKeys(event, roomVersion) {
 	if (event.type === M.ROOM.MEMBER && typeof event.state_key === "string") {
 		keys.push(stateKey(M.ROOM.MEMBER, event.state_key));
 		const membership = event.content?.membership;
-		if ([
-			"join",
-			"invite",
-			"knock"
-		].includes(membership)) keys.push(stateKey(M.ROOM.JOIN_RULES, ""));
-		const token = event.content?.third_party_invite?.signed?.token;
+		if (membership === "join" || membership === "invite" || membership === "knock") keys.push(stateKey(M.ROOM.JOIN_RULES, ""));
+		const thirdParty = event.content?.third_party_invite;
+		const token = isObject(thirdParty) && isObject(thirdParty.signed) ? thirdParty.signed.token : void 0;
 		if (membership === "invite" && typeof token === "string") keys.push(stateKey(M.ROOM.THIRD_PARTY_INVITE, token));
 		const via = event.content?.join_authorised_via_users_server;
 		if (membership === "join" && typeof via === "string" && roomVersionFeatures(roomVersion).restricted) keys.push(stateKey(M.ROOM.MEMBER, via));
@@ -170,7 +167,7 @@ function checkAuth(event, state, roomVersion, opts = {}) {
 		const via = event.content?.join_authorised_via_users_server;
 		switch (membership) {
 			case "join": {
-				const prev = Array.isArray(event.prev_events) ? event.prev_events.map((p) => Array.isArray(p) ? p[0] : p) : [];
+				const prev = Array.isArray(event.prev_events) ? event.prev_events.map(eventIdOf) : [];
 				const creator = roomCreator(state, roomVersion);
 				if (prev.length === 1 && prev[0] === create.event_id && target === creator && event.sender === target) return;
 				if (state.size === 1 && creator === target && event.sender === target) return;
@@ -276,19 +273,30 @@ function checkThirdPartyInvite(event, state) {
 	}
 	return false;
 }
+/** The single levels of m.room.power_levels and their defaults (spec, m.room.power_levels). */
+const LEVELS = [
+	"users_default",
+	"events_default",
+	"state_default",
+	"ban",
+	"redact",
+	"kick",
+	"invite"
+];
+const LEVEL_DEFAULTS = {
+	users_default: 0,
+	events_default: 0,
+	state_default: 50,
+	ban: 50,
+	redact: 50,
+	kick: 50,
+	invite: 0
+};
 function checkPowerLevelShape(event, integerOnly, deny) {
 	if (!integerOnly) return;
 	const c = event.content ?? {};
 	const isInt = (v) => typeof v === "number" && Number.isInteger(v);
-	for (const key of [
-		"users_default",
-		"events_default",
-		"state_default",
-		"ban",
-		"redact",
-		"kick",
-		"invite"
-	]) if (key in c && !isInt(c[key])) deny(`${key} must be an integer`);
+	for (const key of LEVELS) if (key in c && !isInt(c[key])) deny(`${key} must be an integer`);
 	for (const map of [
 		"users",
 		"events",
@@ -310,18 +318,10 @@ function checkPowerLevelChange(event, current, senderLevel, integerOnly, checkNo
 			"notifications"
 		]) if (map in c && !isObject(c[map])) deny(`${map} must be an object`);
 	}
-	const next = {
-		users_default: toInt(c.users_default, 0),
-		events_default: toInt(c.events_default, 0),
-		state_default: toInt(c.state_default, 50),
-		ban: toInt(c.ban, 50),
-		redact: toInt(c.redact, 50),
-		kick: toInt(c.kick, 50),
-		invite: toInt(c.invite, 0)
-	};
-	for (const key of Object.keys(next)) {
+	for (const key of LEVELS) {
 		const old = current[key];
-		if (old !== next[key] && (old > senderLevel || next[key] > senderLevel)) deny(`Cannot change ${key} beyond your own level`);
+		const now = toInt(c[key], LEVEL_DEFAULTS[key]);
+		if (old !== now && (old > senderLevel || now > senderLevel)) deny(`Cannot change ${key} beyond your own level`);
 	}
 	const compareMap = (oldMap, newMap, isUsers) => {
 		const keys = /* @__PURE__ */ new Set([...Object.keys(oldMap), ...Object.keys(newMap ?? {})]);
@@ -338,8 +338,8 @@ function checkPowerLevelChange(event, current, senderLevel, integerOnly, checkNo
 			}
 		}
 	};
-	compareMap(current.users, c.users ?? {}, true);
-	compareMap(current.events, c.events ?? {}, false);
+	compareMap(current.users, isObject(c.users) ? c.users : {}, true);
+	compareMap(current.events, isObject(c.events) ? c.events : {}, false);
 	if (checkNotifications) compareMap({ ...current.notifications }, {
 		room: 50,
 		...isObject(c.notifications) ? c.notifications : {}

@@ -1,13 +1,4 @@
 import { Homeserver } from "../homeserver.js";
-interface Resolved {
-  /** Host to connect to (IP or hostname). */
-  host: string;
-  port: number;
-  /** Value for the Host header and TLS SNI/certificate name. */
-  hostHeader: string;
-  tlsName: string;
-  expires: number;
-}
 export interface FederationRequestOptions {
   body?: unknown;
   query?: Record<string, string | string[] | undefined>;
@@ -35,7 +26,13 @@ export declare class FederationClient {
   resetConnections(destination: string): void;
   /** Build the X-Matrix Authorization header value for a request. */
   authHeader(destination: string, method: string, uri: string, content?: unknown): string;
-  resolve(serverName: string): Promise<Resolved>;
+  resolve(serverName: string): Promise<{
+    host: string;
+    port: number;
+    hostHeader: any;
+    tlsName: string;
+    expires: number;
+  }>;
   private discover;
   private wellKnown;
   private srv;
@@ -44,7 +41,6 @@ export declare class FederationClient {
   /** Send a request and return the raw response (used for media). */
   requestRaw(destination: string, method: string, path: string, opts?: FederationRequestOptions): Promise<RawResponse>;
   /** Send a request and parse the JSON response; non-2xx responses throw a MatrixError. */
-  request(destination: string, method: string, path: string, opts?: FederationRequestOptions): Promise<any>;
+  request(destination: string, method: string, path: string, opts?: FederationRequestOptions): Promise<Record<string, unknown>>;
 }
-export {};
 //# sourceMappingURL=client.d.ts.map

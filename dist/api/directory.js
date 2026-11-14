@@ -1,38 +1,22 @@
-import { isValidAlias, isValidRoomId, parseId } from "../shared/ids.js";
-import { isObject, isStrings } from "../shared/json.js";
-import { M } from "../shared/m.js";
+import { isObject, isStrings } from "../packages/shared/src/json.js";
+import { isValidAlias, isValidRoomId, parseId } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { getState, membershipOf, powerLevels, userLevel } from "../core/authrules.js";
 import "../core/auth.js";
-import { body } from "../http/input.js";
 import { procedure } from "../http/procedure.js";
+import { body } from "../http/input.js";
 import { visibleState } from "./rooms.js";
+import { roomDetails } from "./spaces.js";
 // src/api/directory.ts
-async function publicRoomChunk(hs, roomId) {
-	const state = await hs.rooms.currentState(roomId);
-	const get = (t) => getState(state, t)?.content;
-	const chunk = {
-		room_id: roomId,
-		num_joined_members: (await hs.rooms.joinedMembers(roomId)).length,
-		world_readable: get(M.ROOM.HISTORY_VISIBILITY)?.history_visibility === "world_readable",
-		guest_can_join: get(M.ROOM.GUEST_ACCESS)?.guest_access === "can_join",
-		join_rule: get(M.ROOM.JOIN_RULES)?.join_rule ?? "invite"
-	};
-	if (typeof get(M.ROOM.NAME)?.name === "string") chunk.name = get(M.ROOM.NAME).name;
-	if (typeof get(M.ROOM.TOPIC)?.topic === "string") chunk.topic = get(M.ROOM.TOPIC).topic;
-	if (typeof get(M.ROOM.CANONICAL_ALIAS)?.alias === "string") chunk.canonical_alias = get(M.ROOM.CANONICAL_ALIAS).alias;
-	if (typeof get(M.ROOM.AVATAR)?.url === "string") chunk.avatar_url = get(M.ROOM.AVATAR).url;
-	const roomType = get(M.ROOM.CREATE)?.type;
-	if (typeof roomType === "string") chunk.room_type = roomType;
-	return chunk;
-}
 async function publicRooms(ctx, body) {
 	const hs = ctx.hs;
 	const limit = Number(body.limit ?? ctx.query.get("limit") ?? 0) || void 0;
 	const since = body.since ?? ctx.query.get("since");
 	const offset = since ? Number.parseInt(String(since).replace(/^o/, ""), 10) || 0 : 0;
 	const term = isObject(body.filter) && typeof body.filter.generic_search_term === "string" ? body.filter.generic_search_term.toLowerCase() : null;
-	const roomTypes = isObject(body.filter) && Array.isArray(body.filter.room_types) ? body.filter.room_types : null;
+	const listed = isObject(body.filter) ? body.filter.room_types : void 0;
+	const roomTypes = Array.isArray(listed) ? listed : null;
 	const rooms = await hs.db.findMany("rooms", {
 		where: [{
 			field: "is_public",
@@ -43,7 +27,7 @@ async function publicRooms(ctx, body) {
 			direction: "asc"
 		}
 	});
-	let chunks = await Promise.all(rooms.map((r) => publicRoomChunk(hs, r.room_id)));
+	let chunks = await Promise.all(rooms.map((r) => roomDetails(hs, r.room_id)));
 	if (term) chunks = chunks.filter((c) => [
 		c.name,
 		c.topic,
@@ -51,13 +35,12 @@ async function publicRooms(ctx, body) {
 	].some((v) => typeof v === "string" && v.toLowerCase().includes(term)));
 	if (roomTypes) chunks = chunks.filter((c) => roomTypes.includes(c.room_type ?? null));
 	chunks.sort((a, b) => b.num_joined_members - a.num_joined_members);
-	const out = {
+	return {
 		chunk: limit ? chunks.slice(offset, offset + limit) : chunks.slice(offset),
-		total_room_count_estimate: chunks.length
+		total_room_count_estimate: chunks.length,
+		...limit && offset + limit < chunks.length ? { next_batch: `o${offset + limit}` } : {},
+		...offset > 0 ? { prev_batch: `o${Math.max(0, offset - (limit ?? 0))}` } : {}
 	};
-	if (limit && offset + limit < chunks.length) out.next_batch = `o${offset + limit}`;
-	if (offset > 0) out.prev_batch = `o${Math.max(0, offset - (limit ?? 0))}`;
-	return out;
 }
 async function canDeleteAlias(hs, s, alias) {
 	if (alias.creator === s.userId || s.isAdmin) return true;
@@ -71,7 +54,7 @@ async function canDeleteAlias(hs, s, alias) {
 function registerDirectoryRoutes(r) {
 	r.client("GET", "/directory/room/:alias", procedure({ handler: async (ctx) => {
 		if (!isValidAlias(ctx.params.alias)) throw errors.invalidParam("Invalid alias");
-		const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.alias);
+		const { roomId, servers } = await ctx.hs.membership.resolveRoom(ctx.params.alias);
 		const inRoom = await ctx.hs.rooms.exists(roomId) ? [...await ctx.hs.federation.roomDestinations(roomId, await ctx.hs.rooms.currentState(roomId))] : [];
 		return {
 			room_id: roomId,
@@ -175,10 +158,13 @@ function registerDirectoryRoutes(r) {
 	const remoteOrLocal = async (ctx, body) => {
 		const server = ctx.query.get("server");
 		if (server && server !== ctx.hs.serverName) {
-			const query = { ...body };
-			if (ctx.query.get("limit")) query.limit = Number(ctx.query.get("limit"));
-			if (ctx.query.get("since")) query.since = ctx.query.get("since");
-			return ctx.hs.federation.queryPublicRooms(server, query);
+			const limit = ctx.query.get("limit");
+			const since = ctx.query.get("since");
+			return ctx.hs.federation.queryPublicRooms(server, {
+				...body,
+				...limit ? { limit: Number(limit) } : {},
+				...since ? { since } : {}
+			});
 		}
 		return publicRooms(ctx, body);
 	};

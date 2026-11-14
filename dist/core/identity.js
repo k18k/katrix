@@ -1,3 +1,4 @@
+import { isObject, isStrings } from "../packages/shared/src/json.js";
 import { MatrixError } from "./errors.js";
 import { createHash } from "node:crypto";
 // src/core/identity.ts
@@ -27,14 +28,15 @@ var IdentityServers = class {
 		} catch (err) {
 			throw new MatrixError(502, "M_UNKNOWN", `Identity server ${idServer} unreachable: ${err.message}`);
 		}
-		const json = await res.json().catch(() => ({}));
+		const parsed = await res.json().catch(() => ({}));
+		const json = isObject(parsed) ? parsed : {};
 		if (!res.ok) throw new MatrixError(res.status >= 500 ? 502 : res.status, typeof json.errcode === "string" ? json.errcode : "M_UNKNOWN", typeof json.error === "string" ? json.error : `Identity server returned ${res.status}`);
 		return json;
 	}
 	/** The Matrix user ID bound to a 3PID, if any. */
 	async lookup(idServer, token, medium, address) {
 		const details = await this.call(idServer, "GET", "/_matrix/identity/v2/hash_details", { token });
-		const algorithms = Array.isArray(details.algorithms) ? details.algorithms : [];
+		const algorithms = isStrings(details.algorithms) ? details.algorithms : [];
 		let query, algorithm;
 		if (algorithms.includes("sha256") && typeof details.lookup_pepper === "string") {
 			algorithm = "sha256";
@@ -43,14 +45,15 @@ var IdentityServers = class {
 			algorithm = "none";
 			query = `${address} ${medium}`;
 		} else throw new MatrixError(400, "M_UNKNOWN", "The identity server supports no known lookup algorithm");
-		const mxid = (await this.call(idServer, "POST", "/_matrix/identity/v2/lookup", {
+		const res = await this.call(idServer, "POST", "/_matrix/identity/v2/lookup", {
 			token,
 			body: {
 				addresses: [query],
 				algorithm,
 				pepper: details.lookup_pepper ?? ""
 			}
-		})).mappings?.[query];
+		});
+		const mxid = isObject(res.mappings) ? res.mappings[query] : void 0;
 		return typeof mxid === "string" ? mxid : null;
 	}
 	async storeInvite(idServer, token, invite) {
@@ -58,8 +61,16 @@ var IdentityServers = class {
 			token,
 			body: invite
 		});
-		if (typeof res.token !== "string" || !Array.isArray(res.public_keys)) throw new MatrixError(502, "M_UNKNOWN", "Invalid store-invite response");
-		return res;
+		const publicKeys = (Array.isArray(res.public_keys) ? res.public_keys : []).flatMap((k) => isObject(k) && typeof k.public_key === "string" && typeof k.key_validity_url === "string" ? [{
+			public_key: k.public_key,
+			key_validity_url: k.key_validity_url
+		}] : []);
+		if (typeof res.token !== "string" || typeof res.display_name !== "string" || publicKeys.length === 0) throw new MatrixError(502, "M_UNKNOWN", "Invalid store-invite response");
+		return {
+			token: res.token,
+			public_keys: publicKeys,
+			display_name: res.display_name
+		};
 	}
 	/** Returns the identity server's record of the binding (medium, address, mxid...). */
 	async bind(idServer, token, sid, clientSecret, mxid) {

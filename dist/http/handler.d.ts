@@ -1,3 +1,4 @@
+import { Response } from "../node_modules/undici-types/fetch.js";
 import { Homeserver } from "../homeserver.js";
 export interface HandleOptions {
   ip?: string | null;

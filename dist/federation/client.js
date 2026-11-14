@@ -1,7 +1,8 @@
-import { canonicalJson } from "../shared/canonical-json.js";
-import { M } from "../shared/m.js";
-import { unpaddedBase64 } from "../core/crypto.js";
+import { canonicalJson } from "../packages/shared/src/canonical-json.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { MatrixError } from "../core/errors.js";
+import { unpaddedBase64 } from "../core/crypto.js";
 import { checkLiteral } from "../core/outbound.js";
 import { sign } from "node:crypto";
 import { resolveSrv } from "node:dns/promises";
@@ -260,10 +261,11 @@ var FederationClient = class {
 	/** Send a request and parse the JSON response; non-2xx responses throw a MatrixError. */
 	async request(destination, method, path, opts = {}) {
 		const res = await this.requestRaw(destination, method, path, opts);
-		let json = {};
+		let parsed = {};
 		try {
-			json = res.body.length ? JSON.parse(res.body.toString("utf8")) : {};
+			parsed = res.body.length ? JSON.parse(res.body.toString("utf8")) : {};
 		} catch {}
+		const json = isObject(parsed) ? parsed : {};
 		if (res.status < 200 || res.status >= 300) throw new MatrixError(res.status === 404 ? 404 : res.status >= 500 ? 502 : res.status, typeof json.errcode === "string" ? json.errcode : "M_UNKNOWN", typeof json.error === "string" ? json.error : `Remote server returned ${res.status}`);
 		return json;
 	}

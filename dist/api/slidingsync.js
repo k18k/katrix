@@ -1,19 +1,60 @@
-import { isObject, stringOrUndefined } from "../shared/json.js";
-import { M, UNSTABLE } from "../shared/m.js";
-import { splitStateKey, toClientEvent } from "../core/events.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
+import { stringOrUndefined } from "../packages/shared/src/json.js";
 import { MatrixError } from "../core/errors.js";
+import { longPoll } from "./longpoll.js";
 import { getState } from "../core/authrules.js";
+import { splitStateKey, strippedState, toClientEvent } from "../core/events.js";
+import { procedure } from "../http/procedure.js";
 import { v } from "../core/vpm.js";
 import { body, lenient } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
-import { longPoll } from "./longpoll.js";
 import { roomEphemeral, roomTimeline, toStripped } from "./sync.js";
 // src/api/slidingsync.ts
+/**
+* Simplified sliding sync (MSC4186), as used by Element X.
+* Connection state (which rooms a client already has, and with which config) is kept in the
+* database so that clients survive restarts.
+*/
+const THREAD_SUBSCRIPTIONS = UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS;
+const roomConfig = {
+	/** Pairs of event type and state key. */
+	required_state: lenient(v.array(v.array(v.string()))),
+	timeline_limit: lenient(v.number())
+};
+const roomSubscription = v.object(roomConfig);
+const listConfig = v.object({
+	...roomConfig,
+	/** Pairs of first and last index. */
+	ranges: lenient(v.array(v.array(v.number()))),
+	filters: lenient(v.object({
+		is_dm: lenient(v.boolean()),
+		is_invite: lenient(v.boolean()),
+		is_encrypted: lenient(v.boolean()),
+		spaces: lenient(v.array(v.string())),
+		room_types: lenient(v.array(v.string().nullable())),
+		not_room_types: lenient(v.array(v.string().nullable()))
+	}))
+});
+const extension = lenient(v.object({ enabled: lenient(v.boolean()) }));
+const extensionsConfig = v.object({
+	to_device: lenient(v.object({
+		enabled: lenient(v.boolean()),
+		since: lenient(v.string()),
+		limit: lenient(v.number())
+	})),
+	e2ee: extension,
+	account_data: extension,
+	receipts: extension,
+	typing: extension,
+	[THREAD_SUBSCRIPTIONS]: lenient(v.object({
+		enabled: lenient(v.boolean()),
+		limit: lenient(v.number())
+	}))
+});
 const slidingSyncBody = body({
 	conn_id: lenient(v.string()),
-	lists: lenient(v.record(v.string(), v.unknown())),
-	room_subscriptions: lenient(v.record(v.string(), v.unknown())),
-	extensions: lenient(v.record(v.string(), v.unknown()))
+	lists: lenient(v.record(v.string(), lenient(listConfig))),
+	room_subscriptions: lenient(v.record(v.string(), lenient(roomSubscription))),
+	extensions: lenient(extensionsConfig)
 });
 const BUMP_TYPES = /* @__PURE__ */ new Set([
 	M.ROOM.CREATE,
@@ -176,8 +217,7 @@ async function buildResponse(hs, s, body, conn, since, to) {
 	infos.sort((a, b) => b.bump - a.bump);
 	const wanted = /* @__PURE__ */ new Map();
 	const lists = {};
-	for (const [name, raw] of Object.entries(isObject(body.lists) ? body.lists : {})) {
-		const list = raw;
+	for (const [name, list = {}] of Object.entries(body.lists ?? {})) {
 		const f = list.filters ?? {};
 		let rooms = infos;
 		if (f.is_dm !== void 0) rooms = rooms.filter((r) => dmRooms.has(r.roomId) === f.is_dm);
@@ -200,10 +240,13 @@ async function buildResponse(hs, s, body, conn, since, to) {
 		lists[name] = { count: rooms.length };
 		for (const [start, end] of list.ranges ?? [[0, rooms.length - 1]]) for (const room of rooms.slice(Math.max(0, start), Math.max(0, end) + 1)) {
 			const prev = wanted.get(room.roomId);
-			wanted.set(room.roomId, mergeConfig(prev, list));
+			wanted.set(room.roomId, mergeConfig({
+				a: prev,
+				b: list
+			}));
 		}
 	}
-	for (const [roomId, raw] of Object.entries(isObject(body.room_subscriptions) ? body.room_subscriptions : {})) {
+	for (const [roomId, subscription = {}] of Object.entries(body.room_subscriptions ?? {})) {
 		if (!infos.find((i) => i.roomId === roomId)) {
 			if (!await hs.rooms.exists(roomId) || !(await hs.rooms.canPeek(roomId, userId)).worldReadable) continue;
 			infos.push({
@@ -213,7 +256,10 @@ async function buildResponse(hs, s, body, conn, since, to) {
 				state: await hs.rooms.currentState(roomId)
 			});
 		}
-		wanted.set(roomId, mergeConfig(wanted.get(roomId), raw));
+		wanted.set(roomId, mergeConfig({
+			a: wanted.get(roomId),
+			b: subscription
+		}));
 	}
 	const next = {
 		rooms: { ...conn.rooms },
@@ -241,8 +287,16 @@ async function buildResponse(hs, s, body, conn, since, to) {
 			counts
 		};
 	}
-	const extensions = await buildExtensions(hs, s, body.extensions ?? {}, since, to, Object.keys(rooms), next);
-	const empty = Object.keys(rooms).length === 0 && Object.values(extensions).every((e) => isEmptyExtension(e));
+	const extensions = await buildExtensions({
+		hs,
+		s,
+		ext: body.extensions ?? {},
+		since,
+		to,
+		roomIds: Object.keys(rooms),
+		next
+	});
+	const empty = Object.keys(rooms).length === 0 && isEmptyExtensions(extensions);
 	return {
 		response: {
 			lists,
@@ -253,7 +307,7 @@ async function buildResponse(hs, s, body, conn, since, to) {
 		next
 	};
 }
-function mergeConfig(a, b) {
+function mergeConfig({ a, b }) {
 	if (!a) return {
 		required_state: b.required_state ?? [],
 		timeline_limit: b.timeline_limit ?? 0
@@ -281,7 +335,7 @@ async function buildRoom(hs, s, info, config, since, to, isDm) {
 		const ev = own?.event_id ? await hs.rooms.getEvent(own.event_id) : null;
 		if (ev) {
 			const key = info.membership === "invite" ? "invite_room_state" : "knock_room_state";
-			room[info.membership === "invite" ? "invite_state" : "knock_state"] = [...ev.pdu.unsigned?.[key] ?? [], ev.pdu].map(toStripped);
+			room[info.membership === "invite" ? "invite_state" : "knock_state"] = [...strippedState(ev.pdu, key), toStripped(ev.pdu)];
 		}
 		return room;
 	}
@@ -335,8 +389,8 @@ async function buildRoom(hs, s, info, config, since, to, isDm) {
 		if (m === "invite") invited++;
 		if ((m === "join" || m === "invite") && sk !== userId && heroes.length < 5) heroes.push({
 			user_id: sk,
-			displayname: ev.content?.displayname,
-			avatar_url: ev.content?.avatar_url
+			displayname: stringOrUndefined(ev.content?.displayname),
+			avatar_url: stringOrUndefined(ev.content?.avatar_url)
 		});
 	}
 	room.joined_count = joined;
@@ -347,124 +401,138 @@ async function buildRoom(hs, s, info, config, since, to, isDm) {
 	room.highlight_count = counts.room.highlight_count + Object.values(counts.threads).reduce((n, t) => n + t.highlight_count, 0);
 	return room;
 }
-async function buildExtensions(hs, s, ext, since, to, roomIds, next) {
-	const out = {};
-	const userId = s.userId;
-	if (ext.to_device?.enabled) {
-		const where = [{
-			field: "user_id",
-			value: userId
-		}, {
-			field: "device_id",
-			value: s.deviceId
-		}];
-		const ackUpTo = Number(ext.to_device.since ?? next.toDeviceSince) || 0;
-		if (ackUpTo) await hs.db.delete("to_device", [...where, {
-			field: "stream",
-			operator: "lte",
-			value: ackUpTo
-		}]);
-		const rows = (await hs.db.findMany("to_device", {
-			where: [...where, {
-				field: "stream",
-				operator: "gt",
-				value: ackUpTo
-			}],
-			sortBy: {
-				field: "stream",
-				direction: "asc"
-			},
-			limit: Math.min(Number(ext.to_device.limit ?? 100) || 100, 1e3)
-		})).filter((r) => r.stream <= to);
-		const nextBatch = rows.length ? rows[rows.length - 1].stream : ackUpTo;
-		next.toDeviceSince = nextBatch;
-		out.to_device = {
-			next_batch: String(nextBatch),
-			events: rows.map((r) => ({
-				sender: r.sender,
-				type: r.type,
-				content: r.content
-			}))
-		};
-	}
-	if (ext.e2ee?.enabled) {
-		const e2ee = {
-			device_one_time_keys_count: await hs.keys.oneTimeKeyCounts(userId, s.deviceId),
-			device_unused_fallback_key_types: await hs.keys.unusedFallbackKeyTypes(userId, s.deviceId)
-		};
-		if (since !== null) e2ee.device_lists = await hs.keys.changesSince(userId, since, to);
-		out.e2ee = e2ee;
-	}
-	if (ext.account_data?.enabled) {
-		const where = [{
-			field: "user_id",
-			value: userId
-		}];
-		if (since !== null) where.push({
+async function buildExtensions(p) {
+	const { ext } = p;
+	const ephemeral = ext.receipts?.enabled || ext.typing?.enabled ? await ephemeralExtensions(p) : void 0;
+	return {
+		...ext.to_device?.enabled ? { to_device: await toDeviceExtension(p) } : {},
+		...ext.e2ee?.enabled ? { e2ee: await e2eeExtension(p) } : {},
+		...ext.account_data?.enabled ? { account_data: await accountDataExtension(p) } : {},
+		...ext[THREAD_SUBSCRIPTIONS]?.enabled ? { [THREAD_SUBSCRIPTIONS]: await threadSubscriptions(p) } : {},
+		...ephemeral && ext.receipts?.enabled ? { receipts: { rooms: ephemeral.receipts } } : {},
+		...ephemeral && ext.typing?.enabled ? { typing: { rooms: ephemeral.typing } } : {}
+	};
+}
+/** Deletes the messages the client acknowledged with `since`, then returns the next ones. */
+async function toDeviceExtension({ hs, s, ext, to, next }) {
+	const where = [{
+		field: "user_id",
+		value: s.userId
+	}, {
+		field: "device_id",
+		value: s.deviceId
+	}];
+	const ackUpTo = Number(ext.to_device?.since ?? next.toDeviceSince) || 0;
+	if (ackUpTo) await hs.db.delete("to_device", [...where, {
+		field: "stream",
+		operator: "lte",
+		value: ackUpTo
+	}]);
+	const rows = (await hs.db.findMany("to_device", {
+		where: [...where, {
 			field: "stream",
 			operator: "gt",
-			value: since
-		});
-		const rows = (await hs.db.findMany("account_data", { where })).filter((r) => r.stream <= to);
-		const rooms = {};
-		const global = [];
-		for (const r of rows) {
-			const ev = {
-				type: r.type,
-				content: r.content
-			};
-			if (r.room_id === "") global.push(ev);
-			else if (roomIds.includes(r.room_id) || since !== null) (rooms[r.room_id] ??= []).push(ev);
-		}
-		if (since === null && !global.some((e) => e.type === M.PUSH_RULES)) {
-			const { readOnlyRules } = await import("../core/pushrules.js");
-			global.push({
-				type: M.PUSH_RULES,
-				content: { global: await readOnlyRules(hs, userId) }
-			});
-		}
-		out.account_data = {
-			global,
-			rooms
-		};
-	}
-	if (ext[UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS]?.enabled) {
-		const { threadSubscriptionsExtension } = await import("./threadsubs.js");
-		out[UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS] = await threadSubscriptionsExtension(hs, userId, ext[UNSTABLE.IO.ELEMENT.MSC4308.THREAD_SUBSCRIPTIONS], since, to);
-	}
-	if (ext.receipts?.enabled || ext.typing?.enabled) {
-		const p = {
-			session: s,
-			ignored: /* @__PURE__ */ new Set(),
-			since: since === null ? null : {
-				pos: since,
-				toDevice: 0
-			},
-			to,
-			filter: {},
-			fullState: false
-		};
-		const receipts = {};
-		const typing = {};
-		const joined = new Set(await hs.rooms.roomsForUser(userId));
-		for (const roomId of since === null ? roomIds : [...joined]) {
-			if (!joined.has(roomId)) continue;
-			for (const e of await roomEphemeral(hs, p, roomId)) {
-				if (e.type === M.RECEIPT && ext.receipts?.enabled) receipts[roomId] = e;
-				if (e.type === M.TYPING && ext.typing?.enabled && (since !== null || e.content.user_ids.length)) typing[roomId] = e;
-			}
-		}
-		if (ext.receipts?.enabled) out.receipts = { rooms: receipts };
-		if (ext.typing?.enabled) out.typing = { rooms: typing };
-	}
-	return out;
+			value: ackUpTo
+		}],
+		sortBy: {
+			field: "stream",
+			direction: "asc"
+		},
+		limit: Math.min(ext.to_device?.limit || 100, 1e3)
+	})).filter((r) => r.stream <= to);
+	const nextBatch = rows.length ? rows[rows.length - 1].stream : ackUpTo;
+	next.toDeviceSince = nextBatch;
+	return {
+		next_batch: String(nextBatch),
+		events: rows.map((r) => ({
+			sender: r.sender,
+			type: r.type,
+			content: r.content
+		}))
+	};
 }
-function isEmptyExtension(e) {
-	if (Array.isArray(e.events)) return e.events.length === 0;
-	if (e.rooms && Object.keys(e.rooms).length) return false;
-	if (e.global && e.global.length) return false;
-	if (e.device_lists && (e.device_lists.changed.length || e.device_lists.left.length)) return false;
-	return true;
+async function e2eeExtension({ hs, s, since, to }) {
+	return {
+		device_one_time_keys_count: await hs.keys.oneTimeKeyCounts(s.userId, s.deviceId),
+		device_unused_fallback_key_types: await hs.keys.unusedFallbackKeyTypes(s.userId, s.deviceId),
+		...since !== null ? { device_lists: await hs.keys.changesSince(s.userId, since, to) } : {}
+	};
+}
+async function accountDataExtension({ hs, s, since, to, roomIds }) {
+	const where = [{
+		field: "user_id",
+		value: s.userId
+	}];
+	if (since !== null) where.push({
+		field: "stream",
+		operator: "gt",
+		value: since
+	});
+	const rows = (await hs.db.findMany("account_data", { where })).filter((r) => r.stream <= to);
+	const global = [];
+	const rooms = {};
+	for (const r of rows) {
+		const ev = {
+			type: r.type,
+			content: r.content
+		};
+		if (r.room_id === "") global.push(ev);
+		else if (roomIds.includes(r.room_id) || since !== null) (rooms[r.room_id] ??= []).push(ev);
+	}
+	if (since === null && !global.some((e) => e.type === M.PUSH_RULES)) {
+		const { readOnlyRules } = await import("../core/pushrules.js");
+		global.push({
+			type: M.PUSH_RULES,
+			content: { global: await readOnlyRules(hs, s.userId) }
+		});
+	}
+	return {
+		global,
+		rooms
+	};
+}
+async function threadSubscriptions({ hs, s, ext, since, to }) {
+	const { threadSubscriptionsExtension } = await import("./threadsubs.js");
+	return threadSubscriptionsExtension(hs, s.userId, ext[THREAD_SUBSCRIPTIONS] ?? {}, since, to);
+}
+/** The receipt and typing events of the joined rooms, by room. */
+async function ephemeralExtensions({ hs, s, since, to, roomIds }) {
+	const p = {
+		session: s,
+		ignored: /* @__PURE__ */ new Set(),
+		since: since === null ? null : {
+			pos: since,
+			toDevice: 0
+		},
+		to,
+		filter: {},
+		fullState: false
+	};
+	const joined = new Set(await hs.rooms.roomsForUser(s.userId));
+	const receipts = {};
+	const typing = {};
+	for (const roomId of since === null ? roomIds : [...joined]) {
+		if (!joined.has(roomId)) continue;
+		for (const e of await roomEphemeral(hs, p, roomId)) {
+			if (e.type === M.RECEIPT) receipts[roomId] = e;
+			if (e.type === M.TYPING) typing[roomId] = e;
+		}
+	}
+	return {
+		receipts,
+		typing
+	};
+}
+/** Nothing in the extensions that a waiting client has to be woken for. */
+function isEmptyExtensions(e) {
+	const byRoom = [
+		e.account_data?.rooms,
+		e.receipts?.rooms,
+		e.typing?.rooms
+	];
+	if (e.to_device?.events.length || e.account_data?.global.length) return false;
+	if (e.e2ee?.device_lists?.changed.length || e.e2ee?.device_lists?.left.length) return false;
+	return byRoom.every((rooms) => !rooms || Object.keys(rooms).length === 0);
 }
 export { registerSlidingSyncRoutes };
 

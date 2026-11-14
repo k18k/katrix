@@ -1,4 +1,4 @@
-import { M } from "../shared/m.js";
+import { M } from "../packages/shared/src/m.js";
 import { CLUSTER_RESYNC } from "./cluster.js";
 import { eventIdOf, roomVersionFeatures, stateKey } from "./events.js";
 import { EventEmitter } from "node:events";

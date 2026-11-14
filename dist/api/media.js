@@ -1,6 +1,6 @@
-import { M } from "../shared/m.js";
-import { randomString } from "../core/crypto.js";
+import { M } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
+import { randomString } from "../core/crypto.js";
 import { procedure } from "../http/procedure.js";
 import { maxRequestBody } from "../http/handler.js";
 // src/api/media.ts

@@ -1,10 +1,10 @@
-import { M } from "../shared/m.js";
+import { M } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { canonicalAddress, isMedium } from "../core/threepid.js";
-import { v } from "../core/vpm.js";
-import { body, fail, lenient } from "../http/input.js";
 import { procedure } from "../http/procedure.js";
 import { requireUia } from "./uia.js";
+import { v } from "../core/vpm.js";
+import { body, fail, lenient } from "../http/input.js";
 // src/api/threepid.ts
 const submitField = v.string(fail("M_MISSING_PARAM", "sid, client_secret and token are required"));
 const submitBody = body({

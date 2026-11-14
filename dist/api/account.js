@@ -1,18 +1,18 @@
-import { LOCALPART_RE } from "../shared/ids.js";
-import { isObject } from "../shared/json.js";
-import { M, UNSTABLE } from "../shared/m.js";
-import { randomString } from "../core/crypto.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { LOCALPART_RE } from "../packages/shared/src/ids.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
-import { toMsisdn } from "../core/phone.js";
-import { escapeHtml } from "../core/html.js";
+import { randomString } from "../core/crypto.js";
+import { procedure } from "../http/procedure.js";
+import { requireUia } from "./uia.js";
 import { canonicalAddress, isMedium } from "../core/threepid.js";
+import { toMsisdn } from "../core/phone.js";
 import { v } from "../core/vpm.js";
 import { body, fail, lenient } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
-import { OAUTH_PREFIX } from "../core/oauthserver.js";
-import { requireUia } from "./uia.js";
 import { checkRedirectUrl, legacyClientRedirect } from "../core/sso.js";
+import { OAUTH_PREFIX } from "../core/oauthserver.js";
 import { readWebSession, setWebUser } from "./oauthserver.js";
+import { escapeHtml } from "../core/html.js";
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 // src/api/account.ts
 const deviceFields = {
@@ -556,7 +556,7 @@ function registerAccountRoutes(r) {
 				"invite",
 				"knock"
 			]) for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) try {
-				await hs.rooms.setMembership(roomId, s.userId, s.userId, "leave");
+				await hs.membership.setMembership(roomId, s.userId, s.userId, "leave");
 			} catch {}
 			await hs.auth.deleteAllDevices(s.userId);
 			await hs.db.update("users", [{

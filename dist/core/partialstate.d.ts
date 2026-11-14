@@ -9,9 +9,9 @@ export declare class PartialStateService {
   constructor(hs: Homeserver);
   isPartial(roomId: string): Promise<boolean>;
   /** Servers the joining server told us were in the room (used as destinations and resync sources). */
-  servers(roomId: string): Promise<string[]>;
+  servers(roomId: string): Promise<any[]>;
   /** Stream position at which the room got its full state (null if it never was partial). */
-  completedAt(roomId: string): Promise<number | null>;
+  completedAt(roomId: string): Promise<any>;
   /**
    * A device list update for a user we do not share a (known) room with: if they may be a member
    * of a partial-state room hosted by the sender, remember them for when the state is complete.

@@ -1,6 +1,6 @@
-import { M } from "../shared/m.js";
-import { eventIdOf, roomVersionFeatures, stateKey } from "./events.js";
+import { M } from "../packages/shared/src/m.js";
 import { authEventKeys, checkAuth, powerLevels, userLevel } from "./authrules.js";
+import { eventIdOf, roomVersionFeatures, stateKey } from "./events.js";
 // src/core/stateres.ts
 const isPowerEvent = (ev) => ev.type === M.ROOM.POWER_LEVELS && ev.state_key === "" || ev.type === M.ROOM.JOIN_RULES && ev.state_key === "" || ev.type === M.ROOM.CREATE && ev.state_key === "" || ev.type === M.ROOM.MEMBER && (ev.content?.membership === "leave" || ev.content?.membership === "ban") && ev.sender !== ev.state_key;
 const authIds = (ev) => (ev.auth_events ?? []).map(eventIdOf);

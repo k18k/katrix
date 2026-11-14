@@ -1,8 +1,12 @@
 import { getFetchHandler } from "../http/adapters.js";
+import { isObject } from "../packages/shared/src/json.js";
 import { CryptoClient } from "./client.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 // src/auditbot/bot.ts
+function isRoomEvent(ev) {
+	return typeof ev.event_id === "string" && typeof ev.sender === "string" && typeof ev.origin_server_ts === "number";
+}
 const MAX_PENDING = 1e4;
 async function startAuditBot(hs, options) {
 	await hs.ready;
@@ -75,12 +79,13 @@ async function startAuditBot(hs, options) {
 		}, options.joinDelayMs ?? 500));
 	};
 	const onEvent = (ev) => {
-		if (stopped || ev.type !== "m.room.member" || ev.state_key === userId) return;
-		if (ev.content?.membership === "join") joinWhenQuiet(ev.room_id);
+		if (stopped || ev.type !== "m.room.member" || ev.state_key === userId || !ev.room_id) return;
+		const roomId = ev.room_id;
+		if (ev.content?.membership === "join") joinWhenQuiet(roomId);
 		if (options.rooms === "groups" && ev.content?.is_direct === true) (async () => {
-			if (!(await hs.rooms.joinedMembers(ev.room_id)).includes(userId)) return;
-			await client.request("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(ev.room_id)}/leave`, {}).catch((err) => hs.logger.warn("Audit bot failed to leave a direct message room", err));
-			hs.logger.info("Audit bot left a direct message room", ev.room_id);
+			if (!(await hs.rooms.joinedMembers(roomId)).includes(userId)) return;
+			await client.request("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/leave`, {}).catch((err) => hs.logger.warn("Audit bot failed to leave a direct message room", err));
+			hs.logger.info("Audit bot left a direct message room", roomId);
 		})();
 	};
 	hs.on("event", onEvent);
@@ -103,6 +108,7 @@ async function startAuditBot(hs, options) {
 		try {
 			const decrypted = await client.decrypt(ev, roomId);
 			const clear = JSON.parse(decrypted.event);
+			if (!isObject(clear) || typeof clear.type !== "string" || !isObject(clear.content)) return null;
 			return toRecord(roomId, {
 				...ev,
 				type: clear.type,
@@ -142,8 +148,8 @@ async function startAuditBot(hs, options) {
 		await client.receiveSync(sync);
 		const out = [];
 		for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
-			const timeline = room.timeline?.events ?? [];
-			const stateEvents = room.state?.events ?? [];
+			const timeline = (room.timeline?.events ?? []).filter(isRoomEvent);
+			const stateEvents = (room.state?.events ?? []).filter(isRoomEvent);
 			for (const ev of [...stateEvents, ...timeline]) if (ev.type === "m.room.encryption") encryptedRooms.add(roomId);
 			if (encryptedRooms.has(roomId) && (stateEvents.length || timeline.some((e) => e.type === "m.room.member"))) await client.track(await hs.rooms.joinedMembers(roomId));
 			for (const ev of stateEvents) out.push(toRecord(roomId, ev, { initial_state: true }));

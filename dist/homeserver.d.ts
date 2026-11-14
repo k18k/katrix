@@ -1,33 +1,34 @@
-import { M } from "./shared/m.js";
+import { M } from "./packages/shared/src/m.js";
 import { PartialStateService } from "./core/partialstate.js";
-import { SigningKey } from "./core/crypto.js";
 import { PolicyServers } from "./core/policy.js";
 import { ThreepidOptions, ThreepidService } from "./core/threepid.js";
 import { IdentityServers } from "./core/identity.js";
-import { AppServiceRegistration, AppServiceService } from "./core/appservices.js";
 import { AuthService } from "./core/auth.js";
-import { DatabaseAdapter } from "./storage/types.js";
+import { SigningKey } from "./core/crypto.js";
 import { KeyService } from "./core/keys.js";
-import { ClusterAdapter, StreamManager } from "./core/cluster.js";
 import { Notifier } from "./core/notifier.js";
+import { ClusterAdapter, StreamManager } from "./core/cluster.js";
 import { RoomService } from "./core/rooms.js";
+import { MembershipService } from "./core/membership.js";
 import { TypingService } from "./core/typing.js";
 import { PushService } from "./core/push.js";
-import { ResolvedUserAuth, UserAuthAdapter } from "./adapters/auth.js";
-import { MediaAdapter, Thumbnailer } from "./adapters/media.js";
-import { RateLimitAction, RateLimitRule, RateLimiter, RateLimits } from "./core/ratelimit.js";
-import { FederationOptions, FederationService } from "./federation/index.js";
-import { Router } from "./http/router.js";
-import { RtcOptions } from "./api/rtc.js";
-import { DelayedEventService, DelayedEventsOptions } from "./core/delayed.js";
+import { AdminService, ServerNoticesOptions } from "./core/admin.js";
 import { OAuthDelegation, OAuthDelegationOptions } from "./core/oauth.js";
 import { OAuthServer, OAuthServerOptions } from "./core/oauthserver.js";
 import { SsoOptions, SsoService } from "./core/sso.js";
+import { FederationOptions, FederationService } from "./federation/index.js";
+import { DelayedEventService, DelayedEventsOptions } from "./core/delayed.js";
+import { RtcOptions } from "./api/rtc.js";
 import { AuditOptions, AuditService } from "./core/audit.js";
-import { AdminRoomOptions, AdminRoomService } from "./core/adminroom.js";
-import { AdminService, ServerNoticesOptions } from "./core/admin.js";
 import { SettingsService } from "./core/settings.js";
+import { AdminRoomOptions, AdminRoomService } from "./core/adminroom.js";
+import { AppServiceRegistration, AppServiceService } from "./core/appservices.js";
+import { RateLimitAction, RateLimitRule, RateLimiter, RateLimits } from "./core/ratelimit.js";
+import { ResolvedUserAuth, UserAuthAdapter } from "./adapters/auth.js";
+import { MediaAdapter, Thumbnailer } from "./adapters/media.js";
 import { ChangeTracker } from "./core/changes.js";
+import { DatabaseAdapter } from "./storage/types.js";
+import { Router } from "./http/router.js";
 import { AddressPolicy } from "./core/outbound.js";
 import { EventEmitter } from "node:events";
 export interface Logger {
@@ -201,6 +202,7 @@ export declare class Homeserver extends EventEmitter {
   readonly notifier: Notifier;
   readonly auth: AuthService;
   readonly rooms: RoomService;
+  readonly membership: MembershipService;
   readonly keys: KeyService;
   readonly typing: TypingService;
   readonly push: PushService;
@@ -242,7 +244,7 @@ export declare class Homeserver extends EventEmitter {
    * Effective registration mode: an admin's runtime setting overrides the configuration.
    * "open" | "token" | "closed".
    */
-  registrationMode(): Promise<"open" | "token" | "closed">;
+  registrationMode(): Promise<"closed" | "open" | "token">;
   /** Whether `/register` is allowed right now, including the first-user exception. */
   registrationAllowed(): Promise<boolean>;
   /** Run `fn` atomically when the database adapter supports transactions. */

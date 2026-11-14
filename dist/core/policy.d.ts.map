@@ -1,1 +1,1 @@
-{"version":3,"file":"policy.d.ts","names":[],"sources":["../../src/core/policy.ts"],"mappings":";;;UAeU;EACR;EACA,KAAK;;qBAGM;mBACM;EAEjB,YAAY,IAAI;;EAKV,SAAS,iBAAiB,QAAQ;;UAyBhC;UAIA;;UAOM;;;;;;EAeR,UAAU,gBAAgB,iBAAiB,KAAK,MAAM;;EAmBtD,YAAY,gBAAgB,iBAAiB,KAAK,MAAM"}
+{"version":3,"file":"policy.d.ts","names":[],"sources":["../../src/core/policy.ts"],"mappings":";;;qBAoBa;mBACM;EAEjB,YAAY,IAAI;;EAKV,SAAS,iBAAc;;;;;UAyBrB;UAIA;;UAOM;;;;;;EAgBR,UAAU,gBAAgB,iBAAiB,KAAK,MAAG;;EAmBnD,YAAY,gBAAgB,iBAAiB,KAAK,MAAG"}

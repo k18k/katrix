@@ -1,5 +1,5 @@
-import { Row } from "../storage/types.js";
 import { Homeserver } from "../homeserver.js";
+import { Row } from "../storage/types.js";
 export interface ServerNoticesOptions {
   /** Localpart of the user that sends server notices. Default: "server". */
   localpart?: string;
@@ -15,7 +15,9 @@ export declare class AdminService {
     admin?: boolean;
     displayname?: string;
   }): Promise<string>;
-  getUser(userId: string): Promise<Record<string, any> | null>;
+  getUser(userId: string): Promise<{
+    [x: string]: any;
+  } | null>;
   listUsers(opts?: {
     from?: number;
     limit?: number;
@@ -57,12 +59,12 @@ export declare class AdminService {
    * directly; otherwise a local member who may invite invites them first (the invite shows in the
    * room, so its members see who added them). Returns the room ID.
    */
-  joinUser(userId: string, roomIdOrAlias: string): Promise<string>;
+  joinUser(userId: string, roomIdOrAlias: string): Promise<any>;
   listRooms(opts?: {
     from?: number;
     limit?: number;
   }): Promise<{
-    rooms: Record<string, any>[];
+    rooms: Row[];
     total: number;
   }>;
   /** Remove everyone from a room, delist it and drop its aliases. With `purge`, also delete its history. */
@@ -75,12 +77,12 @@ export declare class AdminService {
   }>;
   deleteMedia(mediaId: string): Promise<void>;
   /** Delete local media uploaded before `beforeTs`. Returns the deleted media IDs. */
-  purgeMediaBefore(beforeTs: number): Promise<string[]>;
+  purgeMediaBefore(beforeTs: number): Promise<any[]>;
   get noticeUserId(): string;
   /** Whether `roomId` is a server notices room (members may not reject or leave its invites). */
   isNoticeRoom(roomId: string): Promise<boolean>;
   /** Send a message to a user in their server notices room, creating or re-inviting as needed. */
-  sendServerNotice(userId: string, content: Record<string, any>, opts?: {
+  sendServerNotice(userId: string, content: Record<string, unknown>, opts?: {
     type?: string;
     txnId?: string;
   }): Promise<string>;

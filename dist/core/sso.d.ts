@@ -27,7 +27,7 @@ export interface SsoProvider {
    * Map ID token / userinfo claims to a Matrix account. Return a localpart and optional
    * display name, or null to refuse login. Default: sanitised `preferred_username`, then `sub`.
    */
-  mapUser?: (claims: Record<string, any>) => {
+  mapUser?: (claims: Record<string, unknown>) => {
     localpart: string;
     displayname?: string;
   } | null | Promise<{
@@ -72,7 +72,28 @@ export declare function githubProvider(opts: {
   name?: string;
   allowRegistration?: boolean;
   mapUser?: SsoProvider["mapUser"];
-}): SsoProvider;
+}): {
+  id: string;
+  name: string;
+  brand: string;
+  clientId: string;
+  clientSecret: string;
+  endpoints: {
+    authorization: string;
+    token: string;
+    userinfo: string;
+  };
+  scopes: string[];
+  subjectClaim: string;
+  mapUser: (claims: Record<string, unknown>) => {
+    localpart: string;
+    displayname?: string;
+  } | null | Promise<{
+    localpart: string;
+    displayname?: string;
+  } | null>;
+  allowRegistration?: boolean | undefined;
+};
 /** Upstream login (authorization code + PKCE) for the legacy `m.login.sso` and the OAuth 2.0 API's web pages. */
 export declare class SsoService {
   private hs;
@@ -87,7 +108,7 @@ export declare class SsoService {
   startLogin(providerId: string | null, target: SsoTarget): Promise<string>;
   /** Handle the provider's redirect: the user who logged in, and what the login was for. */
   finishLogin(providerId: string, params: URLSearchParams): Promise<{
-    userId: string;
+    userId: any;
     target: SsoTarget;
   }>;
   private resolveUser;

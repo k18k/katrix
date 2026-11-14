@@ -1,6 +1,6 @@
-import { M, UNSTABLE } from "../shared/m.js";
-import { splitStateKey, toClientEvent } from "./events.js";
+import { M, UNSTABLE } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "./errors.js";
+import { splitStateKey, toClientEvent } from "./events.js";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 // src/core/appservices.ts

@@ -2,6 +2,7 @@ import { ClientEvent } from "./events.js";
 import { StateMap } from "./authrules.js";
 import { StoredEvent } from "./rooms.js";
 import { Homeserver } from "../homeserver.js";
+import { Row } from "../storage/types.js";
 /**
  * Push rule evaluation and push gateway delivery. Every new event is evaluated for
  * every local member; matches are stored for unread counts and `/notifications`.
@@ -21,7 +22,7 @@ export declare class PushService {
   /** Unread notification counts since the user's read receipts. */
   /** Stream positions up to which the user has read the room (unthreaded) and each thread. */
   private readPositions;
-  isRead(row: Record<string, any>, read: {
+  isRead(row: Row, read: {
     unthreaded: number;
     threads: Map<string, number>;
   }): boolean;

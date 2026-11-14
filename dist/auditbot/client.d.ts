@@ -1,4 +1,5 @@
-import { DecryptedRoomEvent, OlmMachine } from "@matrix-org/matrix-sdk-crypto-nodejs";
+import { SyncResponse } from "../packages/shared/src/api/sync.js";
+import { OlmMachine } from "@matrix-org/matrix-sdk-crypto-nodejs";
 export type Fetch = (request: Request) => Promise<Response>;
 export declare class CryptoClient {
   readonly userId: string;
@@ -20,14 +21,14 @@ export declare class CryptoClient {
    * must survive restarts: room keys are sent once). Without, in memory (tests).
    */
   open(storePath?: string, passphrase?: string): Promise<void>;
-  request<T = any>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T>;
+  request<T = unknown>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T>;
   /** Feed a /sync response to the crypto machine, then send what it needs sent. */
-  receiveSync(sync: Record<string, any>): Promise<void>;
+  receiveSync(sync: SyncResponse): Promise<void>;
   /** Send every outgoing request of the crypto machine (key uploads, queries, claims, to-device). */
   flush(): Promise<void>;
   /** Make sure the crypto machine knows these users' devices. */
   track(users: string[]): Promise<void>;
-  decrypt(event: Record<string, any>, roomId: string): Promise<DecryptedRoomEvent>;
+  decrypt(event: object, roomId: string): Promise<import("@matrix-org/matrix-sdk-crypto-nodejs").DecryptedRoomEvent>;
   /**
    * Set up cross-signing for this account and sign the device with it, so other users' clients
    * see the device as its owner's (not as an unknown one). Only once: an existing identity is kept.

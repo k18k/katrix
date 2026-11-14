@@ -1,6 +1,6 @@
-import { canonicalJson } from "../shared/canonical-json.js";
-import { isObject } from "../shared/json.js";
-import { M } from "../shared/m.js";
+import { canonicalJson } from "../packages/shared/src/canonical-json.js";
+import { isObject } from "../packages/shared/src/json.js";
+import { M } from "../packages/shared/src/m.js";
 import { randomString, sha256, signJson, unpaddedBase64, urlSafeBase64 } from "./crypto.js";
 // src/core/events.ts
 const STABLE_ROOM_VERSIONS = [
@@ -76,16 +76,18 @@ const KEEP_TOP_LEVEL_LEGACY = [
 function redact(event, roomVersion) {
 	const n = versionNum(roomVersion);
 	const keep = n >= 11 ? KEEP_TOP_LEVEL : [...KEEP_TOP_LEVEL, ...KEEP_TOP_LEVEL_LEGACY];
+	const fields = { ...event };
 	const out = {};
-	for (const k of keep) if (k in event) out[k] = event[k];
-	const keepRelation = roomVersion.startsWith("org.matrix.msc3389.") && isObject(event.content?.[M.RELATES_TO]) ? event.content[M.RELATES_TO] : void 0;
-	const content = isObject(event.content) ? event.content : {};
+	for (const k of keep) if (k in fields) out[k] = fields[k];
+	const content = isObject(fields.content) ? fields.content : {};
+	const relation = content[M.RELATES_TO];
+	const keepRelation = roomVersion.startsWith("org.matrix.msc3389.") && isObject(relation) ? relation : void 0;
 	const pick = (...keys) => {
 		const c = {};
 		for (const k of keys) if (k in content) c[k] = content[k];
 		return c;
 	};
-	switch (event.type) {
+	switch (fields.type) {
 		case M.ROOM.MEMBER: {
 			const c = pick("membership", ...n >= 9 ? ["join_authorised_via_users_server"] : []);
 			if (n >= 11 && isObject(content.third_party_invite) && "signed" in content.third_party_invite) c.third_party_invite = { signed: content.third_party_invite.signed };
@@ -117,14 +119,20 @@ function redact(event, roomVersion) {
 		if ("rel_type" in keepRelation) rel.rel_type = keepRelation.rel_type;
 		if ("event_id" in keepRelation) rel.event_id = keepRelation.event_id;
 		out.content = {
-			...out.content,
+			...isObject(out.content) ? out.content : {},
 			[M.RELATES_TO]: rel
 		};
 	}
 	return out;
 }
+/** A PDU after redaction, which keeps every field a PDU needs. */
+function redactPdu(pdu, roomVersion) {
+	const redacted = redact(pdu, roomVersion);
+	if (!isPdu(redacted)) throw new Error("Redaction dropped a field every event has");
+	return redacted;
+}
 function computeContentHash(pdu) {
-	const { unsigned, signatures, hashes, ...rest } = pdu;
+	const { unsigned, signatures, hashes, ...rest } = { ...pdu };
 	return unpaddedBase64(sha256(canonicalJson(rest)));
 }
 function computeReferenceHash(pdu, roomVersion) {
@@ -142,9 +150,7 @@ function finalisePdu(pdu, roomVersion, serverName, key) {
 		pdu.origin = serverName;
 	}
 	pdu.hashes = { sha256: computeContentHash(pdu) };
-	const redacted = redact(pdu, roomVersion);
-	signJson(redacted, serverName, key);
-	pdu.signatures = redacted.signatures;
+	pdu.signatures = signJson(redact(pdu, roomVersion), serverName, key).signatures;
 	if (!features.legacyEventIds) {
 		const hash = computeReferenceHash(pdu, roomVersion);
 		pdu.event_id = `$${features.urlSafeEventIds ? urlSafeBase64(hash) : unpaddedBase64(hash)}`;
@@ -173,6 +179,21 @@ function toClientEvent(pdu, opts = {}) {
 	};
 	return ev;
 }
+/** The membership before this membership event, from its `unsigned.prev_content`. */
+function previousMembership(pdu) {
+	const prev = pdu.unsigned?.prev_content;
+	return isObject(prev) ? prev.membership : void 0;
+}
+/** The stripped state an invite or knock carries in `unsigned` (from the event, or a stored event's JSON). */
+function strippedState(event, key) {
+	const unsigned = isObject(event) && isObject(event.unsigned) ? event.unsigned[key] : void 0;
+	return (Array.isArray(unsigned) ? unsigned : []).flatMap((e) => isObject(e) && typeof e.type === "string" && typeof e.state_key === "string" && typeof e.sender === "string" && isObject(e.content) ? [{
+		type: e.type,
+		state_key: e.state_key,
+		sender: e.sender,
+		content: e.content
+	}] : []);
+}
 function stripState(pdu) {
 	return {
 		type: pdu.type,
@@ -186,6 +207,6 @@ const splitStateKey = (k) => {
 	const i = k.indexOf("\0");
 	return [k.slice(0, i), k.slice(i + 1)];
 };
-export { STABLE_ROOM_VERSIONS, SUPPORTED_ROOM_VERSIONS, UNSTABLE_ROOM_VERSIONS, computeContentHash, computeReferenceHash, eventIdOf, finalisePdu, isPdu, redact, roomVersionFeatures, splitStateKey, stateKey, stripState, toClientEvent, versionNum };
+export { STABLE_ROOM_VERSIONS, SUPPORTED_ROOM_VERSIONS, UNSTABLE_ROOM_VERSIONS, computeContentHash, computeReferenceHash, eventIdOf, finalisePdu, isPdu, previousMembership, redact, redactPdu, roomVersionFeatures, splitStateKey, stateKey, stripState, strippedState, toClientEvent, versionNum };
 
 //# sourceMappingURL=events.js.map

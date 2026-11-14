@@ -1,9 +1,9 @@
-import { stringOrUndefined } from "../shared/json.js";
+import { stringOrUndefined } from "../packages/shared/src/json.js";
 import { errors } from "../core/errors.js";
+import { allowCrossSigningReset } from "../core/oauthserver.js";
+import { procedure } from "../http/procedure.js";
 import { v } from "../core/vpm.js";
 import { body, fail, lenient } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
-import { allowCrossSigningReset } from "../core/oauthserver.js";
 // src/api/admin.ts
 const required = fail("M_BAD_JSON", "user_id and content are required");
 const noticeBody = body({
@@ -130,7 +130,7 @@ function registerAdminRoutes(r) {
 				field: "user_id",
 				value: userId
 			}], { displayname: body.displayname });
-			await ctx.hs.rooms.propagateProfile(userId);
+			await ctx.hs.membership.propagateProfile(userId);
 		}
 		if (body.deactivated === true) await ctx.hs.admin.deactivateUser(userId);
 		return ctx.hs.admin.getUser(userId);

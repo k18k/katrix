@@ -1,33 +1,28 @@
-import { isValidUserId } from "../shared/ids.js";
-import { isObject, stringOrUndefined } from "../shared/json.js";
-import { M } from "../shared/m.js";
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
+import { isValidUserId } from "../packages/shared/src/ids.js";
+import { M } from "../packages/shared/src/m.js";
 import { MatrixError, errors } from "../core/errors.js";
 import { getState } from "../core/authrules.js";
 import { assertNotSuspended } from "../core/auth.js";
+import { procedure } from "../http/procedure.js";
 import { v } from "../core/vpm.js";
 import { body, lenient } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
 import { requireRoom } from "./rooms.js";
 // src/api/membership.ts
 /**
 * Invite by email address or phone number (spec "Third-party invites"): invite the Matrix user the
 * identity server knows for it, or store the invite there and emit an m.room.third_party_invite.
 */
-async function inviteByThreepid(ctx, s, body) {
+async function inviteByThreepid(ctx, s, raw) {
 	const hs = ctx.hs;
 	const roomId = ctx.params.roomId;
-	for (const k of [
-		"id_server",
-		"id_access_token",
-		"medium",
-		"address"
-	]) if (typeof body[k] !== "string") throw errors.missingParam(`Missing ${k}`);
+	const body = threepidInvite(raw);
 	await requireRoom(hs, roomId);
 	await hs.rooms.requireJoined(roomId, s.userId);
 	const mxid = await hs.identityServers.lookup(body.id_server, body.id_access_token, body.medium, body.address);
 	if (mxid) {
 		if (await hs.rooms.membership(roomId, mxid) === "ban") throw errors.forbidden("User is banned");
-		await hs.rooms.invite(roomId, s.userId, mxid);
+		await hs.membership.invite(roomId, s.userId, mxid);
 		return {};
 	}
 	const state = await hs.rooms.currentState(roomId);
@@ -46,8 +41,8 @@ async function inviteByThreepid(ctx, s, body) {
 		sender_display_name: profile.displayname,
 		sender_avatar_url: profile.avatar_url
 	};
-	for (const k of Object.keys(invite)) if (invite[k] === void 0 || invite[k] === null) delete invite[k];
-	const stored = await hs.identityServers.storeInvite(body.id_server, body.id_access_token, invite);
+	const present = Object.fromEntries(Object.entries(invite).filter(([, value]) => value !== void 0 && value !== null));
+	const stored = await hs.identityServers.storeInvite(body.id_server, body.id_access_token, present);
 	const [first] = stored.public_keys;
 	await hs.rooms.sendEvent(roomId, s.userId, {
 		type: M.ROOM.THIRD_PARTY_INVITE,
@@ -60,6 +55,20 @@ async function inviteByThreepid(ctx, s, body) {
 		}
 	});
 	return {};
+}
+/** The fields of an invite by third-party ID; throws M_MISSING_PARAM for one that is not a string. */
+function threepidInvite(body) {
+	const { id_server, id_access_token, medium, address } = body;
+	if (typeof id_server !== "string") throw errors.missingParam("Missing id_server");
+	if (typeof id_access_token !== "string") throw errors.missingParam("Missing id_access_token");
+	if (typeof medium !== "string") throw errors.missingParam("Missing medium");
+	if (typeof address !== "string") throw errors.missingParam("Missing address");
+	return {
+		id_server,
+		id_access_token,
+		medium,
+		address
+	};
 }
 const membershipBody = body({
 	user_id: lenient(v.string()),
@@ -85,7 +94,7 @@ async function sendMembership(ctx, membership) {
 		if (current === "leave") return {};
 		if (current === "ban") throw errors.forbidden("You are banned from this room");
 		if (current === "invite" && await hs.admin.isNoticeRoom(roomId)) throw new MatrixError(403, "M_CANNOT_LEAVE_SERVER_NOTICE_ROOM", "Server notice invites cannot be rejected");
-		await hs.rooms.setMembership(roomId, s.userId, s.userId, "leave", reason);
+		await hs.membership.setMembership(roomId, s.userId, s.userId, "leave", reason);
 		return {};
 	}
 	if (!body.user_id || !isValidUserId(body.user_id)) throw errors.invalidParam("Invalid user_id");
@@ -93,12 +102,12 @@ async function sendMembership(ctx, membership) {
 	await requireRoom(hs, roomId);
 	if (membership === "unban") {
 		if (await hs.rooms.membership(roomId, target) !== "ban") throw errors.forbidden("User is not banned");
-		await hs.rooms.setMembership(roomId, s.userId, target, "leave", reason);
+		await hs.membership.setMembership(roomId, s.userId, target, "leave", reason);
 	} else if (membership === "kick") {
 		const current = await hs.rooms.membership(roomId, target);
 		if (current === "leave" || current === "ban") throw errors.forbidden("User is not in the room");
-		await hs.rooms.setMembership(roomId, s.userId, target, "leave", reason);
-	} else await hs.rooms.setMembership(roomId, s.userId, target, "ban", reason);
+		await hs.membership.setMembership(roomId, s.userId, target, "leave", reason);
+	} else await hs.membership.setMembership(roomId, s.userId, target, "ban", reason);
 	await hs.audit.record({
 		action: membership === "kick" ? "member_kick" : membership === "ban" ? "member_ban" : "member_unban",
 		actor: s.userId,
@@ -119,7 +128,7 @@ function registerMembershipRoutes(r) {
 	const join = async (ctx, idOrAlias) => {
 		const s = ctx.session;
 		const body = ctx.input;
-		const { roomId, servers: resolvedServers } = await ctx.hs.rooms.resolveRoom(idOrAlias);
+		const { roomId, servers: resolvedServers } = await ctx.hs.membership.resolveRoom(idOrAlias);
 		await assertNotSuspended(ctx.hs, s, roomId);
 		const { reason, membership, join_authorised_via_users_server, third_party_signed, ...custom } = body;
 		const servers = [
@@ -146,14 +155,14 @@ function registerMembershipRoutes(r) {
 				if (ctx.hs.isLocalUser(sender)) {
 					const pending = getState(await ctx.hs.rooms.currentState(roomId), M.ROOM.THIRD_PARTY_INVITE, signed.token);
 					if (!pending || pending.sender !== sender) throw errors.forbidden("No such third-party invite");
-					await ctx.hs.rooms.invite(roomId, sender, s.userId, { thirdPartyInvite: {
+					await ctx.hs.membership.invite(roomId, sender, s.userId, { thirdPartyInvite: {
 						display_name: stringOrUndefined(pending.content?.display_name) ?? "",
 						signed: proof
 					} });
 				} else await ctx.hs.federation.client.request(sender.slice(sender.indexOf(":") + 1), "PUT", `/_matrix/federation/v1/exchange_third_party_invite/${encodeURIComponent(roomId)}`, { body: event });
 			}
 		}
-		await ctx.hs.rooms.join(s.userId, roomId, {
+		await ctx.hs.membership.join(s.userId, roomId, {
 			reason,
 			content: custom,
 			servers
@@ -179,14 +188,14 @@ function registerMembershipRoutes(r) {
 		handler: async (ctx) => {
 			const s = ctx.session;
 			const body = ctx.input;
-			const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.roomIdOrAlias);
+			const { roomId, servers } = await ctx.hs.membership.resolveRoom(ctx.params.roomIdOrAlias);
 			await assertNotSuspended(ctx.hs, s, roomId);
 			const via = [
 				...ctx.query.getAll("via"),
 				...ctx.query.getAll("server_name"),
 				...servers
 			];
-			await ctx.hs.rooms.setMembership(roomId, s.userId, s.userId, "knock", body.reason, via);
+			await ctx.hs.membership.setMembership(roomId, s.userId, s.userId, "knock", body.reason, via);
 			return { room_id: roomId };
 		}
 	}));
@@ -208,7 +217,7 @@ function registerMembershipRoutes(r) {
 			const current = await ctx.hs.rooms.membership(ctx.params.roomId, body.user_id);
 			if (current === "ban") throw errors.forbidden("User is banned");
 			if (current === "join") throw errors.forbidden("User is already joined");
-			await ctx.hs.rooms.invite(ctx.params.roomId, s.userId, body.user_id, { reason: body.reason });
+			await ctx.hs.membership.invite(ctx.params.roomId, s.userId, body.user_id, { reason: body.reason });
 			return {};
 		}
 	}));

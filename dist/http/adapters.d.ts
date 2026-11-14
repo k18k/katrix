@@ -12,7 +12,7 @@ export type NodeHandler = (req: IncomingMessage, res: ServerResponse, next?: (er
  */
 export declare function getNodeHandler(hs: Homeserver): NodeHandler;
 /** Express / Connect middleware. Mount with `app.use(getExpressHandler(hs))`. */
-export declare function getExpressHandler(hs: Homeserver): (req: any, res: any, next: (err?: unknown) => void) => void;
+export declare function getExpressHandler(hs: Homeserver): NodeHandler;
 /** Minimal structural Fastify types so that fastify is not a dependency. */
 interface FastifyLike {
   removeAllContentTypeParsers(): void;
@@ -22,8 +22,30 @@ interface FastifyLike {
   route(opts: {
     method: string[];
     url: string;
-    handler: (request: any, reply: any) => unknown;
+    handler: (request: FastifyRequestLike, reply: FastifyReplyLike) => unknown;
   }): void;
+}
+interface FastifyRequestLike {
+  raw: IncomingMessage;
+  ip?: string;
+}
+interface FastifyReplyLike {
+  status(code: number): unknown;
+  header(key: string, value: string): unknown;
+  send(body: unknown): unknown;
+}
+/** Minimal structural Hono context: the request, and the Node socket when served by @hono/node-server. */
+interface HonoContextLike {
+  req: {
+    raw: Request;
+  };
+  env?: {
+    incoming?: {
+      socket?: {
+        remoteAddress?: string;
+      };
+    };
+  };
 }
 /**
  * Fastify plugin. Register with `fastify.register(getFastifyPlugin(hs))`.
@@ -34,6 +56,6 @@ export declare function getFastifyPlugin(hs: Homeserver): (fastify: FastifyLike,
  * Hono handler. Mount with `app.all("*", getHonoHandler(hs))` or
  * `app.mount("/", getFetchHandler(hs))`. Non-Matrix paths call `next()`.
  */
-export declare function getHonoHandler(hs: Homeserver): (c: any, next: () => Promise<void>) => Promise<Response | void>;
+export declare function getHonoHandler(hs: Homeserver): (c: HonoContextLike, next: () => Promise<void>) => Promise<Response | void>;
 export {};
 //# sourceMappingURL=adapters.d.ts.map

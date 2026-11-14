@@ -1,6 +1,11 @@
-import { LOCALPART_RE } from "../shared/ids.js";
+import { isObject, stringOrUndefined } from "../packages/shared/src/json.js";
+import { LOCALPART_RE } from "../packages/shared/src/ids.js";
 import { errors } from "./errors.js";
 // src/core/oauth.ts
+async function jsonObject(res) {
+	const value = await res.json().catch(() => void 0);
+	return isObject(value) ? value : {};
+}
 const API_SCOPES = ["urn:matrix:client:api:*", "urn:matrix:org.matrix.msc2967.client:api:*"];
 const DEVICE_SCOPE_PREFIXES = ["urn:matrix:client:device:", "urn:matrix:org.matrix.msc2967.client:device:"];
 var OAuthDelegation = class {
@@ -20,8 +25,12 @@ var OAuthDelegation = class {
 		let res = await this.hs.fetch(`${base}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(1e4) });
 		if (!res.ok) res = await this.hs.fetch(`${base}/.well-known/oauth-authorization-server`, { signal: AbortSignal.timeout(1e4) });
 		if (!res.ok) throw new Error(`OAuth discovery failed with ${res.status}`);
-		const meta = await res.json();
-		if (this.options.accountManagementUrl) meta.account_management_uri = this.options.accountManagementUrl;
+		const discovered = await jsonObject(res);
+		const managed = this.options.accountManagementUrl;
+		const meta = managed ? {
+			...discovered,
+			account_management_uri: managed
+		} : discovered;
 		this.metadata = meta;
 		this.metadataFetched = Date.now();
 		return meta;
@@ -30,7 +39,7 @@ var OAuthDelegation = class {
 	async authenticate(token) {
 		const cached = this.cache.get(token);
 		if (cached && cached.expires > Date.now()) return cached.session;
-		const endpoint = this.options.introspectionEndpoint ?? (await this.serverMetadata()).introspection_endpoint;
+		const endpoint = this.options.introspectionEndpoint ?? stringOrUndefined((await this.serverMetadata()).introspection_endpoint);
 		if (!endpoint) throw new Error("Authorization server has no introspection endpoint");
 		const res = await this.hs.fetch(endpoint, {
 			method: "POST",
@@ -45,14 +54,14 @@ var OAuthDelegation = class {
 			signal: AbortSignal.timeout(1e4)
 		});
 		if (!res.ok) throw errors.unknownToken("Token introspection failed");
-		const claims = await res.json();
-		if (!claims.active) throw errors.unknownToken();
-		const scopes = String(claims.scope ?? "").split(" ");
+		const claims = await jsonObject(res);
+		if (claims.active !== true) throw errors.unknownToken();
+		const scopes = (stringOrUndefined(claims.scope) ?? "").split(" ");
 		if (!scopes.some((s) => API_SCOPES.includes(s))) throw errors.unknownToken("Token lacks the Matrix API scope");
 		let deviceId = null;
 		for (const s of scopes) for (const p of DEVICE_SCOPE_PREFIXES) if (s.startsWith(p)) deviceId = s.slice(p.length);
 		if (!deviceId) throw errors.unknownToken("Token lacks a device scope");
-		const localpart = (this.options.localpartFromClaims?.(claims) ?? claims.username ?? claims.sub ?? "").toLowerCase();
+		const localpart = (this.options.localpartFromClaims?.(claims) ?? stringOrUndefined(claims.username) ?? stringOrUndefined(claims.sub) ?? "").toLowerCase();
 		if (!LOCALPART_RE.test(localpart)) throw errors.unknownToken("Token subject cannot be mapped to a Matrix user");
 		const userId = `@${localpart}:${this.hs.serverName}`;
 		let user = await this.hs.db.findOne("users", [{
@@ -60,7 +69,7 @@ var OAuthDelegation = class {
 			value: userId
 		}]);
 		if (!user) {
-			await this.hs.admin.createUser(localpart, { displayname: claims.name ?? localpart });
+			await this.hs.admin.createUser(localpart, { displayname: stringOrUndefined(claims.name) ?? localpart });
 			user = await this.hs.db.findOne("users", [{
 				field: "user_id",
 				value: userId

@@ -22,11 +22,27 @@ function localCluster() {
 	const locks = /* @__PURE__ */ new Map();
 	const handlers = /* @__PURE__ */ new Map();
 	const kv = /* @__PURE__ */ new Map();
+	const namespaces = /* @__PURE__ */ new Map();
+	const namespaceOf = (key) => key.slice(0, key.indexOf(":") + 1);
+	const put = (key, entry) => {
+		kv.set(key, entry);
+		const ns = namespaceOf(key);
+		let keys = namespaces.get(ns);
+		if (!keys) namespaces.set(ns, keys = /* @__PURE__ */ new Set());
+		keys.add(key);
+	};
+	const remove = (key) => {
+		kv.delete(key);
+		const ns = namespaceOf(key);
+		const keys = namespaces.get(ns);
+		keys?.delete(key);
+		if (keys?.size === 0) namespaces.delete(ns);
+	};
 	const live = (key) => {
 		const e = kv.get(key);
 		if (!e) return void 0;
 		if (e.expires && e.expires < Date.now()) {
-			kv.delete(key);
+			remove(key);
 			return;
 		}
 		return e;
@@ -65,28 +81,29 @@ function localCluster() {
 			return live(key)?.value ?? null;
 		},
 		async set(key, value, ttlMs) {
-			kv.set(key, {
+			put(key, {
 				value,
 				expires: ttlMs ? Date.now() + ttlMs : 0
 			});
 		},
 		async setIfAbsent(key, value, ttlMs) {
 			if (live(key)) return false;
-			kv.set(key, {
+			put(key, {
 				value,
 				expires: ttlMs ? Date.now() + ttlMs : 0
 			});
 			if (kv.size > 2e5) {
-				for (const k of kv.keys()) if (!live(k)) kv.delete(k);
+				for (const k of kv.keys()) if (!live(k)) remove(k);
 			}
 			return true;
 		},
 		async delete(key) {
-			kv.delete(key);
+			remove(key);
 		},
 		async entries(prefix) {
 			const out = [];
-			for (const k of [...kv.keys()]) if (k.startsWith(prefix)) {
+			const keys = prefix.includes(":") ? namespaces.get(namespaceOf(prefix)) ?? [] : kv.keys();
+			for (const k of [...keys]) if (k.startsWith(prefix)) {
 				const e = live(k);
 				if (e) out.push([k, e.value]);
 			}
@@ -120,6 +137,11 @@ var StreamManager = class {
 	lastPos = 0;
 	heartbeat;
 	positionCache = null;
+	/** Counts completed writes of this instance: a position read that began before the latest one may not show it. */
+	gen = 0;
+	/** The position read in flight, and the one queued to start after it (see `position`). */
+	reading = null;
+	queuedRead = null;
 	highestAllocated = 0;
 	/** Called after a write of this instance completed, when the position may have moved (#50). */
 	onAdvance = () => {};
@@ -191,7 +213,7 @@ var StreamManager = class {
 				clearTimeout(slow);
 				this.inflight.delete(id);
 				await this.flush();
-				this.positionCache = null;
+				this.gen++;
 				this.onAdvance();
 			}
 		};
@@ -219,13 +241,35 @@ var StreamManager = class {
 	* 20 ms cache, for a caller that knows a change has completed elsewhere.
 	*/
 	async position(fresh = false) {
-		if (!fresh && this.positionCache && Date.now() - this.positionCache.at < 20) return this.positionCache.value;
+		const cache = this.positionCache;
+		if (!fresh && cache && cache.gen === this.gen && Date.now() - cache.at < 20) return cache.value;
+		const reading = this.reading;
+		if (!reading) return this.readPosition();
+		if (!fresh && reading.gen === this.gen) return reading.value;
+		return this.queuedRead ??= reading.value.catch(() => 0).then(() => {
+			this.queuedRead = null;
+			return this.readPosition();
+		});
+	}
+	readPosition() {
+		const gen = this.gen;
+		const value = this.readPositionNow(gen).finally(() => {
+			if (this.reading?.value === value) this.reading = null;
+		});
+		this.reading = {
+			gen,
+			value
+		};
+		return value;
+	}
+	async readPositionNow(gen) {
 		let pos = await this.cluster.currentId("stream");
 		for (const [, w] of await this.cluster.entries("writer:")) if (w?.busy) pos = Math.min(pos, w.pos);
 		if (this.inflight.size) pos = Math.min(pos, Math.min(...this.inflight) - 1);
 		this.positionCache = {
 			value: pos,
-			at: Date.now()
+			at: Date.now(),
+			gen
 		};
 		return pos;
 	}

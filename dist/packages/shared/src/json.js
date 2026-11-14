@@ -8,6 +8,9 @@ function stringOrUndefined(value) {
 function isStrings(value) {
 	return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
-export { isObject, isStrings, stringOrUndefined };
+function isStringRecord(value) {
+	return isObject(value) && Object.values(value).every((v) => typeof v === "string");
+}
+export { isObject, isStringRecord, isStrings, stringOrUndefined };
 
 //# sourceMappingURL=json.js.map

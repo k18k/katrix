@@ -1,4 +1,4 @@
-import { isObject } from "../shared/json.js";
+import { isObject } from "../packages/shared/src/json.js";
 import { publicKeyFromBase64, verifyJsonSignature } from "../core/crypto.js";
 import { createPublicKey } from "node:crypto";
 // src/federation/keyring.ts
@@ -60,22 +60,26 @@ var KeyRing = class {
 			this.hs.logger.debug("Fetching keys for", serverName, "failed", err);
 		}
 	}
-	/** Validate and store a `/_matrix/key/v2/server` response. */
+	/** Validate and store a `/_matrix/key/v2/server` response; resolves whether it was accepted. */
 	async ingestServerKeys(serverName, body) {
-		if (body.server_name !== serverName || !isObject(body.verify_keys)) return;
+		if (body.server_name !== serverName || !isObject(body.verify_keys)) return false;
+		const current = Object.entries(body.verify_keys);
+		if (current.length === 0) return false;
 		const validUntil = Number(body.valid_until_ts) || 0;
 		const entries = [];
-		for (const [keyId, v] of Object.entries(body.verify_keys)) if (typeof v?.key === "string") entries.push([
-			keyId,
-			v.key,
-			validUntil
-		]);
-		for (const [keyId, v] of Object.entries(isObject(body.old_verify_keys) ? body.old_verify_keys : {})) if (typeof v?.key === "string") entries.push([
+		for (const [keyId, v] of current) {
+			if (!isObject(v) || typeof v.key !== "string" || !signedWith(body, serverName, keyId, v.key)) return false;
+			entries.push([
+				keyId,
+				v.key,
+				validUntil
+			]);
+		}
+		for (const [keyId, v] of Object.entries(isObject(body.old_verify_keys) ? body.old_verify_keys : {})) if (isObject(v) && typeof v.key === "string") entries.push([
 			keyId,
 			v.key,
 			Number(v.expired_ts) || 0
 		]);
-		for (const [keyId, key] of entries.filter(([id]) => id in body.verify_keys)) if (!verifyJsonSignature(body, serverName, keyId, publicKeyFromBase64(key))) return;
 		for (const [keyId, key, until] of entries) {
 			this.remember(serverName, keyId, key, until);
 			await this.hs.db.upsert("remote_server_keys", {
@@ -85,10 +89,12 @@ var KeyRing = class {
 				valid_until_ts: until
 			});
 		}
+		return true;
 	}
 	/** Verify that `obj` carries a valid signature from `serverName`. */
 	async verifySignedBy(obj, serverName, minValidUntil) {
-		const sigs = obj.signatures?.[serverName];
+		const { signatures } = { ...obj };
+		const sigs = isObject(signatures) ? signatures[serverName] : void 0;
 		if (!isObject(sigs)) return false;
 		for (const keyId of Object.keys(sigs)) {
 			if (!keyId.startsWith("ed25519:")) continue;
@@ -118,6 +124,14 @@ var KeyRing = class {
 		}];
 	}
 };
+/** Whether `body` carries a valid signature by the key `keyId` of `serverName`, given as base64; false for a malformed key. */
+function signedWith(body, serverName, keyId, key) {
+	try {
+		return verifyJsonSignature(body, serverName, keyId, publicKeyFromBase64(key));
+	} catch {
+		return false;
+	}
+}
 export { KeyRing };
 
 //# sourceMappingURL=keyring.js.map

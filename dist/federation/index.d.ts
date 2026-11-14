@@ -1,10 +1,11 @@
-import { PDU } from "../core/events.js";
-import { StateMap } from "../core/authrules.js";
+import { EventRef, PDU } from "../core/events.js";
+import { KeyObject } from "../packages/shared/src/api/keys.js";
 import { MatrixError } from "../core/errors.js";
+import { StateMap } from "../core/authrules.js";
+import { Homeserver } from "../homeserver.js";
 import { FederationClient } from "./client.js";
 import { KeyRing } from "./keyring.js";
 import { TransactionSender } from "./sender.js";
-import { Homeserver } from "../homeserver.js";
 export interface FederationOptions {
   /** Enable federation (talking to other homeservers). Default: false, so that a server only joins the network on purpose. */
   enabled?: boolean;
@@ -40,7 +41,7 @@ export declare class FederationService {
    */
   verifyPdu(raw: unknown, version: string, roomId: string): Promise<{
     pdu: PDU;
-    joinAuthorisedSignatureValid?: boolean;
+    joinAuthorisedSignatureValid: boolean | undefined;
   }>;
   /** Servers with joined members in a room (excluding ourselves). */
   serversInRoom(state: StateMap, applyAcl?: boolean): Set<string>;
@@ -63,7 +64,9 @@ export declare class FederationService {
   onSigningKeyUpdate(userId: string): Promise<void>;
   /** Deliver to-device messages addressed to remote users. */
   sendToDevice(sender: string, type: string, messages: Record<string, Record<string, unknown>>, messageId: string): Promise<void>;
-  receiveTransaction(origin: string, txnId: string, body: Record<string, unknown>): Promise<Record<string, unknown>>;
+  receiveTransaction(origin: string, txnId: string, body: Record<string, unknown>): Promise<Record<string, unknown> | {
+    pdus: Record<string, unknown>;
+  }>;
   private processTransaction;
   /**
    * A PDU for a room we are not in can still matter: a local user's invite being
@@ -110,10 +113,30 @@ export declare class FederationService {
   leaveRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string): Promise<PDU>;
   knockRemoteRoom(userId: string, roomId: string, servers: string[], reason?: string): Promise<{
     pdu: PDU;
-    knockState: unknown[];
+    knockState: any[];
   }>;
   /** Ask the invitee's server to sign an invite; returns the countersigned event. */
-  sendInvite(pdu: PDU, version: string, inviteRoomState: Record<string, unknown>[]): Promise<PDU>;
+  sendInvite(pdu: PDU, version: string, inviteRoomState: Record<string, unknown>[]): Promise<{
+    event_id?: string;
+    room_id: string;
+    sender: string;
+    type: string;
+    state_key?: string;
+    content: Record<string, unknown>;
+    origin_server_ts: number;
+    depth: number;
+    prev_events: EventRef[];
+    auth_events: EventRef[];
+    redacts?: string;
+    hashes?: {
+      sha256: string;
+    };
+    unsigned?: Record<string, unknown>;
+    origin?: string;
+    signatures: {
+      [x: string]: Record<string, string>;
+    };
+  }>;
   queryProfile(userId: string, field?: string): Promise<Record<string, unknown>>;
   queryAlias(alias: string): Promise<{
     room_id: string;
@@ -124,7 +147,7 @@ export declare class FederationService {
     failures: Record<string, unknown>;
   }>;
   claimKeys(oneTimeKeys: Record<string, Record<string, string>>, timeoutMs?: number): Promise<{
-    results: Record<string, unknown>;
+    results: Record<string, Record<string, Record<string, string | KeyObject>>>;
     failures: Record<string, unknown>;
   }>;
   queryPublicRooms(server: string, body: Record<string, unknown>): Promise<Record<string, unknown>>;
@@ -136,7 +159,11 @@ export declare class FederationService {
   backfill(roomId: string, fromEventIds: string[], limit?: number): Promise<number>;
   /** Download remote media (authenticated federation endpoint, falling back to the legacy one). */
   fetchMedia(server: string, mediaId: string, maxBytes: number): Promise<{
-    data: Uint8Array;
+    data: Buffer<ArrayBufferLike>;
+    contentType: string;
+    filename: string | null;
+  } | {
+    data: Uint8Array<ArrayBuffer>;
     contentType: string | null;
     filename: string | null;
   }>;
@@ -146,7 +173,12 @@ export declare class FederationService {
   candidateServers(roomId: string, extra?: string[]): string[];
   static memberServers(state: StateMap): string[];
   isMembershipVisibleTo(state: StateMap, server: string): boolean;
-  stripped(pdu: PDU): Record<string, unknown>;
+  stripped(pdu: PDU): {
+    type: string;
+    state_key: string | undefined;
+    sender: string;
+    content: Record<string, unknown>;
+  };
   error(status: number, errcode: string, message: string): MatrixError;
 }
 //# sourceMappingURL=index.d.ts.map

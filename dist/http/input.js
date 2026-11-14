@@ -1,5 +1,5 @@
-import { MatrixError } from "../core/errors.js";
 import { v } from "../core/vpm.js";
+import { MatrixError } from "../core/errors.js";
 // src/http/input.ts
 /** A request body: a JSON object whose unknown keys are kept. */
 const body = (shape) => v.looseObject(shape);

@@ -1,8 +1,8 @@
-import { isObject } from "../shared/json.js";
+import { isObject } from "../packages/shared/src/json.js";
 import { MatrixError, errors } from "../core/errors.js";
+import { procedure } from "../http/procedure.js";
 import { v } from "../core/vpm.js";
 import { body, fail } from "../http/input.js";
-import { procedure } from "../http/procedure.js";
 // src/api/backup.ts
 const required = fail("M_BAD_JSON", "algorithm and auth_data are required");
 const createVersionBody = body({
@@ -56,6 +56,10 @@ async function describe(hs, row) {
 		etag: String(row.etag),
 		count: await countKeys(hs, row.user_id, row.version)
 	};
+}
+/** A session key of a backup (https://spec.matrix.org/v1.16/client-server-api/#definition-keybackupdata). */
+function isBackupKey(value) {
+	return isObject(value) && typeof value.first_message_index === "number" && typeof value.forwarded_count === "number" && typeof value.is_verified === "boolean" && isObject(value.session_data);
 }
 /** Whether `incoming` should replace `existing` according to the spec's key-selection rules. */
 function better(incoming, existing) {
@@ -156,10 +160,7 @@ function registerBackupRoutes(r) {
 			throw new MatrixError(403, "M_WRONG_ROOM_KEYS_VERSION", "Wrong backup version", { current_version: String(latest?.version ?? "") });
 		}
 		const body = await ctx.json();
-		let rooms;
-		if (ctx.params.sessionId) rooms = { [ctx.params.roomId]: { sessions: { [ctx.params.sessionId]: body } } };
-		else if (ctx.params.roomId) rooms = { [ctx.params.roomId]: body };
-		else rooms = body.rooms ?? {};
+		const rooms = ctx.params.sessionId ? { [ctx.params.roomId]: { sessions: { [ctx.params.sessionId]: body } } } : ctx.params.roomId ? { [ctx.params.roomId]: body } : isObject(body.rooms) ? body.rooms : {};
 		let changed = false;
 		for (const [roomId, room] of Object.entries(rooms)) {
 			if (!isObject(room) || !isObject(room.sessions)) continue;
@@ -182,7 +183,8 @@ function registerBackupRoutes(r) {
 						value: sessionId
 					}
 				];
-				if (!better(data, (await hs.db.findOne("backup_keys", where))?.data ?? null)) continue;
+				const existing = await hs.db.findOne("backup_keys", where);
+				if (!isBackupKey(data) || !better(data, existing?.data ?? null)) continue;
 				await hs.db.upsert("backup_keys", {
 					user_id: s.userId,
 					version: row.version,
