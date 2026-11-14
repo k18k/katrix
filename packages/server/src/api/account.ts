@@ -592,7 +592,7 @@ export function registerAccountRoutes(r: Router) {
         for (const membership of ["join", "invite", "knock"]) {
           for (const roomId of await hs.rooms.roomsForUser(s.userId, membership)) {
             try {
-              await hs.rooms.setMembership(roomId, s.userId, s.userId, "leave");
+              await hs.membership.setMembership(roomId, s.userId, s.userId, "leave");
             } catch {
               /* best effort */
             }

@@ -89,7 +89,7 @@ export class AdminService {
     for (const membership of ["join", "invite", "knock"]) {
       for (const roomId of await this.hs.rooms.roomsForUser(userId, membership)) {
         try {
-          await this.hs.rooms.setMembership(roomId, userId, userId, "leave");
+          await this.hs.membership.setMembership(roomId, userId, userId, "leave");
         } catch {
           /* best effort */
         }
@@ -133,7 +133,7 @@ export class AdminService {
    */
   async joinUser(userId: string, roomIdOrAlias: string) {
     if (!this.hs.isLocalUser(userId) || !(await this.getUser(userId))) throw errors.notFound("Unknown user");
-    const roomId = await this.hs.rooms.resolveRoomIdOrAlias(roomIdOrAlias);
+    const roomId = await this.hs.membership.resolveRoomIdOrAlias(roomIdOrAlias);
     const version = await this.hs.rooms.roomVersion(roomId);
     if (!version) throw errors.notFound("Unknown room");
     const state = await this.hs.rooms.currentState(roomId);
@@ -145,9 +145,9 @@ export class AdminService {
       const pl = powerLevels(state, version);
       const inviter = (await this.hs.rooms.joinedMembers(roomId)).find((m) => this.hs.isLocalUser(m) && userLevel(pl, m) >= pl.invite);
       if (!inviter) throw errors.forbidden("No local member of the room may invite");
-      await this.hs.rooms.invite(roomId, inviter, userId);
+      await this.hs.membership.invite(roomId, inviter, userId);
     }
-    await this.hs.rooms.join(userId, roomId);
+    await this.hs.membership.join(userId, roomId);
     return roomId;
   }
 
@@ -180,7 +180,7 @@ export class AdminService {
         if (!this.hs.isLocalUser(row.user_id)) continue;
         try {
           // Members leave on their own behalf, which is always allowed.
-          await this.hs.rooms.setMembership(roomId, row.user_id, row.user_id, "leave", opts.reason);
+          await this.hs.membership.setMembership(roomId, row.user_id, row.user_id, "leave", opts.reason);
           kicked.push(row.user_id);
         } catch (err) {
           this.hs.logger.warn("Could not remove", row.user_id, "from", roomId, err);
@@ -252,7 +252,7 @@ export class AdminService {
     }
     const roomId = await this.noticeRoomFor(userId);
     const membership = await this.hs.rooms.membership(roomId, userId);
-    if (membership !== "join" && membership !== "invite") await this.hs.rooms.invite(roomId, noticeUser, userId);
+    if (membership !== "join" && membership !== "invite") await this.hs.membership.invite(roomId, noticeUser, userId);
     const eventId = await this.hs.rooms.sendEvent(roomId, noticeUser, { type: opts.type ?? M.ROOM.MESSAGE, content });
     if (txnKey) await this.hs.cluster.set(txnKey, eventId, 24 * 3600_000);
     return eventId;

@@ -23,7 +23,7 @@ async function inviteByThreepid(ctx: RequestContext, s: Session, raw: Record<str
   const mxid = await hs.identityServers.lookup(body.id_server, body.id_access_token, body.medium, body.address);
   if (mxid) {
     if ((await hs.rooms.membership(roomId, mxid)) === "ban") throw errors.forbidden("User is banned");
-    await hs.rooms.invite(roomId, s.userId, mxid);
+    await hs.membership.invite(roomId, s.userId, mxid);
     return {};
   }
   const state = await hs.rooms.currentState(roomId);
@@ -95,7 +95,7 @@ async function sendMembership(
     if (current === "invite" && (await hs.admin.isNoticeRoom(roomId))) {
       throw new MatrixError(403, "M_CANNOT_LEAVE_SERVER_NOTICE_ROOM", "Server notice invites cannot be rejected");
     }
-    await hs.rooms.setMembership(roomId, s.userId, s.userId, "leave", reason);
+    await hs.membership.setMembership(roomId, s.userId, s.userId, "leave", reason);
     return {};
   }
   if (!body.user_id || !isValidUserId(body.user_id)) throw errors.invalidParam("Invalid user_id");
@@ -103,13 +103,13 @@ async function sendMembership(
   await requireRoom(hs, roomId);
   if (membership === "unban") {
     if ((await hs.rooms.membership(roomId, target)) !== "ban") throw errors.forbidden("User is not banned");
-    await hs.rooms.setMembership(roomId, s.userId, target, "leave", reason);
+    await hs.membership.setMembership(roomId, s.userId, target, "leave", reason);
   } else if (membership === "kick") {
     const current = await hs.rooms.membership(roomId, target);
     if (current === "leave" || current === "ban") throw errors.forbidden("User is not in the room");
-    await hs.rooms.setMembership(roomId, s.userId, target, "leave", reason);
+    await hs.membership.setMembership(roomId, s.userId, target, "leave", reason);
   } else {
-    await hs.rooms.setMembership(roomId, s.userId, target, "ban", reason);
+    await hs.membership.setMembership(roomId, s.userId, target, "ban", reason);
   }
   await hs.audit.record({
     action: membership === "kick" ? "member_kick" : membership === "ban" ? "member_ban" : "member_unban",
@@ -127,7 +127,7 @@ export function registerMembershipRoutes(r: Router) {
   const join = async (ctx: ProcedureContext<"user", v.output<typeof joinBody>>, idOrAlias: string) => {
     const s = ctx.session;
     const body = ctx.input;
-    const { roomId, servers: resolvedServers } = await ctx.hs.rooms.resolveRoom(idOrAlias);
+    const { roomId, servers: resolvedServers } = await ctx.hs.membership.resolveRoom(idOrAlias);
     await assertNotSuspended(ctx.hs, s, roomId);
     const { reason, membership, join_authorised_via_users_server, third_party_signed, ...custom } = body;
     const servers = [...ctx.query.getAll("via"), ...ctx.query.getAll("server_name"), ...resolvedServers];
@@ -150,7 +150,7 @@ export function registerMembershipRoutes(r: Router) {
         if (ctx.hs.isLocalUser(sender)) {
           const pending = getState(await ctx.hs.rooms.currentState(roomId), M.ROOM.THIRD_PARTY_INVITE, signed.token);
           if (!pending || pending.sender !== sender) throw errors.forbidden("No such third-party invite");
-          await ctx.hs.rooms.invite(roomId, sender, s.userId, {
+          await ctx.hs.membership.invite(roomId, sender, s.userId, {
             thirdPartyInvite: { display_name: stringOrUndefined(pending.content?.display_name) ?? "", signed: proof },
           });
         } else {
@@ -163,7 +163,7 @@ export function registerMembershipRoutes(r: Router) {
         }
       }
     }
-    await ctx.hs.rooms.join(s.userId, roomId, { reason, content: custom, servers });
+    await ctx.hs.membership.join(s.userId, roomId, { reason, content: custom, servers });
     return { room_id: roomId };
   };
   r.client(
@@ -192,10 +192,10 @@ export function registerMembershipRoutes(r: Router) {
       handler: async (ctx) => {
         const s = ctx.session;
         const body = ctx.input;
-        const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.roomIdOrAlias);
+        const { roomId, servers } = await ctx.hs.membership.resolveRoom(ctx.params.roomIdOrAlias);
         await assertNotSuspended(ctx.hs, s, roomId);
         const via = [...ctx.query.getAll("via"), ...ctx.query.getAll("server_name"), ...servers];
-        await ctx.hs.rooms.setMembership(roomId, s.userId, s.userId, "knock", body.reason, via);
+        await ctx.hs.membership.setMembership(roomId, s.userId, s.userId, "knock", body.reason, via);
         return { room_id: roomId };
       },
     }),
@@ -220,7 +220,7 @@ export function registerMembershipRoutes(r: Router) {
         const current = await ctx.hs.rooms.membership(ctx.params.roomId, body.user_id);
         if (current === "ban") throw errors.forbidden("User is banned");
         if (current === "join") throw errors.forbidden("User is already joined");
-        await ctx.hs.rooms.invite(ctx.params.roomId, s.userId, body.user_id, { reason: body.reason });
+        await ctx.hs.membership.invite(ctx.params.roomId, s.userId, body.user_id, { reason: body.reason });
         return {};
       },
     }),

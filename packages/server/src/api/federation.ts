@@ -227,7 +227,7 @@ async function exchangeThirdPartyInvite(hs: Homeserver, roomId: string, sender: 
   if (!pending) throw errors.forbidden("No such third-party invite");
   if (pending.sender !== sender) throw errors.forbidden("The third-party invite was sent by someone else");
   // The auth rules check `signed` against the invite's public keys.
-  await hs.rooms.invite(roomId, sender, invitee, {
+  await hs.membership.invite(roomId, sender, invitee, {
     thirdPartyInvite: { display_name: stringOrUndefined(pending.content?.display_name) ?? "", signed },
   });
 }

@@ -11,6 +11,7 @@ import { KeyService } from "#core/keys.ts";
 import { Notifier } from "#core/notifier.ts";
 import { assertLeases, localCluster, newInstanceId, StreamManager, type ClusterAdapter } from "#core/cluster.ts";
 import { RoomService } from "#core/rooms.ts";
+import { MembershipService } from "#core/membership.ts";
 import { TypingService } from "#core/typing.ts";
 import { PushService } from "#core/push.ts";
 import { AdminService, type ServerNoticesOptions } from "#core/admin.ts";
@@ -206,6 +207,7 @@ export class Homeserver extends EventEmitter {
   readonly notifier: Notifier;
   readonly auth: AuthService;
   readonly rooms: RoomService;
+  readonly membership: MembershipService;
   readonly keys: KeyService;
   readonly typing: TypingService;
   readonly push: PushService;
@@ -305,6 +307,7 @@ export class Homeserver extends EventEmitter {
 
     this.auth = new AuthService(this);
     this.rooms = new RoomService(this, !options.cluster);
+    this.membership = new MembershipService(this);
     this.keys = new KeyService(this);
     this.typing = new TypingService(this);
     this.push = new PushService(this);

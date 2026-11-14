@@ -61,7 +61,7 @@ export function registerDirectoryRoutes(r: Router) {
     procedure({
       handler: async (ctx) => {
         if (!isValidAlias(ctx.params.alias)) throw errors.invalidParam("Invalid alias");
-        const { roomId, servers } = await ctx.hs.rooms.resolveRoom(ctx.params.alias);
+        const { roomId, servers } = await ctx.hs.membership.resolveRoom(ctx.params.alias);
         const inRoom = (await ctx.hs.rooms.exists(roomId))
           ? [...(await ctx.hs.federation.roomDestinations(roomId, await ctx.hs.rooms.currentState(roomId)))]
           : [];

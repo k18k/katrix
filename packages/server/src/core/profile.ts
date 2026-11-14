@@ -31,6 +31,6 @@ export async function setProfileField(hs: Homeserver, userId: string, field: str
     await hs.db.update("users", [{ field: "user_id", value: userId }], { [field]: value || null });
   }
   await hs.streams.write((stream) => hs.db.upsert("profile_fields", { user_id: userId, field, value: value ?? null, stream }));
-  if (BUILTIN_FIELDS.has(field)) await hs.rooms.propagateProfile(userId);
+  if (BUILTIN_FIELDS.has(field)) await hs.membership.propagateProfile(userId);
   hs.notifier.notify([...(await hs.rooms.usersSharingRooms(userId))]);
 }

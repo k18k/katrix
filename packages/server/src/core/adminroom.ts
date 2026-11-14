@@ -132,8 +132,8 @@ export class AdminRoomService {
     const roomId = await this.ensureRoom();
     const membership = await this.hs.rooms.membership(roomId, userId);
     if (membership === "join") return;
-    if (membership !== "invite") await this.hs.rooms.invite(roomId, this.botUserId, userId);
-    await this.hs.rooms.join(userId, roomId);
+    if (membership !== "invite") await this.hs.membership.invite(roomId, this.botUserId, userId);
+    await this.hs.membership.join(userId, roomId);
   }
 
   /** Remove a former admin from the admin room. */
@@ -142,7 +142,7 @@ export class AdminRoomService {
     if (!roomId || userId === this.botUserId) return;
     const membership = await this.hs.rooms.membership(roomId, userId);
     if (membership === "join" || membership === "invite") {
-      await this.hs.rooms.setMembership(roomId, this.botUserId, userId, "leave", "No longer a server admin");
+      await this.hs.membership.setMembership(roomId, this.botUserId, userId, "leave", "No longer a server admin");
     }
   }
 
@@ -193,7 +193,7 @@ export class AdminRoomService {
 
   private async resolveRoom(arg: string | undefined) {
     if (!arg) throw new Error("Missing room");
-    if (arg.startsWith("#")) return this.hs.rooms.resolveRoomIdOrAlias(arg);
+    if (arg.startsWith("#")) return this.hs.membership.resolveRoomIdOrAlias(arg);
     if (!isValidRoomId(arg)) throw new Error(`Invalid room: ${arg}`);
     return arg;
   }

@@ -136,7 +136,7 @@ export function registerAdminRoutes(r: Router) {
         if (typeof body.admin === "boolean") await ctx.hs.admin.setAdmin(userId, body.admin);
         if (typeof body.displayname === "string") {
           await ctx.hs.db.update("users", [{ field: "user_id", value: userId }], { displayname: body.displayname });
-          await ctx.hs.rooms.propagateProfile(userId);
+          await ctx.hs.membership.propagateProfile(userId);
         }
         if (body.deactivated === true) await ctx.hs.admin.deactivateUser(userId);
         return ctx.hs.admin.getUser(userId);

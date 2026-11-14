@@ -176,7 +176,7 @@ export function registerSpaceRoutes(r: Router) {
     const hs = ctx.hs;
     let roomId: string;
     try {
-      roomId = await hs.rooms.resolveRoomIdOrAlias(ctx.params.roomIdOrAlias);
+      roomId = await hs.membership.resolveRoomIdOrAlias(ctx.params.roomIdOrAlias);
     } catch {
       throw errors.notFound("Room not found");
     }
