@@ -203,3 +203,28 @@ test("queried keys of remote users are passed on only when they are well-formed"
     await t.close();
   }
 });
+
+// https://github.com/k18k/katrix/issues/128
+test("a remote alias resolves only when the remote server answers with a room ID", async (ctx) => {
+  const t = await testServer({ federation: { enabled: true } });
+  try {
+    const answers: unknown[] = [
+      { room_id: "!room:remote.example", servers: ["remote.example"] },
+      { room_id: "!other:remote.example", servers: "remote.example" },
+      { room_id: 5, servers: [] },
+      { room_id: "not a room", servers: [] },
+    ];
+    ctx.mock.method(t.hs.federation.client, "request", async () => answers.shift());
+    const resolve = () => t.call("GET", `/_matrix/client/v3/directory/room/${encodeURIComponent("#lobby:remote.example")}`);
+    assert.deepEqual((await resolve()).json, { room_id: "!room:remote.example", servers: ["remote.example"] });
+    assert.deepEqual(
+      (await resolve()).json,
+      { room_id: "!other:remote.example", servers: ["remote.example"] },
+      "a malformed list falls back",
+    );
+    assert.equal((await resolve()).status, 404);
+    assert.equal((await resolve()).status, 404);
+  } finally {
+    await t.close();
+  }
+});

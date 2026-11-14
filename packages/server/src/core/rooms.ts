@@ -1485,7 +1485,7 @@ export class RoomService {
       if (server && server !== this.hs.serverName && this.hs.federation.enabled) {
         try {
           const res = await this.hs.federation.queryAlias(idOrAlias);
-          return { roomId: res.room_id, servers: Array.isArray(res.servers) ? res.servers : [server] };
+          return { roomId: res.room_id, servers: res.servers };
         } catch {
           throw errors.notFound("Room alias not found");
         }

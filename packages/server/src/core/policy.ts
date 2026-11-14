@@ -67,7 +67,8 @@ export class PolicyServers {
       body: this.hs.federation.toFederationPdu(pdu, version),
       timeoutMs: 10_000,
     });
-    const sig = res?.[policy.via]?.[KEY_ID];
+    const byServer = res[policy.via];
+    const sig = isObject(byServer) ? byServer[KEY_ID] : undefined;
     if (typeof sig !== "string") throw new MatrixError(403, "M_FORBIDDEN", "The policy server did not sign the event");
     pdu.signatures = { ...pdu.signatures, [policy.via]: { ...pdu.signatures?.[policy.via], [KEY_ID]: sig } };
   }

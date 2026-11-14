@@ -1,4 +1,4 @@
-import { canonicalJson, M } from "@katrix/shared";
+import { canonicalJson, isObject, M } from "@katrix/shared";
 import { resolveSrv } from "node:dns/promises";
 import { Agent, request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
@@ -243,15 +243,18 @@ export class FederationClient {
     }
   }
 
+  // https://github.com/k18k/katrix/issues/128: the answer of a remote server was returned as any, so callers read its fields
+  // unchecked. It is a JSON object of unknown fields now (an empty one for anything else), and each caller checks what it reads.
   /** Send a request and parse the JSON response; non-2xx responses throw a MatrixError. */
-  async request(destination: string, method: string, path: string, opts: FederationRequestOptions = {}): Promise<any> {
+  async request(destination: string, method: string, path: string, opts: FederationRequestOptions = {}) {
     const res = await this.requestRaw(destination, method, path, opts);
-    let json: any = {};
+    let parsed: unknown = {};
     try {
-      json = res.body.length ? JSON.parse(res.body.toString("utf8")) : {};
+      parsed = res.body.length ? JSON.parse(res.body.toString("utf8")) : {};
     } catch {
       /* non-JSON */
     }
+    const json = isObject(parsed) ? parsed : {};
     if (res.status < 200 || res.status >= 300) {
       throw new MatrixError(
         res.status === 404 ? 404 : res.status >= 500 ? 502 : res.status,

@@ -1,4 +1,14 @@
-import { isObject, isOneTimeKey, isStrings, M, parseId, type KeyObject, type KeysClaimResponse } from "@katrix/shared";
+import {
+  isObject,
+  isOneTimeKey,
+  isSignatures,
+  isStrings,
+  isValidRoomId,
+  M,
+  parseId,
+  type KeyObject,
+  type KeysClaimResponse,
+} from "@katrix/shared";
 import { MatrixError, errors } from "#core/errors.ts";
 import { globMatch } from "@katrix/shared";
 import { getState, membershipOf, type StateMap } from "#core/authrules.ts";
@@ -884,7 +894,8 @@ export class FederationService {
         if (!SUPPORTED_ROOM_VERSIONS.includes(version)) throw errors.unsupportedRoomVersion();
         if (
           !isObject(tmpl.event) ||
-          tmpl.event.content?.membership !== "join" ||
+          !isObject(tmpl.event.content) ||
+          tmpl.event.content.membership !== "join" ||
           tmpl.event.state_key !== userId ||
           tmpl.event.sender !== userId
         ) {
@@ -904,7 +915,8 @@ export class FederationService {
           },
         );
         // Restricted joins come back with the authorising server's signature.
-        if (isObject(res.event?.signatures)) joinPdu.signatures = { ...joinPdu.signatures, ...res.event.signatures };
+        const authorised = isObject(res.event) ? res.event.signatures : undefined;
+        if (isSignatures(authorised)) joinPdu.signatures = { ...joinPdu.signatures, ...authorised };
         await this.completeJoin(roomId, version, joinPdu, res, server);
         return roomId;
       } catch (err) {
@@ -977,6 +989,7 @@ export class FederationService {
           `/_matrix/federation/v1/make_leave/${encodeURIComponent(roomId)}/${encodeURIComponent(userId)}`,
         );
         const version = typeof tmpl.room_version === "string" ? tmpl.room_version : "1";
+        if (!isObject(tmpl.event)) throw errors.unknown("Invalid make_leave response");
         const pdu = this.finaliseTemplate(tmpl.event, version, reason ? { reason } : {});
         await this.client.request(
           server,
@@ -1008,6 +1021,7 @@ export class FederationService {
           },
         );
         const version = typeof tmpl.room_version === "string" ? tmpl.room_version : "1";
+        if (!isObject(tmpl.event)) throw errors.unknown("Invalid make_knock response");
         const pdu = this.finaliseTemplate(tmpl.event, version, reason ? { reason } : {});
         const res = await this.client.request(
           server,
@@ -1038,7 +1052,7 @@ export class FederationService {
         body: { room_version: version, event: this.toFederationPdu(pdu, version), invite_room_state: inviteRoomState },
       },
     );
-    if (!isObject(res.event)) throw errors.unknown("Invalid invite response");
+    if (!isObject(res.event) || !isSignatures(res.event.signatures)) throw errors.unknown("Invalid invite response");
     const signed = { ...pdu, signatures: { ...pdu.signatures, ...res.event.signatures } };
     // Signatures cover the wire format (no event_id for v3+), redacted.
     if (!(await this.keyring.verifySignedBy(redact(this.toFederationPdu(signed, version), version), server))) {
@@ -1056,9 +1070,15 @@ export class FederationService {
     return this.client.request(domainOf(userId), "GET", "/_matrix/federation/v1/query/profile", { query: { user_id: userId, field } });
   }
 
-  async queryAlias(alias: string): Promise<{ room_id: string; servers: string[] }> {
+  async queryAlias(alias: string) {
     this.requireEnabled();
-    return this.client.request(domainOf(alias), "GET", "/_matrix/federation/v1/query/directory", { query: { room_alias: alias } });
+    const res = await this.client.request(domainOf(alias), "GET", "/_matrix/federation/v1/query/directory", {
+      query: { room_alias: alias },
+    });
+    // https://github.com/k18k/katrix/issues/128: the answer was returned as { room_id, servers } without a check. A missing
+    // server list falls back to the alias's server, as callers did before.
+    if (!isValidRoomId(res.room_id)) throw errors.unknown("Invalid directory response");
+    return { room_id: res.room_id, servers: isStrings(res.servers) ? res.servers : [domainOf(alias)] };
   }
 
   async queryKeys(
